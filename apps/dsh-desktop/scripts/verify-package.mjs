@@ -2,14 +2,17 @@ import { access, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BUILTIN_RUNTIME_PACKAGES, packagePathSegments } from '../src/profile.mjs'
+import {
+  BUILTIN_RUNTIME_PACKAGES,
+  DSH_BOOT_RUNTIME_PACKAGES,
+  packagePathSegments,
+} from '../src/profile.mjs'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const resources = resolve(process.argv[2] || join(appDir, 'dist', 'win-unpacked', 'resources'))
 const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
 const requiredPackages = [
-  '@deepseek-ai/cordis-plugin-group',
-  '@deepseek-ai/dsh',
+  ...DSH_BOOT_RUNTIME_PACKAGES,
   'pnpm',
   ...BUILTIN_RUNTIME_PACKAGES,
 ]

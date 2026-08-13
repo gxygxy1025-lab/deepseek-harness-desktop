@@ -43,6 +43,30 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-web-ui-compat',
 ].toSorted())
 
+// DSH rc.6 exposes these runtime modules as peers. Keep them explicit so the
+// packaged host is hermetic instead of resolving through a developer machine.
+export const DSH_BOOT_RUNTIME_PACKAGES = Object.freeze([
+  '@deepseek-ai/cordis-plugin-group',
+  '@deepseek-ai/dsh',
+  '@deepseek-ai/dsh-anonymous-user-id',
+  '@deepseek-ai/dsh-atomic-write',
+  '@deepseek-ai/dsh-bash-local',
+  '@deepseek-ai/dsh-code-runtime',
+  '@deepseek-ai/dsh-compaction',
+  '@deepseek-ai/dsh-fs',
+  '@deepseek-ai/dsh-output-retention',
+  '@deepseek-ai/dsh-sandbox',
+  '@deepseek-ai/dsh-scope',
+  '@deepseek-ai/dsh-session-telemetry',
+  '@deepseek-ai/dsh-session-title-llm',
+  '@deepseek-ai/dsh-shell',
+  '@deepseek-ai/dsh-spill',
+  '@deepseek-ai/dsh-subagent-in-process-driver',
+  '@deepseek-ai/dsh-subprocess',
+  '@deepseek-ai/dsh-timeout',
+  '@deepseek-ai/dsh-workflow',
+].toSorted())
+
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/
 const ROOT_CONFIG = '[]\n'
 const WORKSPACE_CONFIG = `packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n`
