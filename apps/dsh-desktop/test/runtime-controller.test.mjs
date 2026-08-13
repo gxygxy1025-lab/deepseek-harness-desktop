@@ -7,6 +7,7 @@ import {
   DshRuntimeController,
   computeRestartDelay,
   parseDshReadyUrl,
+  probeHttpReady,
   validateLoopbackUrl,
 } from '../src/runtime-controller.mjs'
 
@@ -42,6 +43,21 @@ test('restart schedule is bounded and exponential', () => {
   assert.equal(computeRestartDelay(3), undefined)
 })
 
+test('HTTP readiness probe waits through a short bind race', async () => {
+  let calls = 0
+  await probeHttpReady('http://127.0.0.1:43125/', {
+    attempts: 3,
+    delayMs: 0,
+    schedule: (callback) => callback(),
+    fetchImpl: async () => {
+      calls += 1
+      if (calls < 3) throw new Error('connection refused')
+      return { ok: true }
+    },
+  })
+  assert.equal(calls, 3)
+})
+
 test('controller reaches ready state from streamed output and stops cleanly', async () => {
   const child = new FakeChild()
   const logLines = []
@@ -52,6 +68,7 @@ test('controller reaches ready state from streamed output and stops cleanly', as
     dshHome: 'C:\\isolated-home',
     spawnProcess: () => child,
     logStore: { append: async (line) => logLines.push(line) },
+    probeReady: async () => {},
     startupTimeoutMs: 2_000,
   })
   controller.on('status', (status) => states.push(status.state))
@@ -76,6 +93,7 @@ test('controller rejects startup when the child exits before readiness', async (
     dshHome: 'C:\\isolated-home',
     spawnProcess: () => child,
     logStore: { append: async () => {} },
+    probeReady: async () => {},
     startupTimeoutMs: 2_000,
   })
   const ready = controller.start()

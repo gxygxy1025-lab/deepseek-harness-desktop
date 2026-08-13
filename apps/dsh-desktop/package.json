@@ -8,6 +8,7 @@
   "license": "BSD-3-Clause",
   "scripts": {
     "dev": "electron src/main.mjs",
+    "capture:startup": "node scripts/capture-startup.mjs",
     "test": "node --test test/*.test.mjs",
     "pack:dir": "electron-builder --dir",
     "pack:win": "electron-builder --win nsis portable"
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "electron": "43.4.0",
-    "electron-builder": "26.15.3"
+    "electron-builder": "26.15.3",
+    "playwright": "1.62.1"
   }
 }

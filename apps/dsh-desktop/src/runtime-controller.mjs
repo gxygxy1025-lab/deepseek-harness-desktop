@@ -31,6 +31,24 @@ export function computeRestartDelay(attempt, maxAttempts = 3) {
   return Math.min(15_000, 500 * 3 ** attempt)
 }
 
+export async function probeHttpReady(
+  url,
+  { fetchImpl = fetch, attempts = 30, delayMs = 50, schedule = setTimeout } = {},
+) {
+  let lastError
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(1_000) })
+      if (response.ok) return
+      lastError = new Error(`runtime health probe returned HTTP ${response.status}`)
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise((resolve) => schedule(resolve, delayMs))
+  }
+  throw new Error(`runtime URL did not accept HTTP requests: ${lastError?.message ?? 'unknown error'}`)
+}
+
 function createLineReader(onLine) {
   let buffer = ''
   return {
@@ -58,6 +76,7 @@ export class DshRuntimeController extends EventEmitter {
     startupTimeoutMs = 30_000,
     shutdownTimeoutMs = 5_000,
     autoRestart = false,
+    probeReady = probeHttpReady,
     schedule = setTimeout,
     cancelSchedule = clearTimeout,
   }) {
@@ -72,6 +91,7 @@ export class DshRuntimeController extends EventEmitter {
     this.startupTimeoutMs = startupTimeoutMs
     this.shutdownTimeoutMs = shutdownTimeoutMs
     this.autoRestart = autoRestart
+    this.probeReady = probeReady
     this.schedule = schedule
     this.cancelSchedule = cancelSchedule
     this.child = undefined
@@ -115,7 +135,7 @@ export class DshRuntimeController extends EventEmitter {
     try {
       this.child = this.spawnProcess(
         this.executable,
-        [this.cliPath, '--profile', 'desktop', '--port', '0'],
+        ['--expose-internals', this.cliPath, '--profile', 'desktop', '--port', '0'],
         {
           cwd: this.cwd,
           env: environment,
@@ -159,6 +179,16 @@ export class DshRuntimeController extends EventEmitter {
       return
     }
     if (url === undefined) return
+    try {
+      await this.probeReady(url)
+    } catch (error) {
+      if (this.status.state === 'starting') {
+        this.#failBeforeReady(error)
+        this.child?.kill('SIGKILL')
+      }
+      return
+    }
+    if (this.status.state !== 'starting') return
     this.cancelSchedule(this.startupTimer)
     this.startupTimer = undefined
     this.#setStatus('ready', { url })
