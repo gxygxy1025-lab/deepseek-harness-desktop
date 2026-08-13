@@ -453,6 +453,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-skin-ths':
         specifier: workspace:*
         version: link:../skins/ths
+      '@deepseek-ai/dsh-client-ui-skin-whale-song':
+        specifier: workspace:*
+        version: link:../skins/whale-song
       '@deepseek-ai/dsh-client-ui-skin-xp':
         specifier: workspace:*
         version: link:../skins/xp

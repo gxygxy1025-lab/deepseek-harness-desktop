@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict'
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import test from 'node:test'
+
+import {
+  BUILTIN_BUNDLES,
+  BUILTIN_RUNTIME_PACKAGES,
+  createDesktopProfileManifest,
+  ensureDesktopProfile,
+  packagePathSegments,
+  resolveRuntimePackages,
+  resolveDshCliPath,
+} from '../src/profile.mjs'
+
+test('package path validation accepts NPM names and rejects path input', () => {
+  assert.deepEqual(packagePathSegments('@deepseek-ai/dsh-pet'), ['@deepseek-ai', 'dsh-pet'])
+  assert.deepEqual(packagePathSegments('plain-package'), ['plain-package'])
+  for (const value of ['', '../escape', '@scope', '@scope/pkg/extra', 'file:package']) {
+    assert.throws(() => packagePathSegments(value), /package name/)
+  }
+})
+
+test('profile manifest preserves community bundles after managed bundles', () => {
+  const manifest = createDesktopProfileManifest({
+    dependencies: { '@community/example': '1.2.3' },
+    dsh: { profile: { bundles: ['@community/example', '@deepseek-ai/dsh-base'] } },
+  })
+
+  assert.deepEqual(manifest.dsh.profile.bundles, [...BUILTIN_BUNDLES, '@community/example'])
+  assert.equal(manifest.dependencies['@community/example'], '1.2.3')
+  assert.equal(manifest.name, 'dsh-profile-desktop')
+})
+
+test('profile bootstrap is idempotent and links every managed package', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-profile-'))
+  const dshHome = join(root, 'home')
+  const sourceRoot = join(root, 'packages')
+  const packageRoots = new Map()
+
+  for (const packageName of ['@deepseek-ai/dsh-web-ui-all', '@deepseek-ai/dsh-pet']) {
+    const packageRoot = join(sourceRoot, ...packagePathSegments(packageName))
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: packageName, version: '1.0.0' }))
+    packageRoots.set(packageName, packageRoot)
+  }
+
+  const first = await ensureDesktopProfile({ dshHome, packageRoots })
+  const second = await ensureDesktopProfile({ dshHome, packageRoots })
+  assert.equal(first.profileDir, second.profileDir)
+  assert.equal(second.changed, false)
+
+  const manifest = JSON.parse(await readFile(join(first.profileDir, 'package.json'), 'utf8'))
+  assert.deepEqual(manifest.dsh.profile.bundles, BUILTIN_BUNDLES)
+  for (const [packageName, source] of packageRoots) {
+    const linked = join(first.profileDir, 'node_modules', ...packagePathSegments(packageName))
+    assert.equal(await realpath(linked), await realpath(source))
+  }
+})
+
+test('runtime resolver finds the aggregate and every built-in child package', () => {
+  const resolved = resolveRuntimePackages()
+  assert.deepEqual([...resolved.keys()], [...resolved.keys()].toSorted())
+  for (const packageName of BUILTIN_RUNTIME_PACKAGES) {
+    assert.equal(resolved.has(packageName), true, `missing ${packageName}`)
+  }
+})
+
+test('official DSH CLI composes the isolated desktop profile', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-compose-'))
+  try {
+    await ensureDesktopProfile({ dshHome: root })
+    const result = spawnSync(
+      process.execPath,
+      [resolveDshCliPath(), '--profile', 'desktop', '--dump-default-config'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, DSH_HOME: root },
+        timeout: 20_000,
+      },
+    )
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /ui-task-board/)
+    assert.match(result.stdout, /ui-skin-center/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
