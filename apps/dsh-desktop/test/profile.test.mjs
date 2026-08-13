@@ -10,10 +10,19 @@ import {
   BUILTIN_RUNTIME_PACKAGES,
   createDesktopProfileManifest,
   ensureDesktopProfile,
+  materializeFilesystemPath,
   packagePathSegments,
   resolveRuntimePackages,
   resolveDshCliPath,
 } from '../src/profile.mjs'
+
+test('packaged paths point at physical asar-unpacked files', () => {
+  assert.equal(
+    materializeFilesystemPath('C:\\app\\resources\\app.asar\\node_modules\\pkg'),
+    'C:\\app\\resources\\app.asar.unpacked\\node_modules\\pkg',
+  )
+  assert.equal(materializeFilesystemPath('C:\\workspace\\node_modules\\pkg'), 'C:\\workspace\\node_modules\\pkg')
+})
 
 test('package path validation accepts NPM names and rejects path input', () => {
   assert.deepEqual(packagePathSegments('@deepseek-ai/dsh-pet'), ['@deepseek-ai', 'dsh-pet'])

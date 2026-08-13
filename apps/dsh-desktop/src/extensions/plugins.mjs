@@ -3,7 +3,12 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 
-import { BUILTIN_BUNDLES, BUILTIN_RUNTIME_PACKAGES, packagePathSegments } from '../profile.mjs'
+import {
+  BUILTIN_BUNDLES,
+  BUILTIN_RUNTIME_PACKAGES,
+  materializeFilesystemPath,
+  packagePathSegments,
+} from '../profile.mjs'
 
 const PROTECTED_PACKAGES = new Set([...BUILTIN_BUNDLES, ...BUILTIN_RUNTIME_PACKAGES])
 const VERSION_PATTERN = /^[a-z0-9][a-z0-9._+~^*<>=|-]*$/i
@@ -79,7 +84,7 @@ async function writeManifest(profileDir, manifest) {
 
 export function resolvePnpmCliPath(anchor = import.meta.url) {
   const require = createRequire(anchor)
-  return join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.mjs')
+  return materializeFilesystemPath(join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.mjs'))
 }
 
 export function runPnpm({ pnpmCli, profileDir, args, executable = process.execPath }) {

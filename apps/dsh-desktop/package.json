@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Lossless desktop shell for DeepSeek Harness and the complete dsh-web-ui plugin collection",
+  "author": "DeepSeek Harness Desktop contributors",
   "type": "module",
   "main": "src/main.mjs",
   "license": "BSD-3-Clause",
@@ -12,7 +13,8 @@
     "capture:extensions": "node scripts/capture-startup.mjs --extensions",
     "test": "node --test test/*.test.mjs",
     "pack:dir": "electron-builder --dir",
-    "pack:win": "electron-builder --win nsis portable"
+    "pack:verify": "node scripts/verify-package.mjs",
+    "pack:win": "electron-builder --win nsis"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",

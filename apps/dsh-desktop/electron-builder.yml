@@ -1,0 +1,41 @@
+appId: ai.deepseek.harness.desktop
+productName: DeepSeek Harness Desktop
+copyright: Copyright (c) 2026 DeepSeek Harness Desktop contributors
+
+asar: true
+asarUnpack:
+  - node_modules/**
+compression: normal
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**
+  - package.json
+  - '!**/*.map'
+  - '!**/test/**'
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  artifactName: DeepSeek-Harness-Desktop-Setup-${version}-${arch}.${ext}
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: DeepSeek Harness Desktop
+
+publish:
+  provider: github
+  owner: ningbainb
+  repo: deepseek-harness-desktop

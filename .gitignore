@@ -17,3 +17,4 @@ gui-test-screenshots/
 # Local desktop smoke-test profiles
 .tmp-dsh-home/
 .tmp-user-data/
+apps/dsh-desktop/dist/

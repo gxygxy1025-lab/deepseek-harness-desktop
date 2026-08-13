@@ -51,6 +51,10 @@ export function packagePathSegments(packageName) {
   return packageName.split('/')
 }
 
+export function materializeFilesystemPath(path) {
+  return path.replace(/([\\/])app\.asar([\\/])/u, '$1app.asar.unpacked$2')
+}
+
 export function createDesktopProfileManifest(existing = {}) {
   const existingBundles = existing.dsh?.profile?.bundles
   const communityBundles = Array.isArray(existingBundles)
@@ -202,7 +206,7 @@ function resolvePackageRoot(packageName, anchors) {
   for (const anchor of anchors) {
     const require = createRequire(anchor)
     try {
-      return dirname(require.resolve(`${packageName}/package.json`))
+      return materializeFilesystemPath(dirname(require.resolve(`${packageName}/package.json`)))
     } catch {
       // Package exports may hide package.json; resolve the entry and walk upward.
     }
@@ -210,7 +214,7 @@ function resolvePackageRoot(packageName, anchors) {
       let cursor = dirname(require.resolve(packageName))
       for (;;) {
         const manifest = readJsonSync(join(cursor, 'package.json'))
-        if (manifest?.name === packageName) return cursor
+        if (manifest?.name === packageName) return materializeFilesystemPath(cursor)
         const parent = dirname(cursor)
         if (parent === cursor) break
         cursor = parent
