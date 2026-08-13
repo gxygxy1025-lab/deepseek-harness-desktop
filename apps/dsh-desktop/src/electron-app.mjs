@@ -55,6 +55,7 @@ export async function startElectronApp(metadata) {
     executable: process.execPath,
     logStore,
     autoRestart: true,
+    startupTimeoutMs: 60_000,
   })
 
   const statePath = join(userData, 'window-state.json')

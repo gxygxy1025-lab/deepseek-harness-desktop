@@ -4,6 +4,24 @@
 
 ![dsh-web-ui](docs/dsh-web-ui-banner.png)
 
+## Windows 桌面版
+
+DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不是重写页面，而是用安全的 Electron 窗口启动官方 `@deepseek-ai/dsh` 本地主机，再原样加载本仓库的全部插件与皮肤。
+
+[下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [更新日志](CHANGELOG.md)
+
+| 原版界面无损加载 | 桌面扩展坞 |
+| --- | --- |
+| ![桌面启动界面](docs/screenshots/desktop-startup.png) | ![插件与技能扩展坞](docs/screenshots/desktop-extension-dock.png) |
+
+- 保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物与全部皮肤；
+- 独立 `desktop` profile，不覆盖既有 DSH 配置，运行时仅监听回环地址；
+- 内置崩溃恢复、日志脱敏与轮转、窗口状态恢复、严格导航与权限策略；
+- 扩展坞支持社区 DSH bundle 安装/回滚，以及项目、DSH、Agents 技能发现与安全导入；
+- 安装包自带官方 DSH、pnpm 与原生依赖，无需另外安装 Node.js。
+
+当前公开构建未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目 Releases 下载并核对 SHA-256。默认安装路径已经过验证；自定义安装路径不宜过长，以免触发传统 Win32 的 260 字符限制。
+
 dsh-web-ui 是 DeepSeek Harness（DSH）Web UI 的插件与皮肤集合：任务看板、Git 图谱、右侧面板、移动端远程、远程连接、鲸鱼娘宠物、实时令牌统计，以及皮肤中心。所有插件既可独立安装，也可通过聚合包一次装齐。
 
 ![DSH Web UI 主界面](docs/screenshots/13-hero-main.png)

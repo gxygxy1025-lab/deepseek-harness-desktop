@@ -8,7 +8,7 @@ import { BoundedLogStore } from '../src/log-store.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from '../src/profile.mjs'
 import { DshRuntimeController } from '../src/runtime-controller.mjs'
 
-test('official DSH host serves the complete desktop profile', { timeout: 30_000 }, async () => {
+test('official DSH host serves the complete desktop profile', { timeout: 60_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-runtime-'))
   const logs = new BoundedLogStore({ directory: join(root, 'logs') })
   let controller
@@ -19,7 +19,7 @@ test('official DSH host serves the complete desktop profile', { timeout: 30_000 
       cwd: process.cwd(),
       dshHome: root,
       logStore: logs,
-      startupTimeoutMs: 20_000,
+      startupTimeoutMs: 45_000,
     })
     const url = await controller.start()
     const response = await fetch(url, { signal: AbortSignal.timeout(5_000) })

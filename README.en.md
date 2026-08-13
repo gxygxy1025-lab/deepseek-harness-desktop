@@ -4,6 +4,24 @@
 
 ![dsh-web-ui](docs/dsh-web-ui-banner.png)
 
+## Windows Desktop
+
+DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. It does not rewrite the interface: a hardened Electron window launches the official `@deepseek-ai/dsh` host locally and loads every plugin and skin from this repository unchanged.
+
+[Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Changelog](CHANGELOG.md)
+
+| Lossless original surface | Desktop Extension Dock |
+| --- | --- |
+| ![Desktop startup](docs/screenshots/desktop-startup.png) | ![Plugin and skill Extension Dock](docs/screenshots/desktop-extension-dock.png) |
+
+- Keeps the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, and every skin;
+- Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
+- Adds crash recovery, sanitized rotating logs, window-state restore, strict navigation, and denied-by-default permissions;
+- Adds a dock for transactional community DSH bundle management and safe discovery/import of project, DSH, and Agents skills;
+- Bundles official DSH, pnpm, and native dependencies, so users do not need a separate Node.js installation.
+
+The public build is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's Releases and verify SHA-256. The default install location is tested; avoid unusually long custom paths because legacy Win32 components may still hit the 260-character limit.
+
 dsh-web-ui is a collection of plugins and skins for the DeepSeek Harness (DSH) Web UI: a task board, a Git graph, the right panel, mobile remote control, remote connection, a whale-girl pet, live token statistics, and the Skin Center. Every plugin can be installed individually, or all at once through the aggregate packages.
 
 ![DSH Web UI main screen](docs/screenshots/13-hero-main.png)
