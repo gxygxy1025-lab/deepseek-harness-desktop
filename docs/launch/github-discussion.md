@@ -8,7 +8,7 @@ The current release bundles 21 UI plugins and 9 selectable skins, including Miku
 
 - [Download DeepSeek Harness Desktop 0.1.0](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.0)
 - [Read the source and architecture notes](https://github.com/ningbainb/deepseek-harness-desktop)
-- Installer SHA-256: `f3582f8c216aff321efed8a09db06b6b157c720a2d85cc73c7852406f0ea9815`
+- Installer SHA-256: `dd0d2c1913cb50079749aed5aacc4c84f6a68fb30ebf5252b7a60c27e88a26fb`
 
 The community build is currently unsigned. Windows SmartScreen may show an unknown publisher, so download only from the Release page above and verify the checksum.
 

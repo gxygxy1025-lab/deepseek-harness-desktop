@@ -10,4 +10,5 @@ Initial Windows desktop release.
 - Hardened preload, IPC, navigation, permissions, downloads, logs, and window-state persistence.
 - Extension Dock for protected built-ins, transactional registry plugins, and safe skill discovery/import.
 - 21 bundled UI plugins with 9 selectable skins, including Miku and Trading, plus the upstream compatibility layer.
+- Hermetic DSH rc.6 runtime peer closure, verified from a clean short-path Windows installation.
 - Windows x64 NSIS installer, reproducible verification script, and CI/release workflows.

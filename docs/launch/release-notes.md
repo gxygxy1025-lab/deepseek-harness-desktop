@@ -18,6 +18,6 @@ Download `DeepSeek-Harness-Desktop-Setup-0.1.0-x64.exe` and verify it using the 
 
 The release is not signed with a commercial code-signing certificate. Windows SmartScreen may display an unknown publisher. Use the default install location; very long custom paths can exceed the legacy Win32 260-character limit used by some transitive tooling.
 
-The verified installer is 190.69 MiB and the unpacked application is about 606.47 MiB. A clean-profile packaged startup completed in 11.24 seconds on the reference Windows 11 machine.
+The verified installer is 190.84 MiB and the unpacked application is about 606.82 MiB. A first start from a clean short-path installation and clean profile completed in 56.59 seconds on the reference Windows 11 machine.
 
 This is a community release and is not an official DeepSeek distribution.
