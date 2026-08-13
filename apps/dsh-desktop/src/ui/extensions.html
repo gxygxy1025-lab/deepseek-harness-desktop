@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+    <title>Extension Dock</title>
+    <link rel="stylesheet" href="./extensions.css">
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">DSH DESKTOP / EXTENSION DOCK</p>
+        <h1>扩展坞</h1>
+      </div>
+      <p class="intro">管理社区插件与本地技能。内置能力受到保护，所有改动只作用于 desktop profile。</p>
+    </header>
+
+    <nav aria-label="Extension type">
+      <button type="button" class="tab active" data-tab="plugins">插件 <span id="plugin-count">0</span></button>
+      <button type="button" class="tab" data-tab="skills">技能 <span id="skill-count">0</span></button>
+      <span class="line"></span>
+      <button type="button" class="refresh" id="refresh">刷新 / Refresh</button>
+    </nav>
+
+    <main>
+      <section id="plugins" class="panel active" aria-labelledby="plugin-heading">
+        <div class="panel-head">
+          <div><p class="index">01</p><h2 id="plugin-heading">Cordis 插件</h2></div>
+          <p>安装注册表中的 DSH bundle。安装前请确认来源可信；插件拥有宿主进程权限。</p>
+        </div>
+        <form id="plugin-form">
+          <label for="plugin-spec">NPM PACKAGE SPEC</label>
+          <div class="field-row">
+            <input id="plugin-spec" name="spec" placeholder="@scope/dsh-plugin@1.0.0" autocomplete="off" spellcheck="false" required>
+            <button type="submit">安装并重启</button>
+          </div>
+        </form>
+        <div class="list" id="plugin-list" aria-live="polite"></div>
+      </section>
+
+      <section id="skills" class="panel" aria-labelledby="skill-heading" hidden>
+        <div class="panel-head">
+          <div><p class="index">02</p><h2 id="skill-heading">技能目录</h2></div>
+          <p>遵循官方五级优先顺序扫描。导入后由 DSH watcher 自动刷新，无需重启。</p>
+        </div>
+        <div class="skill-actions">
+          <button type="button" id="import-skill">导入技能目录</button>
+          <button type="button" class="secondary" id="open-skill-root">打开用户技能目录</button>
+        </div>
+        <div class="list" id="skill-list" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script type="module" src="./extensions.mjs"></script>
+  </body>
+</html>

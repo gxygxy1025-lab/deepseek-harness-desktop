@@ -4,15 +4,19 @@ import { fileURLToPath } from 'node:url'
 import { mkdir } from 'node:fs/promises'
 
 import { BoundedLogStore } from './log-store.mjs'
+import { registerExtensionIpc } from './extension-ipc.mjs'
+import { PluginManager } from './extensions/plugins.mjs'
 import { registerDesktopIpc } from './ipc.mjs'
+import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
 import { DshRuntimeController } from './runtime-controller.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
-const PRELOAD_PATH = join(SOURCE_DIR, 'preload.mjs')
+const PRELOAD_PATH = join(SOURCE_DIR, 'preload.cjs')
 const STARTUP_PATH = join(SOURCE_DIR, 'ui', 'startup.html')
+const EXTENSIONS_PATH = join(SOURCE_DIR, 'ui', 'extensions.html')
 
 function runtimeHome() {
   return process.env.DSH_HOME || join(homedir(), '.dsh')
@@ -25,14 +29,14 @@ function runtimeWorkspace(app) {
 
 export async function startElectronApp(metadata) {
   const electron = await import('electron')
-  const { app, BrowserWindow, dialog, ipcMain, screen, session, shell } = electron
+  const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = electron
+  if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
   if (!app.requestSingleInstanceLock()) {
     app.quit()
     return
   }
 
   app.setAppUserModelId(metadata.appId)
-  if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
   await app.whenReady()
 
   const userData = app.getPath('userData')
@@ -41,11 +45,12 @@ export async function startElectronApp(metadata) {
   const logStore = new BoundedLogStore({ directory: logsDirectory })
   const dshHome = runtimeHome()
   const ensureProfile = () => ensureDesktopProfile({ dshHome })
-  await ensureProfile()
+  const profile = await ensureProfile()
+  const projectRoot = runtimeWorkspace(app)
 
   const controller = new DshRuntimeController({
     cliPath: resolveDshCliPath(),
-    cwd: runtimeWorkspace(app),
+    cwd: projectRoot,
     dshHome,
     executable: process.execPath,
     logStore,
@@ -74,6 +79,7 @@ export async function startElectronApp(metadata) {
   if (state.maximized) mainWindow.maximize()
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
   let activeOrigin
+  let extensionWindow
 
   installNavigationPolicy({
     webContents: mainWindow.webContents,
@@ -102,6 +108,65 @@ export async function startElectronApp(metadata) {
     exitApp: () => app.quit(),
   })
 
+  const createExtensionWindow = async () => {
+    if (extensionWindow && !extensionWindow.isDestroyed()) {
+      extensionWindow.show()
+      extensionWindow.focus()
+      return extensionWindow
+    }
+    extensionWindow = new BrowserWindow({
+      width: 1120,
+      height: 780,
+      minWidth: 760,
+      minHeight: 620,
+      show: false,
+      parent: mainWindow,
+      title: 'Extension Dock',
+      backgroundColor: '#071117',
+      webPreferences: {
+        preload: PRELOAD_PATH,
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        spellcheck: false,
+      },
+    })
+    installNavigationPolicy({
+      webContents: extensionWindow.webContents,
+      getRuntimeOrigin: () => undefined,
+      openExternal: (url) => shell.openExternal(url),
+    })
+    extensionWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+    extensionWindow.once('ready-to-show', () => extensionWindow?.show())
+    extensionWindow.on('closed', () => { extensionWindow = undefined })
+    await extensionWindow.loadFile(EXTENSIONS_PATH)
+    return extensionWindow
+  }
+
+  const pluginManager = new PluginManager({ profileDir: profile.profileDir })
+  const unregisterExtensionIpc = registerExtensionIpc({
+    ipcMain,
+    dialog,
+    shell,
+    getWindow: () => extensionWindow ?? mainWindow,
+    pluginManager,
+    controller,
+    ensureProfile,
+    projectRoot,
+    dshHome,
+    agentsHome: process.env.DSH_AGENTS_HOME,
+  })
+  const openLogs = () => shell.openPath(logsDirectory)
+  installApplicationMenu({
+    Menu,
+    app,
+    shell,
+    controller,
+    openExtensions: () => void createExtensionWindow(),
+    openLogs,
+  })
+
   const loadStartup = async () => {
     activeOrigin = undefined
     if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadFile(STARTUP_PATH)
@@ -119,7 +184,7 @@ export async function startElectronApp(metadata) {
         void logStore.append(`[renderer] ${error.message}`)
         void loadStartup().catch(() => {})
       })
-    } else if (status.state === 'crashed' && !mainWindow.webContents.getURL().startsWith('file:')) {
+    } else if (['crashed', 'stopping', 'restarting'].includes(status.state) && !mainWindow.webContents.getURL().startsWith('file:')) {
       void loadStartup().catch(() => {})
     }
   })
@@ -127,6 +192,7 @@ export async function startElectronApp(metadata) {
   mainWindow.once('ready-to-show', () => mainWindow.show())
   mainWindow.on('closed', () => { mainWindow = undefined })
   await loadStartup()
+  if (process.env.DSH_DESKTOP_OPEN_EXTENSIONS === '1') await createExtensionWindow()
   if (process.env.DSH_DESKTOP_HOLD_STARTUP !== '1') void controller.start().catch(() => {})
 
   app.on('second-instance', () => {
@@ -149,6 +215,7 @@ export async function startElectronApp(metadata) {
       .finally(() => {
         runtimeStopped = true
         unregisterIpc()
+        unregisterExtensionIpc()
         app.quit()
       })
   })

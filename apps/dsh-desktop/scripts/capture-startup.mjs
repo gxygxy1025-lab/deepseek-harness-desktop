@@ -7,7 +7,9 @@ import electronPath from 'electron'
 import { _electron as electron } from 'playwright'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const output = resolve(process.argv[2] || 'startup-preview.png')
+const extensionMode = process.argv.includes('--extensions')
+const outputArgument = process.argv.find((argument) => argument.toLowerCase().endsWith('.png'))
+const output = resolve(outputArgument || (extensionMode ? 'extensions-preview.png' : 'startup-preview.png'))
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-desktop-capture-'))
 let electronApp
 try {
@@ -18,12 +20,29 @@ try {
     env: {
       ...process.env,
       DSH_DESKTOP_HOLD_STARTUP: '1',
+      DSH_DESKTOP_OPEN_EXTENSIONS: extensionMode ? '1' : '0',
       DSH_DESKTOP_USER_DATA: resolve(temporary, 'user-data'),
       DSH_HOME: resolve(temporary, 'dsh-home'),
     },
   })
-  const page = await electronApp.firstWindow()
+  const firstWindow = await electronApp.firstWindow()
+  let page = firstWindow
+  if (extensionMode) {
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline) {
+      const extensionPage = electronApp.windows().find((candidate) => candidate.url().includes('extensions.html'))
+      if (extensionPage) {
+        page = extensionPage
+        break
+      }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 100))
+    }
+    if (!page.url().includes('extensions.html')) throw new Error('extension window did not open')
+  }
   await page.waitForLoadState('domcontentloaded')
+  if (extensionMode) {
+    await page.waitForFunction(() => document.body.dataset.busy !== 'true' && document.querySelector('#plugin-count')?.textContent !== '0')
+  }
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({ path: output })
   console.log(`captured startup UI: ${output}`)

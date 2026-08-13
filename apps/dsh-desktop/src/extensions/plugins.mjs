@@ -79,7 +79,7 @@ async function writeManifest(profileDir, manifest) {
 
 export function resolvePnpmCliPath(anchor = import.meta.url) {
   const require = createRequire(anchor)
-  return join(dirname(require.resolve('pnpm/package.json')), 'bin', 'pnpm.mjs')
+  return join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.mjs')
 }
 
 export function runPnpm({ pnpmCli, profileDir, args, executable = process.execPath }) {

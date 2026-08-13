@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "electron src/main.mjs",
     "capture:startup": "node scripts/capture-startup.mjs",
+    "capture:extensions": "node scripts/capture-startup.mjs --extensions",
     "test": "node --test test/*.test.mjs",
     "pack:dir": "electron-builder --dir",
     "pack:win": "electron-builder --win nsis portable"
