@@ -7,6 +7,9 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
+    "desktop:dev": "pnpm --filter @deepseek-ai/dsh-desktop dev",
+    "desktop:test": "pnpm --filter @deepseek-ai/dsh-desktop test",
+    "desktop:pack": "pnpm --filter @deepseek-ai/dsh-desktop pack:win",
     "aggregate:check": "node scripts/aggregate.mjs --check",
     "gallery:check": "node scripts/gallery-build --check",
     "skin-center:check": "node scripts/skin-center-bundles --check",
@@ -15,6 +18,7 @@
     "gallery:build": "node scripts/gallery-build",
     "gallery:capture": "node scripts/capture-previews"
   },
+  "packageManager": "pnpm@11.21.0",
   "devDependencies": {
     "lightningcss": "^1.32.0",
     "playwright": "^1.62.1",

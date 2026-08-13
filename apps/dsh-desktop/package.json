@@ -1,0 +1,24 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lossless desktop shell for DeepSeek Harness and the complete dsh-web-ui plugin collection",
+  "type": "module",
+  "main": "src/main.mjs",
+  "license": "BSD-3-Clause",
+  "scripts": {
+    "dev": "electron src/main.mjs",
+    "test": "node --test test/*.test.mjs",
+    "pack:dir": "electron-builder --dir",
+    "pack:win": "electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-web-ui-all": "workspace:*",
+    "pnpm": "11.21.0"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3"
+  }
+}
