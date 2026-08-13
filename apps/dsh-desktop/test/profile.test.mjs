@@ -49,7 +49,7 @@ test('profile bootstrap is idempotent and links every managed package', async ()
   const sourceRoot = join(root, 'packages')
   const packageRoots = new Map()
 
-  for (const packageName of ['@deepseek-ai/dsh-web-ui-all', '@deepseek-ai/dsh-pet']) {
+  for (const packageName of ['@linxin666/dsh-web-ui-all', '@linxin666/dsh-pet']) {
     const packageRoot = join(sourceRoot, ...packagePathSegments(packageName))
     await mkdir(packageRoot, { recursive: true })
     await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: packageName, version: '1.0.0' }))

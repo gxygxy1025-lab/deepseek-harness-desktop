@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-ui-skin-minecraft
+# @linxin666/dsh-client-ui-skin-minecraft
 
 A voxel take on the dsh web GUI, styled after the Minecraft main menu: a
 procedurally drawn pixel-art panorama skybox (blocky hills, pixel clouds,
@@ -21,12 +21,22 @@ emitted, and nothing reaches a model request.
 
 ## Installing (official bundle)
 
-1. Local path: `dsh plugin --profile <name> add /path/to/dsh-web-ui/packages/skins/minecraft`
-2. Git: `dsh plugin --profile <name> add github:<org>/dsh-web-ui#<sha>` —
-   pnpm ≥10 asks once for `allowBuilds` authorization (the `prepare` script
-   self-containedly builds `lib/`; no monorepo reference needed).
-3. Switch with `scripts/dsh-skin` (`dsh-skin use minecraft`); only one skin is
-   ever active at a time.
+Prefer the family aggregate package `@linxin666/dsh-skins` — every skin at once; for this skin alone, install with `link:`:
+
+```sh
+# All skins (recommended)
+dsh plugin --profile web add @linxin666/dsh-skins
+# Or just this skin
+dsh plugin --profile web add @linxin666/dsh-client-ui-skin-minecraft
+# Activate: dsh-skin use minecraft
+# From the repo (dev): dsh plugin --profile web add link:$(pwd)/packages/skins/minecraft
+```
+
+`$(pwd)` is your clone of the dsh-web-ui monorepo.
+
+A local `link:` install needs built artifacts first — `lib/` is git-ignored and not committed, so run `pnpm install && pnpm -r build` in the monorepo before linking. Git installs (`dsh plugin --profile web add github:<org>/dsh-web-ui#<sha>`) build `lib/` themselves via the `prepare` script; pnpm ≥10 blocks that until you copy the printed package key into the profile's `pnpm-workspace.yaml` `allowBuilds` list and re-run.
+
+Activate or switch with `dsh-skin use minecraft` (helper script `scripts/dsh-skin` in the monorepo); only one skin is active at a time.
 
 ## Building and testing
 
@@ -39,7 +49,7 @@ pnpm test    # vitest: apply/dispose contract spec
 
 ```sh
 node scripts/skin-center-bundles    # re-embed this skin into skin-center's registry
-pnpm --filter @deepseek-ai/dsh-client-ui-skin-center build
+pnpm --filter @linxin666/dsh-client-ui-skin-center build
 node scripts/gallery-build          # refresh the gallery manifest/bundles
 node scripts/capture-previews       # re-shoot preview/light.png + preview/dark.png
 ```

@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-web-ui-all": "workspace:*",
+    "@linxin666/dsh-web-ui-all": "workspace:*",
     "pnpm": "11.21.0",
     "yaml": "2.8.1"
   },

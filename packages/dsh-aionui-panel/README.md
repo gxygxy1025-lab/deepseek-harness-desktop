@@ -6,14 +6,21 @@
 
 ## 安装
 
-本仓库是插件 monorepo，`packages/dsh-aionui-panel` 即插件包。安装到 DSH profile：
+推荐直接安装全家桶聚合包 `@linxin666/dsh-web-ui-all`（一个包装齐全部功能插件与皮肤），或单独安装本插件：
+
+```sh
+# 推荐：直接从 npm 安装
+dsh plugin --profile web add @linxin666/dsh-client-ui-aionui-panel
+
+# 或从仓库安装（开发调试）
+git clone https://github.com/zhu1090093659/dsh-web-ui.git
+cd dsh-web-ui
+pnpm install && pnpm -r build
+dsh plugin --profile web add link:$(pwd)/packages/dsh-aionui-panel
 
 ```
-dsh plugin --profile web add link:/Users/zcl/code/dsh-web-ui/packages/dsh-aionui-panel
-```
 
-若已把 `- ../dsh-aionui-panel` 加入 `packages/dsh-web-ui-all/aggregate.yml`
-（patchFrom 与 deps），跑 `node scripts/aggregate.mjs` 后安装聚合包即可一次到位。
+安装后**重启 `dsh web`**，打开项目会话即可看到聊天区右侧的「预览」与「文件/变更」两块面板。
 
 ## 使用
 

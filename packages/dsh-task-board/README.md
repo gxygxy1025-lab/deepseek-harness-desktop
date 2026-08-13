@@ -83,6 +83,24 @@ scripts/dsh-task-board.js                          # 一键挂载/卸载/状态 
   （关闭期间错过的调度按「错过即跳过」处理，下次打开时只补跑已顺延的到期任务）；
   任务处于「进行中」时到点跳过本次，等下一个 cron 匹配点。
 
+## 安装
+
+推荐直接安装全家桶聚合包 `@linxin666/dsh-web-ui-all`（一个包装齐全部功能插件与皮肤），或单独安装本插件：
+
+```sh
+# 推荐：直接从 npm 安装
+dsh plugin --profile web add @linxin666/dsh-client-ui-task-board
+
+# 或从仓库安装（开发调试）
+git clone https://github.com/zhu1090093659/dsh-web-ui.git
+cd dsh-web-ui
+pnpm install && pnpm -r build
+dsh plugin --profile web add link:$(pwd)/packages/dsh-task-board
+
+```
+
+安装后**重启 `dsh web`**，侧边栏「新会话」下方出现「任务看板」入口即生效；页面刷新不够，需重启进程。
+
 ## 构建
 
 前置：Node ≥ 20，官方 NPM SDK 可访问（若仍使用私有 scope 认证则配置 `NPM_TOKEN` 环境变量 + 项目 `.npmrc`，见仓库
@@ -118,8 +136,8 @@ profile 清单中注册的行：
 
 ```json
 {
-  "dependencies": { "@deepseek-ai/dsh-client-ui-task-board": "link:/Users/zcl/code/dsh-web-ui/packages/dsh-task-board" },
-  "dsh": { "profile": { "bundles": [ "...", "@deepseek-ai/dsh-client-ui-task-board" ] } }
+  "dependencies": { "@linxin666/dsh-client-ui-task-board": "link:/Users/zcl/code/dsh-web-ui/packages/dsh-task-board" },
+  "dsh": { "profile": { "bundles": [ "...", "@linxin666/dsh-client-ui-task-board" ] } }
 }
 ```
 

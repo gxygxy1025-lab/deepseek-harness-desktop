@@ -21,12 +21,12 @@ test('plugin spec validation accepts registry packages and rejects command or UR
 test('plugin inventory distinguishes protected built-ins from community bundles', () => {
   const inventory = createPluginInventory({
     dependencies: {
-      '@deepseek-ai/dsh-web-ui-all': 'link:C:/runtime',
+      '@linxin666/dsh-web-ui-all': 'link:C:/runtime',
       '@community/example': '1.2.3',
     },
     dsh: { profile: { bundles: [...BUILTIN_BUNDLES, '@community/example'] } },
   })
-  assert.equal(inventory.find((item) => item.name === '@deepseek-ai/dsh-web-ui-all').builtIn, true)
+  assert.equal(inventory.find((item) => item.name === '@linxin666/dsh-web-ui-all').builtIn, true)
   assert.equal(inventory.find((item) => item.name === '@community/example').enabled, true)
 })
 
@@ -59,7 +59,7 @@ test('plugin manager serializes installs and protects built-ins', async () => {
       active -= 1
     }
     const manager = new PluginManager({ profileDir, runner, pnpmCli: 'pnpm.mjs' })
-    await assert.rejects(manager.remove('@deepseek-ai/dsh-web-ui-all'), /built-in/)
+    await assert.rejects(manager.remove('@linxin666/dsh-web-ui-all'), /built-in/)
     await Promise.all([
       manager.install('@community/first@1.0.0'),
       manager.install('@community/second@1.0.0'),

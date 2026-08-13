@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-live-stats
+# @linxin666/dsh-live-stats
 
 English | [中文](README.zh.md)
 
@@ -17,12 +17,28 @@ Live input/output token estimates and generation throughput for DSH Web. It feed
 
 ## Installation
 
-In-repo package: add to the personal DSH overlay (`~/.dsh/config.yaml`), hot-reloaded on save:
+Install the family aggregate package `@linxin666/dsh-web-ui-all` (all plugins and skins in one) or this plugin alone:
+
+```sh
+# Recommended: install directly from npm
+dsh plugin --profile web add @linxin666/dsh-live-stats
+
+# Or from the repository (development loop)
+git clone https://github.com/zhu1090093659/dsh-web-ui.git
+cd dsh-web-ui
+pnpm install && pnpm -r build
+dsh plugin --profile web add link:$(pwd)/packages/dsh-live-stats
+
+```
+
+Restart `dsh web`, and the TPS group appears in the session status line.
+
+Alternatively, as a plain overlay row in the personal DSH overlay (`~/.dsh/config.yaml`), hot-reloaded on save:
 
 ```yaml
 - insert:
     - id: live-stats
-      name: '@deepseek-ai/dsh-live-stats'
+      name: '@linxin666/dsh-live-stats'
       config:
         charsPerToken: 4
         blockOverhead: 4

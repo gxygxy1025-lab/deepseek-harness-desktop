@@ -80,56 +80,64 @@ export function apply(ctx: ClientContext): void {
     const cwdOf = (sessionId: SessionId | undefined): string | undefined =>
       sessionId === undefined ? undefined : sessions.list.getSnapshot().byId[sessionId]?.cwd
 
-    scope.effect(() => scope.slots.register({
-      name: 'conversation.input.selector.context',
-      id: 'git-graph',
-      order: 100,
-      locale: NS,
-      inject: (): GitGraphInjected => {
-        /** Resolve the workspace root for one git call. */
-        const pathOf = (sessionId: SessionId | undefined): { ok: true; path: string } | { ok: false; error: GitError } => {
-          const cwd = cwdOf(sessionId)
-          if (cwd === undefined || cwd === '') return { ok: false, error: NO_WORKSPACE }
-          return { ok: true, path: cwd }
-        }
-        return {
-          repoStatus: async (sessionId) => {
-            const resolved = pathOf(sessionId)
-            if (!resolved.ok) return null
-            const result = await git.status(resolved.path)
-            return result.ok ? result.value : null
-          },
-          branches: async (sessionId) => {
-            const resolved = pathOf(sessionId)
-            if (!resolved.ok) return null
-            const result = await git.branches(resolved.path)
-            return result.ok ? result.value : null
-          },
-          switchBranch: async (sessionId, branch) => {
-            const resolved = pathOf(sessionId)
-            if (!resolved.ok) return { ok: false, error: resolved.error }
-            const result = await git.switchBranch(resolved.path, branch)
-            return result.ok ? { ok: true, branch: result.value.branch } : result
-          },
-          createBranch: async (sessionId, name) => {
-            const resolved = pathOf(sessionId)
-            if (!resolved.ok) return { ok: false, error: resolved.error }
-            const result = await git.createBranch(resolved.path, name)
-            return result.ok ? { ok: true, branch: result.value.branch } : result
-          },
-          graph: async (sessionId, limit) => {
-            const resolved = pathOf(sessionId)
-            if (!resolved.ok) return null
-            const result = await git.graph(resolved.path, limit)
-            return result.ok ? result.value : null
-          },
-          subscribeChanges: (sessionId, onChange) => {
-            const resolved = pathOf(sessionId)
-            if (!resolved.ok) return () => {}
-            return subscribeChanges(resolved.path, onChange)
-          },
-        }
-      },
-    }, BranchChip), 'dsh-git-graph: branch chip registration')
+    /** The injected face shared by every seat this chip registers into. */
+    const injected = (): GitGraphInjected => {
+      /** Resolve the workspace root for one git call. */
+      const pathOf = (sessionId: SessionId | undefined): { ok: true; path: string } | { ok: false; error: GitError } => {
+        const cwd = cwdOf(sessionId)
+        if (cwd === undefined || cwd === '') return { ok: false, error: NO_WORKSPACE }
+        return { ok: true, path: cwd }
+      }
+      return {
+        repoStatus: async (sessionId) => {
+          const resolved = pathOf(sessionId)
+          if (!resolved.ok) return null
+          const result = await git.status(resolved.path)
+          return result.ok ? result.value : null
+        },
+        branches: async (sessionId) => {
+          const resolved = pathOf(sessionId)
+          if (!resolved.ok) return null
+          const result = await git.branches(resolved.path)
+          return result.ok ? result.value : null
+        },
+        switchBranch: async (sessionId, branch) => {
+          const resolved = pathOf(sessionId)
+          if (!resolved.ok) return { ok: false, error: resolved.error }
+          const result = await git.switchBranch(resolved.path, branch)
+          return result.ok ? { ok: true, branch: result.value.branch } : result
+        },
+        createBranch: async (sessionId, name) => {
+          const resolved = pathOf(sessionId)
+          if (!resolved.ok) return { ok: false, error: resolved.error }
+          const result = await git.createBranch(resolved.path, name)
+          return result.ok ? { ok: true, branch: result.value.branch } : result
+        },
+        graph: async (sessionId, limit) => {
+          const resolved = pathOf(sessionId)
+          if (!resolved.ok) return null
+          const result = await git.graph(resolved.path, limit)
+          return result.ok ? result.value : null
+        },
+        subscribeChanges: (sessionId, onChange) => {
+          const resolved = pathOf(sessionId)
+          if (!resolved.ok) return () => {}
+          return subscribeChanges(resolved.path, onChange)
+        },
+      }
+    }
+
+    // Declaration-aware: the chip registers only when the shell declares the
+    // context hole. A bare register() would throw on shells that dropped the
+    // hole (SDK SlotCore.register rejects undeclared slots), so route through
+    // inject like the pet / remote-web-ui entries.
+    scope.slots.inject('conversation.input.selector.context', () =>
+      scope.slots.register({
+        name: 'conversation.input.selector.context',
+        id: 'git-graph',
+        order: 100,
+        locale: NS,
+        inject: injected,
+      }, BranchChip))
   })
 }
