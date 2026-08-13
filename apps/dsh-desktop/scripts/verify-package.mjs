@@ -7,7 +7,12 @@ import { BUILTIN_RUNTIME_PACKAGES, packagePathSegments } from '../src/profile.mj
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const resources = resolve(process.argv[2] || join(appDir, 'dist', 'win-unpacked', 'resources'))
 const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
-const requiredPackages = ['@deepseek-ai/dsh', 'pnpm', ...BUILTIN_RUNTIME_PACKAGES]
+const requiredPackages = [
+  '@deepseek-ai/cordis-plugin-group',
+  '@deepseek-ai/dsh',
+  'pnpm',
+  ...BUILTIN_RUNTIME_PACKAGES,
+]
 
 for (const packageName of requiredPackages) {
   const manifestPath = join(unpackedModules, ...packagePathSegments(packageName), 'package.json')
