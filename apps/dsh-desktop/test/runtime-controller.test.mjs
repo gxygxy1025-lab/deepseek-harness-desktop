@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import test from 'node:test'
+
+import {
+  DshRuntimeController,
+  computeRestartDelay,
+  parseDshReadyUrl,
+  validateLoopbackUrl,
+} from '../src/runtime-controller.mjs'
+
+class FakeChild extends EventEmitter {
+  constructor() {
+    super()
+    this.stdout = new PassThrough()
+    this.stderr = new PassThrough()
+    this.exitCode = null
+    this.killed = false
+  }
+
+  kill() {
+    this.killed = true
+    this.exitCode = 0
+    queueMicrotask(() => this.emit('exit', 0, 'SIGTERM'))
+    return true
+  }
+}
+
+test('ready parser accepts only the official loopback URL line', () => {
+  assert.equal(parseDshReadyUrl('dsh web: http://127.0.0.1:43125'), 'http://127.0.0.1:43125/')
+  assert.equal(parseDshReadyUrl('prefix dsh web: http://127.0.0.1:43125'), undefined)
+  assert.throws(() => validateLoopbackUrl('https://127.0.0.1:43125'), /loopback HTTP/)
+  assert.throws(() => validateLoopbackUrl('http://example.com:43125'), /loopback HTTP/)
+  assert.throws(() => validateLoopbackUrl('http://user:pass@127.0.0.1:43125'), /credentials/)
+})
+
+test('restart schedule is bounded and exponential', () => {
+  assert.equal(computeRestartDelay(0), 500)
+  assert.equal(computeRestartDelay(1), 1_500)
+  assert.equal(computeRestartDelay(2), 4_500)
+  assert.equal(computeRestartDelay(3), undefined)
+})
+
+test('controller reaches ready state from streamed output and stops cleanly', async () => {
+  const child = new FakeChild()
+  const logLines = []
+  const states = []
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => child,
+    logStore: { append: async (line) => logLines.push(line) },
+    startupTimeoutMs: 2_000,
+  })
+  controller.on('status', (status) => states.push(status.state))
+
+  const ready = controller.start()
+  child.stdout.write('booting\r\ndsh web: http://127.0.0.1:43125 (LAN: http://10.0.0.2:43125)\r\n')
+  assert.equal(await ready, 'http://127.0.0.1:43125/')
+  assert.equal(controller.status.state, 'ready')
+  assert.deepEqual(states.slice(0, 2), ['starting', 'ready'])
+  assert.ok(logLines.some((line) => line.includes('booting')))
+
+  await controller.stop()
+  assert.equal(controller.status.state, 'stopped')
+  assert.equal(child.killed, true)
+})
+
+test('controller rejects startup when the child exits before readiness', async () => {
+  const child = new FakeChild()
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => child,
+    logStore: { append: async () => {} },
+    startupTimeoutMs: 2_000,
+  })
+  const ready = controller.start()
+  child.emit('exit', 1, null)
+  await assert.rejects(ready, /before readiness/)
+  assert.equal(controller.status.state, 'crashed')
+})
