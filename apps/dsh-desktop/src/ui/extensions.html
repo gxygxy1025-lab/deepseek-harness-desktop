@@ -29,6 +29,35 @@
           <div><p class="index">01</p><h2 id="plugin-heading">Cordis 插件</h2></div>
           <p>安装注册表中的 DSH bundle。安装前请确认来源可信；插件拥有宿主进程权限。</p>
         </div>
+        <article class="qqbot-card" id="qqbot-card" data-state="unbound">
+          <div class="qqbot-summary">
+            <div>
+              <div class="name-row">
+                <span class="name">QQ 机器人</span>
+                <span class="badge builtin">OFFICIAL / BUILT-IN</span>
+              </div>
+              <p class="description">通过腾讯官方 dsh-qqbot 将 QQ 私聊和群聊接入 desktop profile。</p>
+            </div>
+            <div class="qqbot-state"><span class="state-dot"></span><span id="qqbot-state-label">读取状态</span></div>
+          </div>
+          <div class="qqbot-body">
+            <div id="qqbot-unbound">
+              <p class="qqbot-copy">绑定过程会显示一次性二维码。AppSecret 由操作系统加密保存，不会显示在页面或写入 profile 配置。</p>
+              <button type="button" id="qqbot-bind">扫码绑定 QQ 机器人</button>
+            </div>
+            <div class="qqbot-scan" id="qqbot-scan" hidden>
+              <div class="qr-frame"><img id="qqbot-qr" alt="QQ 机器人绑定二维码" hidden><div id="qqbot-qr-wait">正在获取二维码</div></div>
+              <div>
+                <p class="qqbot-copy">请使用手机 QQ 扫描二维码完成机器人绑定。二维码过期后会自动刷新。</p>
+                <button type="button" class="secondary" id="qqbot-cancel">取消绑定</button>
+              </div>
+            </div>
+            <div class="qqbot-bound" id="qqbot-bound" hidden>
+              <div><span class="meta">APP ID</span><strong id="qqbot-appid">--</strong></div>
+              <button type="button" class="item-action danger" id="qqbot-unbind">解除绑定</button>
+            </div>
+          </div>
+        </article>
         <form id="plugin-form">
           <label for="plugin-spec">NPM PACKAGE SPEC</label>
           <div class="field-row">

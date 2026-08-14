@@ -81,6 +81,7 @@ export class DshRuntimeController extends EventEmitter {
     schedule = setTimeout,
     cancelSchedule = clearTimeout,
     pathEntries = [],
+    environmentProvider = () => ({}),
   }) {
     super()
     if (!cliPath || !cwd || !dshHome) throw new TypeError('cliPath, cwd, and dshHome are required')
@@ -97,6 +98,8 @@ export class DshRuntimeController extends EventEmitter {
     this.schedule = schedule
     this.cancelSchedule = cancelSchedule
     this.pathEntries = pathEntries
+    if (typeof environmentProvider !== 'function') throw new TypeError('environmentProvider must be a function')
+    this.environmentProvider = environmentProvider
     this.child = undefined
     this.readyPromise = undefined
     this.restartTimer = undefined
@@ -130,8 +133,15 @@ export class DshRuntimeController extends EventEmitter {
     })
     this.readyPromise = readyPromise
 
+    const additionalEnvironment = this.environmentProvider() ?? {}
+    if (typeof additionalEnvironment !== 'object' || Array.isArray(additionalEnvironment)) {
+      const error = new TypeError('runtime environment provider must return an object')
+      this.#failBeforeReady(error)
+      return readyPromise
+    }
     const environment = {
       ...process.env,
+      ...additionalEnvironment,
       DSH_HOME: this.dshHome,
       DSH_PROFILE: 'desktop',
       DSH_SKIN_PROFILE: 'desktop',

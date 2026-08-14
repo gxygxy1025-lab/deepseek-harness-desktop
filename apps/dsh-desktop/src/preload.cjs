@@ -11,6 +11,16 @@ const api = Object.freeze({
   importSkill: () => ipcRenderer.invoke('extensions:skill-import'),
   openSkill: (id) => ipcRenderer.invoke('extensions:skill-open', id),
   openSkillRoot: () => ipcRenderer.invoke('extensions:skill-root'),
+  getQqBotStatus: () => ipcRenderer.invoke('extensions:qqbot-status'),
+  startQqBotBinding: () => ipcRenderer.invoke('extensions:qqbot-bind'),
+  cancelQqBotBinding: () => ipcRenderer.invoke('extensions:qqbot-cancel'),
+  unbindQqBot: () => ipcRenderer.invoke('extensions:qqbot-unbind'),
+  onQqBotEvent(callback) {
+    if (typeof callback !== 'function') throw new TypeError('QQ Bot callback must be a function')
+    const listener = (_event, payload) => callback(payload)
+    ipcRenderer.on('extensions:qqbot-event', listener)
+    return () => ipcRenderer.removeListener('extensions:qqbot-event', listener)
+  },
   onStatus(callback) {
     if (typeof callback !== 'function') throw new TypeError('status callback must be a function')
     const listener = (_event, status) => callback(status)

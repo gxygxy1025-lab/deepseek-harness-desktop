@@ -12,11 +12,15 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { mergeQqBotPatch, readQqBotPatchEnabled } from './extensions/qqbot.mjs'
 
 export const BUILTIN_BUNDLES = Object.freeze([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-web-app',
   '@linxin666/dsh-web-ui-all',
+  '@tencent-connect/dsh-qqbot',
   'dshmarket',
   'dsh-plugin-hub',
 ])
@@ -55,6 +59,7 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-ssh',
   '@linxin666/dsh-web-ui-all',
   '@linxin666/dsh-web-ui-compat',
+  '@tencent-connect/dsh-qqbot',
   'dshmarket',
   'dsh-plugin-hub',
 ].toSorted())
@@ -270,7 +275,9 @@ export async function ensureDesktopProfile({
     if (error?.code === 'ENOENT') return ''
     throw error
   })
-  changed = (await writeIfChanged(patchPath, mergeDesktopPatch(existingPatch))) || changed
+  const qqBotEnabled = readQqBotPatchEnabled(existingPatch) ?? false
+  const managedPatch = mergeQqBotPatch(mergeDesktopPatch(existingPatch), qqBotEnabled)
+  changed = (await writeIfChanged(patchPath, managedPatch)) || changed
   changed = (await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), WORKSPACE_CONFIG)) || changed
   changed = (await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)) || changed
 
@@ -311,6 +318,22 @@ function resolvePackageRoot(packageName, anchors) {
       }
     } catch {
       // Try the next anchor.
+    }
+    let cursor
+    try {
+      const anchorPath = String(anchor).startsWith('file:') ? fileURLToPath(anchor) : String(anchor)
+      cursor = dirname(anchorPath)
+    } catch {
+      cursor = undefined
+    }
+    while (cursor) {
+      const candidate = join(cursor, 'node_modules', ...packagePathSegments(packageName))
+      if (readJsonSync(join(candidate, 'package.json'))?.name === packageName) {
+        return materializeFilesystemPath(candidate)
+      }
+      const parent = dirname(cursor)
+      if (parent === cursor) break
+      cursor = parent
     }
   }
   return undefined

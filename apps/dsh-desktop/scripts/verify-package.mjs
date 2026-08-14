@@ -20,6 +20,9 @@ const requiredPackages = [
   ...DSH_BOOT_RUNTIME_PACKAGES,
   'electron-updater',
   'pnpm',
+  '@tencent-connect/qqbot-connector',
+  '@tencent-connect/qqbot-nodejs',
+  'qrcode',
   ...MANAGED_RUNTIME_PACKAGES,
 ]
 

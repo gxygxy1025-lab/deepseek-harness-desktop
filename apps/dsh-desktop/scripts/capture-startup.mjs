@@ -7,7 +7,8 @@ import electronPath from 'electron'
 import { _electron as electron } from 'playwright'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const extensionMode = process.argv.includes('--extensions')
+const qqBotMode = process.argv.includes('--qqbot-qr')
+const extensionMode = process.argv.includes('--extensions') || qqBotMode
 const outputArgument = process.argv.find((argument) => argument.toLowerCase().endsWith('.png'))
 const output = resolve(outputArgument || (extensionMode ? 'extensions-preview.png' : 'startup-preview.png'))
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-desktop-capture-'))
@@ -42,6 +43,10 @@ try {
   await page.waitForLoadState('domcontentloaded')
   if (extensionMode) {
     await page.waitForFunction(() => document.body.dataset.busy !== 'true' && document.querySelector('#plugin-count')?.textContent !== '0')
+    if (qqBotMode) {
+      await page.getByRole('button', { name: '扫码绑定 QQ 机器人' }).click()
+      await page.locator('#qqbot-qr[src^="data:image/png;base64,"]').waitFor({ state: 'visible', timeout: 20_000 })
+    }
   }
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({ path: output })

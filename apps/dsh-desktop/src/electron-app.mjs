@@ -3,10 +3,17 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
+import { startQrConnect } from '@tencent-connect/qqbot-connector'
+
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
 import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
+import {
+  QqBotBindingService,
+  QqBotCredentialStore,
+  setQqBotProfileEnabled,
+} from './extensions/qqbot.mjs'
 import { registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
@@ -46,7 +53,7 @@ export async function ensurePnpmCommandShim({ directory, executable, pnpmCli }) 
 
 export async function startElectronApp(metadata) {
   const electron = await import('electron')
-  const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell } = electron
+  const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, shell } = electron
   if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
   if (!app.requestSingleInstanceLock()) {
     app.quit()
@@ -70,8 +77,26 @@ export async function startElectronApp(metadata) {
   await mkdir(logsDirectory, { recursive: true })
   const logStore = new BoundedLogStore({ directory: logsDirectory })
   const dshHome = runtimeHome()
-  const ensureProfile = () => ensureDesktopProfile({ dshHome })
-  const profile = await ensureProfile()
+  let qqBotCredentials
+  const ensureProfile = async () => {
+    const result = await ensureDesktopProfile({ dshHome })
+    await setQqBotProfileEnabled({ profileDir: result.profileDir, enabled: Boolean(qqBotCredentials) })
+    return result
+  }
+  const profile = await ensureDesktopProfile({ dshHome })
+  const qqBotCredentialStore = new QqBotCredentialStore({
+    path: join(userData, 'qqbot-credentials.json'),
+    safeStorage,
+  })
+  try {
+    qqBotCredentials = await qqBotCredentialStore.load()
+  } catch (error) {
+    await logStore.append(`[qqbot] failed to load credentials: ${error.message}`)
+  }
+  await setQqBotProfileEnabled({ profileDir: profile.profileDir, enabled: Boolean(qqBotCredentials) })
+  const qqBotEnvironment = () => qqBotCredentials
+    ? { QQBOT_APPID: qqBotCredentials.appId, QQBOT_SECRET: qqBotCredentials.appSecret }
+    : { QQBOT_APPID: '', QQBOT_SECRET: '' }
   const projectRoot = runtimeWorkspace(app)
   const runtimeBin = await ensurePnpmCommandShim({
     directory: join(userData, 'runtime-bin'),
@@ -88,6 +113,15 @@ export async function startElectronApp(metadata) {
     autoRestart: true,
     startupTimeoutMs: 60_000,
     pathEntries: [runtimeBin],
+    environmentProvider: qqBotEnvironment,
+  })
+  const qqBotBinding = new QqBotBindingService({
+    initialCredentials: qqBotCredentials,
+    credentialStore: qqBotCredentialStore,
+    startQrConnect,
+    setProfileEnabled: (enabled) => setQqBotProfileEnabled({ profileDir: profile.profileDir, enabled }),
+    setRuntimeCredentials: (credentials) => { qqBotCredentials = credentials },
+    restartRuntime: () => controller.restart(),
   })
 
   const statePath = join(userData, 'window-state.json')
@@ -214,6 +248,7 @@ export async function startElectronApp(metadata) {
     projectRoot,
     dshHome,
     agentsHome: process.env.DSH_AGENTS_HOME,
+    qqBotBinding,
   })
   const loadStartup = async () => {
     activeOrigin = undefined
@@ -267,6 +302,7 @@ export async function startElectronApp(metadata) {
         removeMainWindowChrome()
         unregisterIpc()
         unregisterExtensionIpc()
+        qqBotBinding.dispose()
       })
     return shutdownPromise
   }

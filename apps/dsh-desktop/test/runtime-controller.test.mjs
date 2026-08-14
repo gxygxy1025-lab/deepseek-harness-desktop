@@ -75,6 +75,7 @@ test('controller reaches ready state from streamed output and stops cleanly', as
     probeReady: async () => {},
     startupTimeoutMs: 2_000,
     pathEntries: ['C:\\desktop-runtime-bin'],
+    environmentProvider: () => ({ QQBOT_APPID: 'desktop-app', QQBOT_SECRET: 'runtime-only' }),
   })
   controller.on('status', (status) => states.push(status.state))
 
@@ -86,6 +87,8 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   assert.ok(logLines.some((line) => line.includes('booting')))
   assert.equal(childEnvironment.DSH_PROFILE, 'desktop')
   assert.equal(childEnvironment.DSH_SKIN_PROFILE, 'desktop')
+  assert.equal(childEnvironment.QQBOT_APPID, 'desktop-app')
+  assert.equal(childEnvironment.QQBOT_SECRET, 'runtime-only')
   assert.ok(childEnvironment.PATH.startsWith(`C:\\desktop-runtime-bin${process.platform === 'win32' ? ';' : ':'}`))
 
   await controller.stop()

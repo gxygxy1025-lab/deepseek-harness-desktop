@@ -1,47 +1,47 @@
-# DeepSeek Harness Desktop 0.1.5
+# DeepSeek Harness Desktop 0.1.6
 
 ## 中文
 
 ### 本次亮点
 
-- 顶部标题栏会随 DSH 亮色与暗色主题即时切换，原生 Windows 最小化、最大化和关闭按钮也使用匹配的颜色，不再在亮色界面上保留黑条。
-- 设置等全屏弹窗现在使用标题栏下方的安全可视区域，上边框和圆角不会再被 46 像素标题栏截断。
-- 修复安装版皮肤中心仍扫描源码目录、并写入错误配置层的问题。它现在从 `~/.dsh/profiles/desktop/node_modules` 读取随安装包提供的 9 套皮肤，并更新 `~/.dsh/profiles/desktop/cordis.patch.yml`，即时试穿与正式应用都可用。
-- 内置 `dshmarket` 1.0.3 和 `dsh-plugin-hub` 0.1.0。两个插件随桌面 profile 启动，`dshmarket` 的安装与更新目标已明确设为 `desktop` profile。
+- 内置腾讯官方 `@tencent-connect/dsh-qqbot` 0.2.0，并固定安装到隔离的 `desktop` profile。QQ 私聊与群聊现在可以直接接入桌面版 Harness。
+- 扩展坞新增 QQ 机器人绑定卡片。首次使用会在桌面窗口显示可自动刷新的二维码，支持取消、重新绑定和解除绑定，不再依赖不可见的后台终端。
+- 未绑定时 QQ Bot 插件保持禁用，不会在启动阶段等待终端扫码或影响 Web UI 就绪；扫码成功后会自动启用插件并重启 DSH。
+- AppSecret 使用 Electron `safeStorage` 和 Windows 系统凭据保护加密保存，只注入 DSH 子进程环境，不会发送给渲染页面、写入运行日志或明文落到 `cordis.patch.yml`。
 
 ### 验证
 
-- Electron 端到端检查实际切换标题栏明暗样式，并确认 DSH 标准弹窗容器从标题栏下方开始。
-- 真实 DSH Host 集成检查会加载两个插件商店、访问市场状态接口、确认插件商店入口可见，并实际应用 QQ98 皮肤后检查桌面 profile patch。
-- 打包校验继续逐一检查全部内置运行时包、9 套皮肤清单与客户端 bundle。
+- 53 项桌面测试覆盖 profile 合成、加密凭据边界、二维码生命周期、取消与解绑、IPC 安全载荷、运行时环境注入和真实 DSH Host 启动。
+- Electron 端到端检查已调用腾讯官方 Connector 获取真实二维码，并确认二维码可在扩展坞正确显示和取消，过程中未完成绑定或保存凭据。
+- 打包校验会确认官方 QQ Bot 包及其运行依赖存在于安装版，并继续检查所有桌面运行时包、皮肤清单和客户端 bundle。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-0.1.5-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
+下载 `DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek 官方发行版。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目的 GitHub Release 页面下载并核对 SHA-256。升级会保留现有 DSH_HOME、桌面 profile、桌宠状态和皮肤配置。
+这是社区构建版本，并非 DeepSeek 或腾讯官方发行版。QQ Bot 插件和扫码 Connector 来自腾讯官方 npm 包。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目的 GitHub Release 页面下载并核对 SHA-256。升级会保留现有 DSH_HOME、桌面 profile、桌宠状态、皮肤配置和已加密的 QQ Bot 绑定凭据。
 
 ## English
 
 ### Highlights
 
-- The title bar now follows the live DSH light/dark theme. Native Windows minimize, maximize, and close buttons receive matching colors, removing the black strip from light themes.
-- Full-screen dialogs such as Settings now use the safe viewport below the 46-pixel title bar, so their top border and rounded corners are no longer clipped.
-- Fixed packaged Skin Center discovery and configuration. It now reads all nine bundled skins from `~/.dsh/profiles/desktop/node_modules` and updates `~/.dsh/profiles/desktop/cordis.patch.yml`, restoring both live try-on and permanent application.
-- Bundled `dshmarket` 1.0.3 and `dsh-plugin-hub` 0.1.0. Both start with the desktop profile, and `dshmarket` explicitly installs and updates packages in that profile.
+- Bundled Tencent's official `@tencent-connect/dsh-qqbot` 0.2.0 in the isolated `desktop` profile, enabling QQ direct-message and group-chat access to the desktop Harness.
+- Added a QQ Bot binding card to Extension Dock. First use now shows an auto-refreshing QR code in the desktop window with cancel, rebind, and unbind controls, without relying on a hidden terminal.
+- The QQ Bot plugin stays disabled until credentials exist, so terminal QR setup cannot delay Web UI startup. A successful scan enables the plugin and restarts DSH automatically.
+- AppSecret is encrypted through Electron `safeStorage` and Windows credential protection. It is supplied only to the DSH child environment and is never sent to renderer code, written to logs, or stored in plaintext in `cordis.patch.yml`.
 
 ### Verification
 
-- Electron end-to-end coverage switches the real title bar between light and dark styling and verifies that standard DSH dialogs begin below the title bar.
-- The real DSH Host integration test loads both plugin stores, checks the marketplace endpoint and store UI entry, applies QQ98, and verifies the desktop profile patch.
-- Packaged-payload verification continues to inspect every managed runtime package and all nine skin manifests and client bundles.
+- 53 desktop tests cover profile composition, encrypted credential boundaries, QR lifecycle, cancellation and unbinding, renderer-safe IPC payloads, runtime environment injection, and the real DSH Host.
+- Electron end-to-end verification requested a real QR code from Tencent's official Connector and confirmed that it renders and cancels correctly in Extension Dock without completing a binding or saving credentials.
+- Packaged-payload verification checks the official QQ Bot package and its runtime dependencies in addition to every managed desktop package, skin manifest, and client bundle.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-0.1.5-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
+Download `DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
 
 ### Notice
 
-This is a community build and not an official DeepSeek distribution. It is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's GitHub Release page and verify the SHA-256 checksum. Upgrading preserves the existing DSH home, desktop profile, pet state, and skin configuration.
+This is a community build and not an official DeepSeek or Tencent distribution. The QQ Bot plugin and QR Connector are official Tencent npm packages. The installer is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's GitHub Release page and verify the SHA-256 checksum. Upgrading preserves the existing DSH home, desktop profile, pet state, skin configuration, and encrypted QQ Bot binding credentials.
