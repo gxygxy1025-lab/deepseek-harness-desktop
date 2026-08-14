@@ -62,4 +62,3 @@ The generated source uses a flat chroma-key background, which is removed locally
 - If pruning removes any required runtime file, the package verification suite fails and the exclusions are narrowed.
 - If the new icon is illegible at small sizes, the source is regenerated or simplified before packaging.
 - The release is blocked until unit tests, packaged verification, a real EXE launch, checksum generation, Git tag, GitHub release asset audit, and published release notes all succeed.
-
