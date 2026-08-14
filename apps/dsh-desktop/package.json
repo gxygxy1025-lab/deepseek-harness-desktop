@@ -11,6 +11,7 @@
     "dev": "electron src/main.mjs",
     "capture:startup": "node scripts/capture-startup.mjs",
     "capture:extensions": "node scripts/capture-startup.mjs --extensions",
+    "test:window-chrome:e2e": "node scripts/verify-window-chrome.mjs",
     "test": "node --test test/*.test.mjs",
     "pack:dir": "electron-builder --dir",
     "pack:verify": "node scripts/verify-package.mjs",

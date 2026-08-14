@@ -11,6 +11,7 @@ import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
 import { DshRuntimeController } from './runtime-controller.mjs'
+import { installWindowChrome, windowChromeBrowserOptions } from './window-chrome.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
@@ -67,7 +68,7 @@ export async function startElectronApp(metadata) {
     show: false,
     title: metadata.productName,
     backgroundColor: '#02080d',
-    autoHideMenuBar: false,
+    ...windowChromeBrowserOptions(),
     webPreferences: {
       preload: PRELOAD_PATH,
       contextIsolation: true,
@@ -76,6 +77,12 @@ export async function startElectronApp(metadata) {
       webSecurity: true,
       spellcheck: false,
     },
+  })
+  const removeMainWindowChrome = installWindowChrome({
+    browserWindow: mainWindow,
+    title: 'DeepSeek Harness',
+    getContext: (url) => url.startsWith('http:') ? 'Web Surface' : 'Startup',
+    onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
   })
   if (state.maximized) mainWindow.maximize()
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
@@ -124,6 +131,7 @@ export async function startElectronApp(metadata) {
       parent: mainWindow,
       title: 'Extension Dock',
       backgroundColor: '#071117',
+      ...windowChromeBrowserOptions(),
       webPreferences: {
         preload: PRELOAD_PATH,
         contextIsolation: true,
@@ -133,6 +141,12 @@ export async function startElectronApp(metadata) {
         spellcheck: false,
       },
     })
+    const removeExtensionWindowChrome = installWindowChrome({
+      browserWindow: extensionWindow,
+      title: 'DeepSeek Harness',
+      getContext: () => 'Extension Dock',
+      onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
+    })
     installNavigationPolicy({
       webContents: extensionWindow.webContents,
       getRuntimeOrigin: () => undefined,
@@ -140,7 +154,10 @@ export async function startElectronApp(metadata) {
     })
     extensionWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
     extensionWindow.once('ready-to-show', () => extensionWindow?.show())
-    extensionWindow.on('closed', () => { extensionWindow = undefined })
+    extensionWindow.on('closed', () => {
+      removeExtensionWindowChrome()
+      extensionWindow = undefined
+    })
     await extensionWindow.loadFile(EXTENSIONS_PATH)
     return extensionWindow
   }
@@ -215,6 +232,7 @@ export async function startElectronApp(metadata) {
       .then(() => controller.stop())
       .finally(() => {
         runtimeStopped = true
+        removeMainWindowChrome()
         unregisterIpc()
         unregisterExtensionIpc()
         app.quit()
