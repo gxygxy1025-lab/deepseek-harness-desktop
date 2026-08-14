@@ -5,12 +5,12 @@
  * SFTP upload/download/ls, and the connection probe.
  */
 
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { connect, createServer, type AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { SshEngine } from '../src/engine.ts'
+import { SshEngine, walkLocalDir } from '../src/engine.ts'
 import { HostStore } from '../src/store.ts'
 import type { HostPayload } from '../src/protocol.ts'
 import { TEST_PASSWORD, TEST_USER, TestSshServer } from './helpers/ssh-server.ts'
@@ -66,6 +66,21 @@ describe('exec', () => {
     const result = await engine.exec('exec-err', 'out-and-err')
     expect(result.stdout).toContain('hello out')
     expect(result.stderr).toContain('hello err')
+  })
+
+  it('counts the output cap in bytes and preserves split UTF-8 sequences', async () => {
+    addHost('exec-utf8')
+    const complete = await engine.exec('exec-utf8', 'utf8-split')
+    expect(complete.stdout).toBe('你好\n')
+
+    const capped = new SshEngine(store, { maxOutputBytes: 5, connectTimeoutMs: 5_000 })
+    try {
+      const result = await capped.exec('exec-utf8', 'utf8-output')
+      expect(result.stdout).toBe('你…[output truncated]')
+      expect(Buffer.byteLength(result.stdout.replace('…[output truncated]', ''), 'utf8')).toBeLessThanOrEqual(5)
+    } finally {
+      capped.dispose()
+    }
   })
 
   it('times out and reports timedOut', async () => {
@@ -185,7 +200,7 @@ describe('tunnel', () => {
   })
 })
 
-describe('sftp (real sshd)', () => {
+describe.skipIf(!existsSync('/usr/sbin/sshd'))('sftp (real sshd)', () => {
   it('uploads, lists, and downloads files', async () => {
     const sshd = await TestSshd.start()
     try {
@@ -212,6 +227,25 @@ describe('sftp (real sshd)', () => {
       expect(readFileSync(join(sshd.root, 'out.txt'), 'utf8')).toBe(content)
     } finally {
       sshd.stop()
+    }
+  })
+})
+
+describe('local upload traversal', () => {
+  it('collects nested files and sizes asynchronously', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-ssh-walk-'))
+    try {
+      const nested = join(root, 'nested')
+      mkdirSync(nested)
+      writeFileSync(join(root, 'a.txt'), 'a')
+      writeFileSync(join(nested, 'b.txt'), '你好')
+      const files = await walkLocalDir(root)
+      expect(files.sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+        { path: 'a.txt', size: 1 },
+        { path: join('nested', 'b.txt'), size: 6 },
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })

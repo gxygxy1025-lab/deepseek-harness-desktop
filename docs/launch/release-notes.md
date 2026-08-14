@@ -1,23 +1,23 @@
-# DeepSeek Harness Desktop 0.1.6
+# DeepSeek Harness Desktop 0.1.7
 
 ## 中文
 
 ### 本次亮点
 
-- 内置腾讯官方 `@tencent-connect/dsh-qqbot` 0.2.0，并固定安装到隔离的 `desktop` profile。QQ 私聊与群聊现在可以直接接入桌面版 Harness。
-- 扩展坞新增 QQ 机器人绑定卡片。首次使用会在桌面窗口显示可自动刷新的二维码，支持取消、重新绑定和解除绑定，不再依赖不可见的后台终端。
-- 未绑定时 QQ Bot 插件保持禁用，不会在启动阶段等待终端扫码或影响 Web UI 就绪；扫码成功后会自动启用插件并重启 DSH。
-- AppSecret 使用 Electron `safeStorage` 和 Windows 系统凭据保护加密保存，只注入 DSH 子进程环境，不会发送给渲染页面、写入运行日志或明文落到 `cordis.patch.yml`。
+- 启动界面采用全新的深海探索视觉：状态驱动进度只在 DSH 真正就绪时抵达 100%，环境、运行时和界面三个阶段清晰可见，同时保留重试、修复、日志与退出恢复操作。
+- 顶部窗口栏压缩为 32 像素的 macOS 风格磨砂玻璃材质，使用 26 像素背景模糊、柔和高光和发丝分隔线，只显示正式软件图标，并继续保留原生 Windows 窗口按钮。
+- 文件预览、标签页内存、Git 状态轮询和 SSH 输出/目录传输均加入明确边界：超大文件不再完整读入内存，相同仓库不再重复轮询，UTF-8 输出限额按真实字节计算。
+- 首次安装后的运行时启动容忍窗口从 60 秒提升到 120 秒；安装版 E2E 失败会打印最近运行日志。Windows CI、官网静态下载回退、生成文件和安装载荷也加入更严格的一致性门禁。
 
 ### 验证
 
-- 53 项桌面测试覆盖 profile 合成、加密凭据边界、二维码生命周期、取消与解绑、IPC 安全载荷、运行时环境注入和真实 DSH Host 启动。
-- Electron 端到端检查已调用腾讯官方 Connector 获取真实二维码，并确认二维码可在扩展坞正确显示和取消，过程中未完成绑定或保存凭据。
-- 打包校验会确认官方 QQ Bot 包及其运行依赖存在于安装版，并继续检查所有桌面运行时包、皮肤清单和客户端 bundle。
+- 62 项桌面测试覆盖版本来源、运行时生命周期、120 秒冷启动预算、启动进度、窗口材质、profile 合成、凭据边界、插件与技能管理以及真实 DSH Host 启动。
+- 根级 `pnpm verify` 在受支持的 Node 24 环境完成 22 个工作区项目的类型检查、全部单元测试、脚本测试、双语发行说明、官网、聚合清单、图库和皮肤中心检查。
+- Electron 端到端检查验证真实 DSH Web Surface、磨砂窗口栏、亮暗主题、弹窗安全区和目录选择器；安装包校验继续覆盖 50 个关键运行时包、皮肤资源、桌宠资源与客户端 bundle。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
+下载 `DeepSeek-Harness-Desktop-Setup-0.1.7-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
 
 ### 说明
 
@@ -27,20 +27,20 @@
 
 ### Highlights
 
-- Bundled Tencent's official `@tencent-connect/dsh-qqbot` 0.2.0 in the isolated `desktop` profile, enabling QQ direct-message and group-chat access to the desktop Harness.
-- Added a QQ Bot binding card to Extension Dock. First use now shows an auto-refreshing QR code in the desktop window with cancel, rebind, and unbind controls, without relying on a hidden terminal.
-- The QQ Bot plugin stays disabled until credentials exist, so terminal QR setup cannot delay Web UI startup. A successful scan enables the plugin and restarts DSH automatically.
-- AppSecret is encrypted through Electron `safeStorage` and Windows credential protection. It is supplied only to the DSH child environment and is never sent to renderer code, written to logs, or stored in plaintext in `cordis.patch.yml`.
+- Rebuilt the startup experience around a restrained deep-ocean discovery field. Progress follows actual runtime state and reaches 100 percent only after DSH is ready; environment, runtime, and surface phases remain visible, with Retry, Repair, Logs, and Exit preserved for recovery.
+- Refined the top window chrome into a 32-pixel macOS-inspired frosted-glass surface with a 26-pixel backdrop blur, soft highlight, and hairline separator. It shows only the production app icon while preserving native Windows caption controls.
+- Added explicit resource boundaries across file previews, tab memory, Git polling, and SSH execution or transfer. Oversized files are no longer buffered in full, subscribers share one repository poll, slow polls cannot overlap, and UTF-8 output limits are based on real bytes.
+- Increased the first-install runtime startup allowance from 60 to 120 seconds and made packaged E2E failures include recent runtime logs. Windows CI now also enforces complete validation, generated-asset consistency, website fallback versions, and packaged-runtime pruning.
 
 ### Verification
 
-- 53 desktop tests cover profile composition, encrypted credential boundaries, QR lifecycle, cancellation and unbinding, renderer-safe IPC payloads, runtime environment injection, and the real DSH Host.
-- Electron end-to-end verification requested a real QR code from Tencent's official Connector and confirmed that it renders and cancels correctly in Extension Dock without completing a binding or saving credentials.
-- Packaged-payload verification checks the official QQ Bot package and its runtime dependencies in addition to every managed desktop package, skin manifest, and client bundle.
+- 62 desktop tests cover version sourcing, runtime lifecycle, the 120-second cold-start budget, launch progress, window material, profile composition, credential boundaries, plugin and skill management, and the real DSH Host.
+- Root-level `pnpm verify` under the supported Node 24 runtime completes typechecking for 22 workspace projects, every unit and script test, bilingual release-note validation, website checks, aggregate manifests, gallery output, and Skin Center generation.
+- Electron end-to-end checks cover the real DSH Web Surface, frosted window chrome, light and dark modes, modal safe areas, and the directory picker. Packaged verification continues to audit 50 critical runtime packages, skin assets, pet assets, and client bundles.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
+Download `DeepSeek-Harness-Desktop-Setup-0.1.7-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
 
 ### Notice
 

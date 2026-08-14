@@ -21,6 +21,7 @@ try {
     env: {
       ...process.env,
       DSH_DESKTOP_HOLD_STARTUP: '1',
+      DSH_DESKTOP_STARTUP_PREVIEW_STATE: extensionMode ? '' : 'starting',
       DSH_DESKTOP_OPEN_EXTENSIONS: extensionMode ? '1' : '0',
       DSH_DESKTOP_USER_DATA: resolve(temporary, 'user-data'),
       DSH_HOME: resolve(temporary, 'dsh-home'),

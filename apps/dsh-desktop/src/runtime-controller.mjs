@@ -4,6 +4,7 @@ import { delimiter } from 'node:path'
 
 const READY_LINE = /^dsh web:\s+(http:\/\/\S+)/u
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
+export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000
 
 export function validateLoopbackUrl(value) {
   let url
@@ -74,7 +75,7 @@ export class DshRuntimeController extends EventEmitter {
     executable = process.execPath,
     spawnProcess = spawn,
     logStore,
-    startupTimeoutMs = 30_000,
+    startupTimeoutMs = DEFAULT_STARTUP_TIMEOUT_MS,
     shutdownTimeoutMs = 5_000,
     autoRestart = false,
     probeReady = probeHttpReady,

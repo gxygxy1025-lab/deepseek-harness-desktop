@@ -5,6 +5,7 @@ import process from 'node:process'
 const root = path.resolve(import.meta.dirname, '..')
 const websiteRoot = path.join(root, 'website')
 const htmlPath = path.join(websiteRoot, 'index.html')
+const desktopPackagePath = path.join(root, 'apps', 'dsh-desktop', 'package.json')
 
 function collectAttributeValues(html, attribute) {
   const pattern = new RegExp(`\\b${attribute}\\s*=\\s*["']([^"']+)["']`, 'gi')
@@ -19,7 +20,7 @@ function isLocalAsset(value) {
     && !value.startsWith('data:')
 }
 
-export async function collectWebsiteErrors(html) {
+export async function collectWebsiteErrors(html, expectedVersion) {
   const errors = []
   const requiredMarkers = [
     ['main landmark', /\bid=["']main["']/i],
@@ -36,6 +37,17 @@ export async function collectWebsiteErrors(html) {
 
   if (/\b(?:href|src)\s*=\s*["']javascript:/i.test(html)) {
     errors.push('javascript: URLs are not allowed')
+  }
+
+  if (expectedVersion) {
+    const expectedArtifact = `DeepSeek-Harness-Desktop-Setup-${expectedVersion}-x64.exe`
+    const artifactVersions = [...html.matchAll(/DeepSeek-Harness-Desktop-Setup-(\d+\.\d+\.\d+)-x64\.exe/g)]
+      .map(match => match[1])
+    if (!html.includes(expectedArtifact)) errors.push(`website fallback installer must target ${expectedArtifact}`)
+    for (const version of new Set(artifactVersions)) {
+      if (version !== expectedVersion) errors.push(`website contains stale installer version ${version}; expected ${expectedVersion}`)
+    }
+    if (!html.includes(`v${expectedVersion}`)) errors.push(`website fallback label must include v${expectedVersion}`)
   }
 
   const blankLinks = [...html.matchAll(/<a\b[^>]*\btarget=["']_blank["'][^>]*>/gi)]
@@ -67,8 +79,12 @@ export async function collectWebsiteErrors(html) {
 }
 
 export async function validateWebsite() {
-  const html = await readFile(htmlPath, 'utf8')
-  const errors = await collectWebsiteErrors(html)
+  const [html, desktopPackage] = await Promise.all([
+    readFile(htmlPath, 'utf8'),
+    readFile(desktopPackagePath, 'utf8'),
+  ])
+  const version = JSON.parse(desktopPackage).version
+  const errors = await collectWebsiteErrors(html, version)
   if (errors.length > 0) {
     throw new Error(`website validation failed:\n- ${errors.join('\n- ')}`)
   }

@@ -8,6 +8,7 @@
  */
 
 import { realpath } from 'node:fs/promises'
+import { isAbsolute, relative, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type { PanelError } from '../core/types.ts'
@@ -21,9 +22,9 @@ export type WorkspaceGate = (root: string) => Promise<GateVerdict>
 /** The canonical prefix check: child must live inside (or equal) the root. */
 export function isPathInside(root: string, child: string): boolean {
   if (root === '' || child === '') return false
-  if (child === root) return true
-  const prefix = root.endsWith('/') ? root : `${root}/`
-  return child.startsWith(prefix)
+  const pathFromRoot = relative(root, child)
+  return pathFromRoot === ''
+    || (pathFromRoot !== '..' && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot))
 }
 
 /**

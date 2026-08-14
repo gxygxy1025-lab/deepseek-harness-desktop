@@ -11,6 +11,7 @@ const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const screenshotArgument = process.argv.find((argument) => argument.toLowerCase().endsWith('.png'))
 const screenshot = screenshotArgument ? resolve(screenshotArgument) : undefined
 const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
+const runtimeReadyTimeoutMs = packagedExecutable ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-window-chrome-e2e-'))
 let electronApp
 
@@ -28,7 +29,13 @@ try {
   })
   const page = await electronApp.firstWindow()
   page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
-  await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: 60_000 })
+  try {
+    await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
+  } catch (error) {
+    const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8').catch(() => '')
+    console.error(`runtime did not become ready; recent log:\n${runtimeLog.slice(-4_000) || '(no runtime log)'}`)
+    throw error
+  }
   try {
     await page.waitForSelector('#dsh-desktop-window-chrome')
   } catch (error) {
@@ -37,12 +44,18 @@ try {
   }
   const state = await page.evaluate(() => ({
     chromeCount: document.querySelectorAll('#dsh-desktop-window-chrome').length,
-    context: document.querySelector('.dsh-window-chrome-context')?.textContent,
+    chromeText: document.querySelector('#dsh-desktop-window-chrome')?.textContent,
+    backdropFilter: getComputedStyle(document.querySelector('#dsh-desktop-window-chrome')).backdropFilter,
+    iconWidth: getComputedStyle(document.querySelector('.dsh-window-chrome-icon')).width,
+    iconSource: document.querySelector('.dsh-window-chrome-icon')?.getAttribute('src'),
     paddingTop: getComputedStyle(document.body).paddingTop,
     url: location.origin,
   }))
-  assert.equal(state.context, 'Web Surface')
-  assert.equal(state.paddingTop, '46px')
+  assert.equal(state.chromeText, '')
+  assert.match(state.backdropFilter, /blur\(26px\)/u)
+  assert.equal(state.iconWidth, '18px')
+  assert.match(state.iconSource, /^data:image\/png;base64,/u)
+  assert.equal(state.paddingTop, '32px')
   assert.equal(state.chromeCount, 1)
   await page.evaluate(() => {
     document.body.removeAttribute('data-ds-dark-theme')
@@ -50,8 +63,11 @@ try {
     document.body.style.backgroundColor = 'rgb(250, 250, 250)'
   })
   await page.waitForFunction(() => document.documentElement.dataset.dshDesktopChromeTheme === 'light')
-  assert.equal(await page.locator('.dsh-window-chrome-title').evaluate((element) => getComputedStyle(element).color), 'rgb(17, 24, 39)')
-  await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
+  assert.equal(await page.locator('#dsh-desktop-window-chrome').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgba(246, 248, 252, 0.72)')
+  await page.evaluate(() => {
+    document.body.style.removeProperty('background-color')
+    document.body.setAttribute('data-ds-dark-theme', '')
+  })
   await page.waitForFunction(() => document.documentElement.dataset.dshDesktopChromeTheme === 'dark')
   const assertDialogUsesSafeViewport = async (dialog) => {
     await dialog.waitFor({ state: 'visible' })
@@ -60,7 +76,7 @@ try {
       layerTop: element.parentElement?.getBoundingClientRect().top,
     }))
     assert.match(String(state.layerClass), /dsh-desktop-modal-layer/u)
-    assert.ok(Number(state.layerTop) >= 45, `modal layer starts under the title bar: ${state.layerTop}`)
+    assert.ok(Number(state.layerTop) >= 31, `modal layer starts under the title bar: ${state.layerTop}`)
   }
   const introDialog = page.locator('[role="dialog"]').filter({ hasText: '内测声明' })
   await assertDialogUsesSafeViewport(introDialog)

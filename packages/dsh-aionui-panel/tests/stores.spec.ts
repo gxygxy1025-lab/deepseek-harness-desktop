@@ -7,7 +7,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DirListing, FsEntry, GitStatusView, PanelEnvelope } from '../src/core/types.ts'
-import { createPanelStores, type PanelStores } from '../src/client/store.ts'
+import { createPanelStores, PREVIEW_CONTENT_CAP, type PanelStores } from '../src/client/store.ts'
 import type { PanelApi } from '../src/client/api.ts'
 
 /** A fake api recording calls with canned responses. */
@@ -135,6 +135,20 @@ describe('preview store', () => {
     stores.preview.closeTabs(stores.preview.getSnapshot().tabs.map((item) => item.id))
     expect(stores.preview.getSnapshot().tabs).toHaveLength(0)
     expect(stores.preview.getSnapshot().open).toBe(false)
+  })
+
+  it('keeps tab identities but unloads least-recent clean preview payloads', async () => {
+    stores.preview.setRoot('/w')
+    for (let i = 0; i < PREVIEW_CONTENT_CAP + 3; i += 1) {
+      stores.preview.openFile('/w', `file-${i}.txt`)
+    }
+    await vi.waitFor(() => {
+      const state = stores.preview.getSnapshot()
+      expect(state.tabs).toHaveLength(PREVIEW_CONTENT_CAP + 3)
+      expect(state.tabs.filter((tab) => tab.content !== null)).toHaveLength(PREVIEW_CONTENT_CAP)
+    })
+    const state = stores.preview.getSnapshot()
+    expect(state.tabs.find((tab) => tab.id === state.activeTabId)?.content).not.toBeNull()
   })
 })
 

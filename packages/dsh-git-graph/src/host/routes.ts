@@ -92,16 +92,32 @@ export function registerGitRoutes(ctx: Context, service: GitService): () => void
     subscriber.res.write(`event: change\ndata: ${JSON.stringify(payload)}\n\n`)
   }
 
-  const poll = (): void => {
+  let polling = false
+  const poll = async (): Promise<void> => {
+    if (polling) return
+    polling = true
+    const byPath = new Map<string, Subscriber[]>()
     for (const subscriber of subscribers) {
-      void service.status(subscriber.path).then((status) => {
-        const key = status === null ? 'no-repo' : `${status.root}|${status.branch}|${status.head}`
-        if (key === subscriber.last) return
-        subscriber.last = key
-        push(subscriber, { path: subscriber.path, status })
-      }).catch((error: unknown) => {
-        ctx.logger.warn(`dsh-git-graph: status poll failed for ${subscriber.path}: ${String(error)}`)
-      })
+      const group = byPath.get(subscriber.path)
+      if (group === undefined) byPath.set(subscriber.path, [subscriber])
+      else group.push(subscriber)
+    }
+    try {
+      await Promise.all([...byPath].map(async ([path, group]) => {
+        try {
+          const status = await service.status(path)
+          const key = status === null ? 'no-repo' : `${status.root}|${status.branch}|${status.head}`
+          for (const subscriber of group) {
+            if (key === subscriber.last) continue
+            subscriber.last = key
+            push(subscriber, { path: subscriber.path, status })
+          }
+        } catch (error: unknown) {
+          ctx.logger.warn(`dsh-git-graph: status poll failed for ${path}: ${String(error)}`)
+        }
+      }))
+    } finally {
+      polling = false
     }
   }
 
@@ -190,7 +206,7 @@ export function registerGitRoutes(ctx: Context, service: GitService): () => void
     const subscriber: Subscriber = { path, last: '', res }
     subscribers.add(subscriber)
     if (pollTimer === undefined) {
-      pollTimer = setInterval(poll, POLL_INTERVAL_MS)
+      pollTimer = setInterval(() => { void poll() }, POLL_INTERVAL_MS)
     }
     if (heartbeatTimer === undefined) {
       heartbeatTimer = setInterval(() => {

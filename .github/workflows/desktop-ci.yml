@@ -23,6 +23,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:scripts
       - run: pnpm release:notes:check
-      - run: pnpm desktop:test
+      - run: pnpm website:check
+      - run: pnpm aggregate:check
+      - run: pnpm gallery:check
+      - run: pnpm skin-center:check
       - run: git diff --check
