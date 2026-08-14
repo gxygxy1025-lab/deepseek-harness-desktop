@@ -1,8 +1,14 @@
-# dsh-web-ui · DSH Web UI
+# DeepSeek Harness Desktop
 
 [中文](README.md) | English
 
 ![dsh-web-ui](docs/dsh-web-ui-banner.png)
+
+## Community QQ Group
+
+Group number: **1105158177** · **[Join the QQ group](https://qm.qq.com/q/vehlNjaeye)**
+
+<a href="https://qm.qq.com/q/vehlNjaeye"><img src="website/assets/qq-group-1105158177.jpg" width="280" alt="QR code for DeepSeek Harness Desktop QQ group 1105158177"></a>
 
 ## Windows Desktop
 
@@ -10,30 +16,40 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 
 [Explore the product site](https://ningbainb.github.io/deepseek-harness-desktop/) · [Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Changelog](CHANGELOG.md)
 
-### Community QQ Group
+### Latest release: 0.1.6
 
-Group number: **1105158177** · **[Join the QQ group](https://qm.qq.com/q/vehlNjaeye)**
+`desktop-v0.1.6` is now the Latest stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.6) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.6/DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.6/SHA256SUMS.txt)
 
-<a href="https://qm.qq.com/q/vehlNjaeye"><img src="website/assets/qq-group-1105158177.jpg" width="280" alt="QR code for DeepSeek Harness Desktop QQ group 1105158177"></a>
+| Version | Highlights |
+| --- | --- |
+| **0.1.6** | Bundles Tencent's official QQ Bot and QR Connector. Bind, refresh, cancel, rebind, or unbind from Extension Dock, then connect QQ direct messages and group chats to the desktop Harness. AppSecret is protected by Windows credential encryption and supplied only to the DSH child process. |
+| **0.1.5** | Synchronizes native title-bar colors with light/dark mode, keeps full-screen dialogs inside the safe viewport, fixes packaged skin discovery and switching, and bundles `dshmarket` plus `dsh-plugin-hub`. |
+| **0.1.4** | Moves the pet to the global Shell Overlay so it appears on home and settings screens, restores all five Web UI plugin settings cards, and lists all nine packaged skins in Skin Center. |
+| **0.1.3** | Adds stable GitHub Release checks, bilingual update notes, user-confirmed downloads, taskbar progress, and a second confirmation before installation. |
 
 | Lossless original surface | Desktop Extension Dock |
 | --- | --- |
 | ![Desktop startup](docs/screenshots/desktop-startup.png) | ![Plugin and skill Extension Dock](docs/screenshots/desktop-extension-dock.png) |
 
 - Keeps the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, and every skin;
+- Bundles Tencent's official QQ Bot, with in-dock QR binding for QQ direct messages and group chats — no YAML editing or background terminal required;
 - Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
 - Adds crash recovery, sanitized rotating logs, window-state restore, strict navigation, and denied-by-default permissions;
 - Checks stable GitHub Releases, shows bilingual release notes, and asks before downloading or restarting to install;
-- Adds a dock for transactional community DSH bundle management and safe discovery/import of project, DSH, and Agents skills;
+- Adds a dock for transactional community DSH bundle management, built-in plugin stores, and safe discovery/import of project, DSH, and Agents skills;
 - Bundles official DSH, pnpm, and native dependencies, so users do not need a separate Node.js installation.
 
-The public build is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's Releases and verify SHA-256. The default install location is tested; avoid unusually long custom paths because legacy Win32 components may still hit the 260-character limit.
-
-dsh-web-ui is a collection of plugins and skins for the DeepSeek Harness (DSH) Web UI: a task board, a Git graph, the right panel, mobile remote control, remote connection, a whale-girl pet, live token statistics, and the Skin Center. Every plugin can be installed individually, or all at once through the aggregate packages.
+The desktop app already includes the task board, Git graph, right panel, mobile remote control, remote connection, whale-girl pet, live token statistics, plugin stores, and Skin Center. Install the EXE and start working — no separate DSH or Node.js setup and no plugin commands are required.
 
 ![DSH Web UI main screen](docs/screenshots/13-hero-main.png)
 
 ## Feature Plugins
+
+### QQ Bot QR Binding (Desktop 0.1.6)
+
+The desktop app bundles Tencent's official `@tencent-connect/dsh-qqbot` 0.2.0 and `@tencent-connect/qqbot-connector` 1.2.0. Open the QQ Bot card in Extension Dock to request an auto-refreshing QR code; scan it with mobile QQ to connect direct messages and group chats to the local Harness. The same card supports cancellation, rebinding, and complete unbinding.
+
+The plugin remains disabled until credentials exist, so a hidden background process never waits for terminal QR setup or delays Web UI readiness. Successful binding enables the plugin and restarts DSH automatically. AppSecret is encrypted by Electron `safeStorage` with Windows credential protection; it is never sent to renderer code, written to logs, or stored in plaintext in `cordis.patch.yml`, and is supplied only through the DSH child environment at runtime.
 
 ### Task Board
 
@@ -99,9 +115,13 @@ The "SSH" sidebar entry opens the remote-ops panel. Hosts support key / password
 
 ### Settings Hub
 
-All family plugins' toggles and parameters live under "Settings > Plugin config", and changes apply immediately.
+All family plugins' toggles and parameters live under "Settings > Plugin config", and changes apply immediately. The desktop app explicitly exposes all five bundled cards — Remote Control, Skin Center, Live Token Estimates, Task Board, and Pet — instead of losing entries to the DSH Host settings-namespace filter.
 
 ![Plugin config hub](docs/screenshots/02-settings-web-ui-plugins.png)
+
+### Plugin Stores and Extension Dock
+
+The desktop profile bundles `dshmarket` 1.0.3 and `dsh-plugin-hub` 0.1.0. Marketplace installs target the isolated `desktop` profile and support community DSH bundle discovery, installation, transactional rollback, and upgrade preservation. Project, DSH, and Agents skills can also be discovered in Extension Dock and imported after safety checks.
 
 ## Skins
 
@@ -145,61 +165,15 @@ A live-data stock-trading skin: a scrolling ticker tape (A-shares / HK / US / in
 
 Three more: QQ2008 Retro (crystal blue with penguin motifs), Tonghuashun Trading (market elements woven into the interface), and Dragon Heir (cinnabar dragon seal theme).
 
-## Installation
+## Download, Verification, and Upgrades
 
-DSH plugins are installed per **profile** with the `dsh plugin` command (`dsh web` runs the `web` profile). The recommended way is the aggregate package `dsh-web-ui-all` — one package with all plugins and skins; install `dsh-skins` instead if you only want the skins.
+1. Download the latest Windows x64 installer from [GitHub Releases](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest).
+2. Run `DeepSeek-Harness-Desktop-Setup-<version>-x64.exe`. DSH, plugins, skins, pnpm, and native dependencies are all included in the installer.
+3. To verify file integrity, download `SHA256SUMS.txt` from the same Release and compare the installer's SHA-256 digest.
 
-### Option 1: Install from npm (recommended)
+The app checks stable GitHub Releases, displays bilingual update notes, and asks for confirmation before both downloading and restarting to install. In-place upgrades preserve the existing `DSH_HOME`, desktop profile, community bundles, pet state, skin configuration, and encrypted QQ Bot credentials.
 
-The plugins are published to npm (the `@linxin666` scope) — one command installs everything:
-
-```sh
-dsh plugin --profile web add @linxin666/dsh-web-ui-all
-```
-
-Restart `dsh web` and all plugin entries appear in the sidebar. Skins only? Install `@linxin666/dsh-skins` instead.
-
-> First install may stop on `ERR_PNPM_IGNORED_BUILDS` (pnpm blocks dependency build scripts): copy the printed keys (`cloudflared` / `cpu-features` / `ssh2`) into the profile's `pnpm-workspace.yaml` `allowBuilds` list and re-run.
-
-### Option 2: Install from the GitHub repository (development)
-
-The packages are already on npm; installing from this repository is only for development (requires Node.js >= 22 and pnpm):
-
-```sh
-# 1. Clone the repository
-git clone https://github.com/zhu1090093659/dsh-web-ui.git
-cd dsh-web-ui
-
-# 2. Install dependencies and build
-pnpm install
-pnpm -r build
-
-# 3. Install the aggregate package into the web profile
-dsh plugin --profile web add link:$(pwd)/packages/dsh-web-ui-all
-
-# 4. Restart dsh web — all plugin entries appear in the sidebar
-dsh web
-```
-
-> Skins only? Point step 3 at `packages/dsh-skins` instead.
-
-### Install a single plugin
-
-Prefer individual plugins? Install them one by one (published on npm, so use the package name directly):
-
-```sh
-dsh plugin --profile web add @linxin666/dsh-client-ui-task-board   # Task board
-dsh plugin --profile web add @linxin666/dsh-ssh                    # Remote connection (SSH)
-dsh plugin --profile web add @linxin666/dsh-pet                    # Whale-girl pet
-```
-
-### Verify and uninstall
-
-After installing, restart `dsh web` — a working plugin shows up in the sidebar. You can also confirm the mounted config layers with `dsh --profile web --dump-config`. If nothing appears in the sidebar, you most likely forgot to restart `dsh web`.
-
-Uninstall: `dsh plugin --profile web remove @linxin666/dsh-web-ui-all`, then restart `dsh web`.
-
-Technical details live in [docs/plugins.md](docs/plugins.md).
+The installer is not commercially code-signed, so Windows SmartScreen may report an unknown publisher. Use only the installer linked from this project's Release page. The default install path is recommended to avoid legacy Win32 path-length limits.
 
 ## Sources & Licensing
 
