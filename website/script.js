@@ -42,6 +42,13 @@ async function hydrateLatestRelease() {
 
     const version = String(release.tag_name || '').replace(/^desktop-v/, 'v')
     setLinks('.download-link', installer.browser_download_url)
+    const terminalAction = document.querySelector('#terminal-action')
+    if (terminalAction) {
+      terminalAction.dataset.downloadHref = installer.browser_download_url
+      if (document.querySelector('[data-terminal-tab="download"]')?.classList.contains('is-active')) {
+        terminalAction.href = installer.browser_download_url
+      }
+    }
     setLinks('.release-page-link', release.html_url)
     setLinks('.checksum-link', checksum?.browser_download_url)
     setText('.release-version', version)
@@ -111,7 +118,17 @@ document.querySelectorAll('[data-terminal-tab]').forEach(button => {
     document.querySelectorAll('[data-terminal-tab]').forEach(item => item.classList.remove('is-active'))
     button.classList.add('is-active')
     const command = document.querySelector('#terminal-command')
-    command.textContent = button.dataset.terminalTab === 'source' ? command.dataset.sourceCommand : command.dataset.downloadCommand
+    const action = document.querySelector('#terminal-action')
+    const cta = action?.querySelector('.terminal-cta')
+    const isSource = button.dataset.terminalTab === 'source'
+    command.textContent = isSource ? command.dataset.sourceCommand : command.dataset.downloadCommand
+    if (action) {
+      action.href = isSource ? action.dataset.sourceHref : action.dataset.downloadHref
+      action.target = isSource ? '_blank' : ''
+      action.rel = isSource ? 'noreferrer' : ''
+      action.setAttribute('aria-label', isSource ? '打开 GitHub 源码仓库' : '立即下载 Windows x64 安装包')
+    }
+    if (cta) cta.textContent = isSource ? '打开仓库' : '立即下载'
   })
 })
 
@@ -137,4 +154,13 @@ document.querySelectorAll('[data-theme-image]').forEach(button => {
   })
 })
 
-hydrateLatestRelease()
+const scheduleReleaseHydration = () => {
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(hydrateLatestRelease, { timeout: 1800 })
+  } else {
+    window.setTimeout(hydrateLatestRelease, 500)
+  }
+}
+
+if (document.readyState === 'complete') scheduleReleaseHydration()
+else window.addEventListener('load', scheduleReleaseHydration, { once: true })
