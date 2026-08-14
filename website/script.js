@@ -1,5 +1,32 @@
 const releaseApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop/releases/latest'
 
+const siteThemeToggle = document.querySelector('[data-site-theme-toggle]')
+const siteThemeLabel = document.querySelector('[data-site-theme-label]')
+const themeColorMeta = document.querySelector('meta[name="theme-color"]')
+
+function syncSiteTheme(theme, persist = false) {
+  const isVivid = theme === 'vivid'
+  if (isVivid) document.documentElement.dataset.siteTheme = 'vivid'
+  else delete document.documentElement.dataset.siteTheme
+  siteThemeToggle?.setAttribute('aria-pressed', String(isVivid))
+  siteThemeToggle?.setAttribute('aria-label', isVivid ? '切回深色主题' : '切换动感亮色主题')
+  if (siteThemeLabel) siteThemeLabel.textContent = isVivid ? '切回深色' : '动感亮色'
+  if (themeColorMeta) themeColorMeta.content = isVivid ? '#f7f9ff' : '#0a0a0a'
+  if (!persist) return
+  try {
+    if (isVivid) localStorage.setItem('dsh-site-theme', 'vivid')
+    else localStorage.removeItem('dsh-site-theme')
+  } catch {
+    // The theme remains active for this page when storage is unavailable.
+  }
+}
+
+syncSiteTheme(document.documentElement.dataset.siteTheme === 'vivid' ? 'vivid' : 'dark')
+siteThemeToggle?.addEventListener('click', () => {
+  const nextTheme = document.documentElement.dataset.siteTheme === 'vivid' ? 'dark' : 'vivid'
+  syncSiteTheme(nextTheme, true)
+})
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return null
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
