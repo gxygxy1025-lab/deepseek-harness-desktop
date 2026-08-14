@@ -8,7 +8,7 @@
 
 DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不是重写页面，而是用安全的 Electron 窗口启动官方 `@deepseek-ai/dsh` 本地主机，再原样加载本仓库的全部插件与皮肤。
 
-[下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [更新日志](CHANGELOG.md)
+[浏览产品介绍](https://ningbainb.github.io/deepseek-harness-desktop/) · [下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [更新日志](CHANGELOG.md)
 
 | 原版界面无损加载 | 桌面扩展坞 |
 | --- | --- |
@@ -17,7 +17,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 - 保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物与全部皮肤；
 - 独立 `desktop` profile，不覆盖既有 DSH 配置，运行时仅监听回环地址；
 - 内置崩溃恢复、日志脱敏与轮转、窗口状态恢复、严格导航与权限策略；
-- 内置 GitHub Release 更新检查，先展示更新内容，再由用户确认下载和重启安装；
+- 内置 GitHub Release 更新检查，先展示中英双语更新内容，再由用户确认下载和重启安装；
 - 扩展坞支持社区 DSH bundle 安装/回滚，以及项目、DSH、Agents 技能发现与安全导入；
 - 安装包自带官方 DSH、pnpm 与原生依赖，无需另外安装 Node.js。
 

@@ -10,6 +10,8 @@ node_modules/
 
 # GUI 测试截图
 gui-test-screenshots/
+.playwright-cli/
+output/
 
 # 本地性能调试脚本
 .dsh/perf/

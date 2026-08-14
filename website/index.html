@@ -27,6 +27,7 @@
         </a>
 
         <nav class="desktop-nav" aria-label="主导航">
+          <a href="#release">版本</a>
           <a href="#features">功能</a>
           <a href="#themes">主题</a>
           <a href="#remote">移动端</a>
@@ -67,6 +68,7 @@
             <span><strong class="release-size">184.9 MB</strong> 安装包</span>
             <span><strong>BSD-3-Clause</strong> 开源许可</span>
           </div>
+          <p class="build-notice"><span>COMMUNITY / UNSIGNED</span> 社区维护版本，当前未使用商业代码签名。请仅从本项目 GitHub Release 下载。</p>
         </div>
 
         <div class="hero-stage reveal reveal-late">
@@ -96,6 +98,50 @@
         <div><span class="signal-number">01</span><p><strong>完整 Web Surface</strong>不是功能缩水的桌面重写</p></div>
         <div><span class="signal-number">02</span><p><strong>独立 Desktop Profile</strong>不覆盖现有 DSH 配置</p></div>
         <div><span class="signal-number">03</span><p><strong>内置自动更新</strong>新版本确认后安装</p></div>
+      </section>
+
+      <section class="release-pulse section-shell" id="release" aria-labelledby="release-title">
+        <div class="release-rail" aria-hidden="true">
+          <span>RELEASE</span>
+          <strong>03</strong>
+          <i></i>
+          <small>STABLE CHANNEL</small>
+        </div>
+
+        <div class="release-dossier reveal" data-release-card aria-busy="true">
+          <header class="dossier-head">
+            <div>
+              <span class="dossier-kicker">LATEST RELEASE / 双语发行日志</span>
+              <h2 id="release-title">每次更新，<br><em>先把变化说清楚。</em></h2>
+            </div>
+            <div class="release-stamp" aria-label="最新版本">
+              <span>STABLE</span>
+              <strong class="release-version">v0.1.3</strong>
+              <small data-release-status>CHECKING GITHUB / 正在同步</small>
+            </div>
+          </header>
+
+          <div class="dossier-body">
+            <div class="release-summary">
+              <p>从 0.1.3 开始，发行说明固定采用中文在前、English 在后的同页结构。应用会先展示完整更新内容，再由你决定是否下载和重启安装。</p>
+              <dl class="release-facts">
+                <div><dt>发布日期 / Published</dt><dd><time class="release-date" datetime="2026-08-14">2026-08-14</time></dd></div>
+                <div><dt>安装包 / Installer</dt><dd class="release-size">184.9 MB</dd></div>
+                <div><dt>更新通道 / Channel</dt><dd>STABLE</dd></div>
+              </dl>
+              <div class="release-actions">
+                <a class="text-link release-page-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest" target="_blank" rel="noreferrer">查看中英双语日志 <span aria-hidden="true">&gt;</span></a>
+                <a class="text-link checksum-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/SHA256SUMS.txt">下载 SHA-256 <span aria-hidden="true">&gt;</span></a>
+              </div>
+            </div>
+
+            <ol class="update-flow" aria-label="内置更新流程">
+              <li><span>01</span><div><strong>发现版本</strong><small>CHECK GITHUB RELEASES</small><p>启动后与每六小时检查稳定发行版。</p></div></li>
+              <li><span>02</span><div><strong>阅读并确认</strong><small>REVIEW BILINGUAL NOTES</small><p>先显示中英双语更新内容，再决定下载。</p></div></li>
+              <li><span>03</span><div><strong>重启安装</strong><small>RESTART ON APPROVAL</small><p>下载和重启安装都需要单独确认。</p></div></li>
+            </ol>
+          </div>
+        </div>
       </section>
 
       <section class="intro section-shell" id="intro">
@@ -236,12 +282,12 @@
               <span>立即下载 <span class="release-version">v0.1.3</span></span>
               <span class="button-arrow" aria-hidden="true">&gt;</span>
             </a>
-            <a class="button button-secondary" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest" target="_blank" rel="noreferrer">查看更新日志 <span class="button-arrow" aria-hidden="true">&gt;</span></a>
+            <a class="button button-secondary release-page-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest" target="_blank" rel="noreferrer">查看中英双语日志 <span class="button-arrow" aria-hidden="true">&gt;</span></a>
           </div>
           <div class="download-notes">
             <span>Windows 10 / 11</span>
             <span>x64</span>
-            <a href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/SHA256SUMS.txt">SHA-256 校验</a>
+            <a class="checksum-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/SHA256SUMS.txt">SHA-256 校验</a>
           </div>
         </div>
       </section>

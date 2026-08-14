@@ -33,23 +33,23 @@ function normalizeNoteText(value) {
 export function normalizeReleaseNotes(releaseNotes) {
   const notes = Array.isArray(releaseNotes)
     ? releaseNotes.map((entry) => {
-      const version = entry?.version ? `Version ${entry.version}` : ''
+      const version = entry?.version ? `版本 / Version ${entry.version}` : ''
       return [version, normalizeNoteText(entry?.note)].filter(Boolean).join('\n')
     }).filter(Boolean).join('\n\n')
     : normalizeNoteText(releaseNotes)
-  if (!notes) return 'No release notes were provided for this version.'
+  if (!notes) return '未提供此版本的发行说明。\nNo release notes were provided for this version.'
   if (notes.length <= MAX_RELEASE_NOTES_LENGTH) return notes
-  return `${notes.slice(0, MAX_RELEASE_NOTES_LENGTH - 24).trimEnd()}\n\nRelease notes truncated.`
+  return `${notes.slice(0, MAX_RELEASE_NOTES_LENGTH - 48).trimEnd()}\n\n发行说明已截断。 / Release notes truncated.`
 }
 
 export function formatUpdateDetails(info, currentVersion) {
   const header = [
-    `Current version: ${currentVersion}`,
-    `New version: ${info?.version || 'unknown'}`,
-    info?.releaseName ? `Release: ${normalizeNoteText(info.releaseName)}` : '',
-    info?.releaseDate ? `Published: ${new Date(info.releaseDate).toLocaleString()}` : '',
+    `当前版本 / Current version: ${currentVersion}`,
+    `新版本 / New version: ${info?.version || 'unknown'}`,
+    info?.releaseName ? `发行 / Release: ${normalizeNoteText(info.releaseName)}` : '',
+    info?.releaseDate ? `发布时间 / Published: ${new Date(info.releaseDate).toLocaleString()}` : '',
   ].filter(Boolean)
-  return `${header.join('\n')}\n\nWhat's new\n${normalizeReleaseNotes(info?.releaseNotes)}`
+  return `${header.join('\n')}\n\n更新内容 / What's new\n${normalizeReleaseNotes(info?.releaseNotes)}`
 }
 
 function asErrorMessage(error) {
@@ -122,22 +122,22 @@ export class DesktopUpdateController {
     if (!this.enabled) {
       if (manual) await this.#showMessage({
         type: 'info',
-        title: 'Updates',
-        message: 'Update checks are available in the installed Windows app.',
-        buttons: ['OK'],
+        title: '更新 / Updates',
+        message: '更新检查仅在已安装的 Windows 应用中可用。\nUpdate checks are available in the installed Windows app.',
+        buttons: ['确定 / OK'],
       })
       return false
     }
     if (this.checking || this.downloading || this.prompting) {
       if (manual) await this.#showMessage({
         type: 'info',
-        title: 'Updates',
+        title: '更新 / Updates',
         message: this.downloading
-          ? 'An update is already downloading.'
+          ? '更新正在下载。\nAn update is already downloading.'
           : this.prompting
-            ? 'An update decision is already open.'
-            : 'An update check is already running.',
-        buttons: ['OK'],
+            ? '更新确认窗口已经打开。\nAn update decision is already open.'
+            : '更新检查正在进行。\nAn update check is already running.',
+        buttons: ['确定 / OK'],
       })
       return false
     }
@@ -168,10 +168,10 @@ export class DesktopUpdateController {
     try {
       result = await this.#showMessage({
         type: 'info',
-        title: `Update available: ${info?.version || 'new version'}`,
-        message: `DeepSeek Harness Desktop ${info?.version || ''} is available.`,
+        title: `发现新版本 / Update available: ${info?.version || 'new version'}`,
+        message: `DeepSeek Harness Desktop ${info?.version || ''} 已发布。\nA new version is available.`,
         detail: formatUpdateDetails(info, this.currentVersion),
-        buttons: ['Download update', 'Later'],
+        buttons: ['下载更新 / Download update', '稍后 / Later'],
         defaultId: 0,
         cancelId: 1,
         noLink: true,
@@ -199,9 +199,9 @@ export class DesktopUpdateController {
     this.log(`[updater] ${this.currentVersion} is up to date`)
     if (manual) await this.#showMessage({
       type: 'info',
-      title: 'No updates available',
-      message: `DeepSeek Harness Desktop ${this.currentVersion} is up to date.`,
-      buttons: ['OK'],
+      title: '暂无更新 / No updates available',
+      message: `DeepSeek Harness Desktop ${this.currentVersion} 已是最新版本。\nThe app is up to date.`,
+      buttons: ['确定 / OK'],
     })
   }
 
@@ -217,10 +217,10 @@ export class DesktopUpdateController {
     this.log(`[updater] version ${info?.version || 'unknown'} downloaded`)
     const result = await this.#showMessage({
       type: 'info',
-      title: 'Update ready to install',
-      message: `DeepSeek Harness Desktop ${info?.version || ''} has been downloaded.`,
-      detail: 'Restart the app to install the update. Your embedded DSH runtime will be stopped cleanly first.',
-      buttons: ['Restart and install', 'Later'],
+      title: '更新可以安装 / Update ready to install',
+      message: `DeepSeek Harness Desktop ${info?.version || ''} 已下载完成。\nThe update has been downloaded.`,
+      detail: '重启应用即可安装更新。内置 DSH 运行时会先安全停止。\nRestart the app to install the update. The embedded DSH runtime will be stopped cleanly first.',
+      buttons: ['重启并安装 / Restart and install', '稍后 / Later'],
       defaultId: 0,
       cancelId: 1,
       noLink: true,
@@ -247,10 +247,10 @@ export class DesktopUpdateController {
     this.log(`[updater] ${message}`)
     if (shouldShow) await this.#showMessage({
       type: 'error',
-      title: 'Update failed',
-      message: 'DeepSeek Harness Desktop could not complete the update.',
+      title: '更新失败 / Update failed',
+      message: 'DeepSeek Harness Desktop 未能完成更新。\nThe app could not complete the update.',
       detail: message,
-      buttons: ['OK'],
+      buttons: ['确定 / OK'],
     })
   }
 

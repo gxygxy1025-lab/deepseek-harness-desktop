@@ -8,7 +8,7 @@
 
 DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. It does not rewrite the interface: a hardened Electron window launches the official `@deepseek-ai/dsh` host locally and loads every plugin and skin from this repository unchanged.
 
-[Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Changelog](CHANGELOG.md)
+[Explore the product site](https://ningbainb.github.io/deepseek-harness-desktop/) · [Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Changelog](CHANGELOG.md)
 
 | Lossless original surface | Desktop Extension Dock |
 | --- | --- |
@@ -17,7 +17,7 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 - Keeps the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, and every skin;
 - Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
 - Adds crash recovery, sanitized rotating logs, window-state restore, strict navigation, and denied-by-default permissions;
-- Checks stable GitHub Releases, shows release notes, and asks before downloading or restarting to install;
+- Checks stable GitHub Releases, shows bilingual release notes, and asks before downloading or restarting to install;
 - Adds a dock for transactional community DSH bundle management and safe discovery/import of project, DSH, and Agents skills;
 - Bundles official DSH, pnpm, and native dependencies, so users do not need a separate Node.js installation.
 

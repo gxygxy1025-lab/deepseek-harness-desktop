@@ -2,6 +2,14 @@
 
 ## 0.1.3 - 2026-08-14
 
+中文：
+
+- 在所有运行时窗口中明确应用萌化 DeepSeek 图标，Windows 任务栏不再回退到 Electron 默认图标。
+- 新增稳定版 GitHub Release 检查、双语更新内容展示、用户确认下载、任务栏下载进度和用户确认重启安装。
+- 新增手动检查更新入口，并在发行资产中加入后续自动更新所需的 `latest.yml`。
+
+English:
+
 - Applied the kawaii DeepSeek icon explicitly to every runtime window so the Windows taskbar no longer falls back to the Electron icon.
 - Added stable GitHub Release checks, release-note display, user-confirmed downloads, taskbar download progress, and user-confirmed restart installation.
 - Added a manual update command and shipped the GitHub `latest.yml` metadata required by future desktop releases.

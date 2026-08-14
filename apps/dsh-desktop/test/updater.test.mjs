@@ -71,9 +71,10 @@ test('release notes are converted to safe readable text', () => {
     releaseDate: '2026-08-14T00:00:00.000Z',
     releaseNotes: [{ version: '1.1.0', note: '# Changes\n- Faster updates' }],
   }, '1.0.0')
-  assert.match(details, /Current version: 1\.0\.0/)
-  assert.match(details, /New version: 1\.1\.0/)
-  assert.match(details, /Version 1\.1\.0\nChanges\n- Faster updates/)
+  assert.match(details, /当前版本 \/ Current version: 1\.0\.0/)
+  assert.match(details, /新版本 \/ New version: 1\.1\.0/)
+  assert.match(details, /更新内容 \/ What's new/)
+  assert.match(details, /版本 \/ Version 1\.1\.0\nChanges\n- Faster updates/)
 })
 
 test('available update shows notes and respects Later', async () => {
@@ -86,6 +87,8 @@ test('available update shows notes and respects Later', async () => {
   })
   await tick()
   assert.equal(harness.messages.length, 1)
+  assert.match(harness.messages[0].title, /发现新版本 \/ Update available/)
+  assert.deepEqual(harness.messages[0].buttons, ['下载更新 / Download update', '稍后 / Later'])
   assert.match(harness.messages[0].detail, /Complete release notes/)
   assert.equal(harness.updater.downloads, 0)
 })
@@ -133,7 +136,7 @@ test('manual no-update result is visible while automatic errors stay silent', as
   await harness.controller.check({ manual: true })
   harness.updater.emit('update-not-available')
   await tick()
-  assert.match(harness.messages[0].message, /up to date/)
+  assert.match(harness.messages[0].message, /已是最新版本.*up to date/s)
 
   await harness.controller.check()
   harness.updater.emit('error', new Error('network unavailable'))
@@ -148,6 +151,7 @@ test('manual update errors are shown and clear taskbar progress', async () => {
   harness.updater.emit('error', new Error('metadata missing'))
   await tick()
   assert.equal(harness.messages.at(-1).type, 'error')
+  assert.match(harness.messages.at(-1).title, /更新失败 \/ Update failed/)
   assert.match(harness.messages.at(-1).detail, /metadata missing/)
   assert.equal(harness.progress.at(-1), -1)
 })
