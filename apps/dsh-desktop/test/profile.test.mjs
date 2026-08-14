@@ -7,7 +7,9 @@ import test from 'node:test'
 
 import {
   BUILTIN_BUNDLES,
-  BUILTIN_RUNTIME_PACKAGES,
+  DESKTOP_PATCH_CONFIG,
+  DESKTOP_SUPPORT_PACKAGES,
+  MANAGED_RUNTIME_PACKAGES,
   createDesktopProfileManifest,
   ensureDesktopProfile,
   materializeFilesystemPath,
@@ -63,18 +65,23 @@ test('profile bootstrap is idempotent and links every managed package', async ()
 
   const manifest = JSON.parse(await readFile(join(first.profileDir, 'package.json'), 'utf8'))
   assert.deepEqual(manifest.dsh.profile.bundles, BUILTIN_BUNDLES)
+  assert.equal(await readFile(join(first.profileDir, 'cordis.patch.yml'), 'utf8'), DESKTOP_PATCH_CONFIG)
   for (const [packageName, source] of packageRoots) {
     const linked = join(first.profileDir, 'node_modules', ...packagePathSegments(packageName))
     assert.equal(await realpath(linked), await realpath(source))
   }
 })
 
-test('runtime resolver finds the aggregate and every built-in child package', () => {
+test('runtime resolver finds every bundled and desktop support package', () => {
   const resolved = resolveRuntimePackages()
   assert.deepEqual([...resolved.keys()], [...resolved.keys()].toSorted())
-  for (const packageName of BUILTIN_RUNTIME_PACKAGES) {
+  for (const packageName of MANAGED_RUNTIME_PACKAGES) {
     assert.equal(resolved.has(packageName), true, `missing ${packageName}`)
   }
+  assert.deepEqual(DESKTOP_SUPPORT_PACKAGES, [
+    '@deepseek-ai/dsh-client-ui-directory-picker-browse',
+    '@deepseek-ai/dsh-host-directory-picker-browse',
+  ])
 })
 
 test('official DSH CLI composes the isolated desktop profile', async () => {
@@ -83,7 +90,7 @@ test('official DSH CLI composes the isolated desktop profile', async () => {
     await ensureDesktopProfile({ dshHome: root })
     const result = spawnSync(
       process.execPath,
-      [resolveDshCliPath(), '--profile', 'desktop', '--dump-default-config'],
+      [resolveDshCliPath(), '--profile', 'desktop', '--dump-config'],
       {
         encoding: 'utf8',
         env: { ...process.env, DSH_HOME: root },
@@ -93,6 +100,11 @@ test('official DSH CLI composes the isolated desktop profile', async () => {
     assert.equal(result.status, 0, result.stderr)
     assert.match(result.stdout, /ui-task-board/)
     assert.match(result.stdout, /ui-skin-center/)
+    assert.match(result.stdout, /directory-picker-desktop-host/)
+    assert.match(result.stdout, /dsh-host-directory-picker-browse/)
+    assert.match(result.stdout, /directory-picker-desktop-client/)
+    assert.match(result.stdout, /dsh-client-ui-directory-picker-browse/)
+    assert.doesNotMatch(result.stdout, /dsh-host-directory-picker-native/)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

@@ -1,23 +1,17 @@
-# DeepSeek Harness Desktop 0.1.1: natural Windows chrome
+# DeepSeek Harness Desktop 0.1.2: reliable folder selection and a faster installer
 
-DeepSeek Harness Desktop 0.1.1 is now available for Windows x64. This refinement replaces the disconnected bright Windows title and menu rows with a calm deep-sea title surface while retaining native minimize, maximize, close, resizing, keyboard menu access, and Snap layouts.
+DeepSeek Harness Desktop 0.1.2 is available for Windows x64.
 
-This is a lossless desktop port, not a rewritten interface. The application starts the official DeepSeek Harness host on loopback and loads the original Web UI with its complete plugin and skin collection. It adds a native single-instance lifecycle, bounded crash recovery, an isolated desktop profile, hardened Electron boundaries, sanitized rotating logs, and an Extension Dock for community plugins and project/user skills.
+This release fixes the reported `win32 folder dialog worker exited before reporting a result` failure by selecting the official DSH in-app directory browser through the supported profile patch mechanism. It keeps folder navigation, editable paths, hidden folders, and folder creation without relying on the failing native worker.
 
-The current release bundles 21 UI plugins and 9 selectable skins, including Miku and Trading. The packaged application passed 30 desktop tests, a 41-package runtime audit, and clean-profile startup tests against both the development runtime and packaged EXE.
+The release payload now contains 24.7% fewer files and the installer is 183.78 MiB, down from 190.84 MiB. A same-machine reference extraction improved from 93.00 seconds to 59.25 seconds, with normal antivirus and disk-cache variance. All original Web UI functionality, plugins, skins, skills, SSH, terminal, and native x64 modules remain included.
 
-- [Download DeepSeek Harness Desktop 0.1.1](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.1)
+The application also has a new multi-resolution chibi DeepSeek whale-girl icon for the executable, installer, and Windows shortcuts.
+
+- [Download DeepSeek Harness Desktop 0.1.2](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.2)
 - [Read the source and architecture notes](https://github.com/ningbainb/deepseek-harness-desktop)
-- Installer SHA-256: `349a458d594639045e791838dc32e35e61e48e293b25380cb54c8ec8ea4a49cf`
+- Installer SHA-256: `27045baffa89cf58cf3e103063faa61551c6b7aac860c07b543c3c5168392d71`
+
+The packaged application passed 32 desktop tests, a 43-package runtime audit, packaged pnpm execution, and real-EXE window and directory-picker tests.
 
 The community build is currently unsigned. Windows SmartScreen may show an unknown publisher, so download only from the Release page above and verify the checksum.
-
-## 中文
-
-DeepSeek Harness Desktop 0.1.1 Windows x64 版现已发布。本次将割裂感明显的亮色 Windows 标题栏和菜单条改为自然连贯的深海暗色顶栏，同时保留原生最小化、最大化、关闭、缩放、键盘菜单和 Snap 布局能力。
-
-这不是重写一套界面，而是把官方 DeepSeek Harness 本地主机与原版 Web UI 无损装进 EXE，完整保留插件与皮肤，并加入单实例生命周期、有限崩溃恢复、独立桌面 profile、Electron 安全边界、脱敏轮转日志，以及可管理社区插件和项目/用户技能的扩展坞。
-
-当前版本内置 21 个 UI 插件和 9 款可选皮肤，包含 Miku 与 Trading。成品已通过 30 项桌面测试、41 个运行包审计，并在全新 profile 下分别完成开发运行时与打包 EXE 实启测试。
-
-当前为社区未签名构建，Windows SmartScreen 可能显示“未知发布者”。请只从上方 Release 页面下载并核对 SHA-256。

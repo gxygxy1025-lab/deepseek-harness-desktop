@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 - 2026-08-14
+
+- Replaced the failing Windows native folder-dialog worker with the official DSH in-app directory browser.
+- Reduced the Windows release payload by pruning published source, declarations, development material, and non-x64 native artifacts after packaging.
+- Replaced the desktop and installer artwork with a cute anthropomorphic DeepSeek whale-girl icon.
+
 ## 0.1.1 - 2026-08-14
 
 Natural Windows chrome refinement.

@@ -3,8 +3,8 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  BUILTIN_RUNTIME_PACKAGES,
   DSH_BOOT_RUNTIME_PACKAGES,
+  MANAGED_RUNTIME_PACKAGES,
   packagePathSegments,
 } from '../src/profile.mjs'
 
@@ -14,7 +14,7 @@ const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
 const requiredPackages = [
   ...DSH_BOOT_RUNTIME_PACKAGES,
   'pnpm',
-  ...BUILTIN_RUNTIME_PACKAGES,
+  ...MANAGED_RUNTIME_PACKAGES,
 ]
 
 for (const packageName of requiredPackages) {

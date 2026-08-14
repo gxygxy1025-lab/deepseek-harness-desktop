@@ -6,11 +6,16 @@ import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import {
   BUILTIN_BUNDLES,
   BUILTIN_RUNTIME_PACKAGES,
+  DESKTOP_SUPPORT_PACKAGES,
   materializeFilesystemPath,
   packagePathSegments,
 } from '../profile.mjs'
 
-const PROTECTED_PACKAGES = new Set([...BUILTIN_BUNDLES, ...BUILTIN_RUNTIME_PACKAGES])
+const PROTECTED_PACKAGES = new Set([
+  ...BUILTIN_BUNDLES,
+  ...BUILTIN_RUNTIME_PACKAGES,
+  ...DESKTOP_SUPPORT_PACKAGES,
+])
 const VERSION_PATTERN = /^[a-z0-9][a-z0-9._+~^*<>=|-]*$/i
 
 export function validatePluginSpec(value) {
@@ -56,7 +61,9 @@ export function createPluginInventory(manifest) {
       name,
       requested,
       builtIn: PROTECTED_PACKAGES.has(name),
-      enabled: bundles.has(name) || BUILTIN_RUNTIME_PACKAGES.includes(name),
+      enabled: bundles.has(name)
+        || BUILTIN_RUNTIME_PACKAGES.includes(name)
+        || DESKTOP_SUPPORT_PACKAGES.includes(name),
     }))
     .toSorted((left, right) => Number(right.builtIn) - Number(left.builtIn) || left.name.localeCompare(right.name))
 }

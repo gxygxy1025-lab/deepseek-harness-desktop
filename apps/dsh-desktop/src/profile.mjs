@@ -43,6 +43,16 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-web-ui-compat',
 ].toSorted())
 
+export const DESKTOP_SUPPORT_PACKAGES = Object.freeze([
+  '@deepseek-ai/dsh-client-ui-directory-picker-browse',
+  '@deepseek-ai/dsh-host-directory-picker-browse',
+].toSorted())
+
+export const MANAGED_RUNTIME_PACKAGES = Object.freeze([
+  ...BUILTIN_RUNTIME_PACKAGES,
+  ...DESKTOP_SUPPORT_PACKAGES,
+].toSorted())
+
 // DSH rc.6 exposes these runtime modules as peers. Keep them explicit so the
 // packaged host is hermetic instead of resolving through a developer machine.
 export const DSH_BOOT_RUNTIME_PACKAGES = Object.freeze([
@@ -69,6 +79,15 @@ export const DSH_BOOT_RUNTIME_PACKAGES = Object.freeze([
 
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/
 const ROOT_CONFIG = '[]\n'
+export const DESKTOP_PATCH_CONFIG = `- id: directory-picker
+  name: '@deepseek-ai/dsh-host-directory-picker-auto'
+  disabled: true
+- insert:
+    - id: directory-picker-desktop-host
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: directory-picker-desktop-client
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+`
 const WORKSPACE_CONFIG = `packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n`
 
 export function packagePathSegments(packageName) {
@@ -207,7 +226,7 @@ export async function ensureDesktopProfile({
 
   let changed = false
   changed = (await writeIfChanged(join(profileDir, 'cordis.yml'), ROOT_CONFIG)) || changed
-  changed = (await writeIfChanged(join(profileDir, 'cordis.patch.yml'), ROOT_CONFIG)) || changed
+  changed = (await writeIfChanged(join(profileDir, 'cordis.patch.yml'), DESKTOP_PATCH_CONFIG)) || changed
   changed = (await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), WORKSPACE_CONFIG)) || changed
   changed = (await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)) || changed
 
@@ -262,7 +281,7 @@ function readJsonSync(path) {
 }
 
 export function resolveRuntimePackages(
-  packageNames = BUILTIN_RUNTIME_PACKAGES,
+  packageNames = MANAGED_RUNTIME_PACKAGES,
   initialAnchor = import.meta.url,
 ) {
   const pending = new Set([...packageNames].toSorted())

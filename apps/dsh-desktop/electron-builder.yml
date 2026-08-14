@@ -6,6 +6,7 @@ asar: true
 asarUnpack:
   - node_modules/**
 compression: normal
+afterPack: scripts/after-pack.cjs
 
 directories:
   output: dist
