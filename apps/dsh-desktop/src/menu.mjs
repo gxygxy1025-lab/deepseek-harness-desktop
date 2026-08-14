@@ -1,4 +1,4 @@
-export function installApplicationMenu({ Menu, app, shell, controller, openExtensions, openLogs }) {
+export function installApplicationMenu({ Menu, app, shell, controller, openExtensions, openLogs, checkForUpdates }) {
   const template = [
     {
       label: '应用 / App',
@@ -31,6 +31,8 @@ export function installApplicationMenu({ Menu, app, shell, controller, openExten
     {
       label: '帮助 / Help',
       submenu: [
+        { label: '检查更新 / Check for Updates', click: () => void checkForUpdates({ manual: true }) },
+        { type: 'separator' },
         { label: 'GitHub 项目', click: () => void shell.openExternal('https://github.com/ningbainb/deepseek-harness-desktop') },
         { label: `版本 / Version ${app.getVersion()}`, enabled: false },
       ],

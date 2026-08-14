@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdir } from 'node:fs/promises'
 
+import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
 import { PluginManager } from './extensions/plugins.mjs'
@@ -11,6 +12,7 @@ import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
 import { DshRuntimeController } from './runtime-controller.mjs'
+import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
 import { installWindowChrome, windowChromeBrowserOptions } from './window-chrome.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
@@ -30,15 +32,24 @@ function runtimeWorkspace(app) {
 
 export async function startElectronApp(metadata) {
   const electron = await import('electron')
-  const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = electron
+  const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell } = electron
   if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
   if (!app.requestSingleInstanceLock()) {
     app.quit()
     return
   }
 
+  app.setName(metadata.productName)
   app.setAppUserModelId(metadata.appId)
   await app.whenReady()
+
+  const appIconPath = resolveAppIconPath({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    sourceDir: SOURCE_DIR,
+  })
+  const appIcon = nativeImage.createFromPath(appIconPath)
+  if (appIcon.isEmpty()) throw new Error(`desktop app icon is missing or invalid: ${appIconPath}`)
 
   const userData = app.getPath('userData')
   const logsDirectory = join(userData, 'logs')
@@ -67,6 +78,7 @@ export async function startElectronApp(metadata) {
     minHeight: 540,
     show: false,
     title: metadata.productName,
+    icon: appIcon,
     backgroundColor: '#02080d',
     ...windowChromeBrowserOptions(),
     webPreferences: {
@@ -78,6 +90,7 @@ export async function startElectronApp(metadata) {
       spellcheck: false,
     },
   })
+  applyWindowIcon(mainWindow, appIcon)
   const removeMainWindowChrome = installWindowChrome({
     browserWindow: mainWindow,
     title: 'DeepSeek Harness',
@@ -130,6 +143,7 @@ export async function startElectronApp(metadata) {
       show: false,
       parent: mainWindow,
       title: 'Extension Dock',
+      icon: appIcon,
       backgroundColor: '#071117',
       ...windowChromeBrowserOptions(),
       webPreferences: {
@@ -141,6 +155,7 @@ export async function startElectronApp(metadata) {
         spellcheck: false,
       },
     })
+    applyWindowIcon(extensionWindow, appIcon)
     const removeExtensionWindowChrome = installWindowChrome({
       browserWindow: extensionWindow,
       title: 'DeepSeek Harness',
@@ -175,16 +190,6 @@ export async function startElectronApp(metadata) {
     dshHome,
     agentsHome: process.env.DSH_AGENTS_HOME,
   })
-  const openLogs = () => shell.openPath(logsDirectory)
-  installApplicationMenu({
-    Menu,
-    app,
-    shell,
-    controller,
-    openExtensions: () => void createExtensionWindow(),
-    openLogs,
-  })
-
   const loadStartup = async () => {
     activeOrigin = undefined
     if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadFile(STARTUP_PATH)
@@ -222,21 +227,66 @@ export async function startElectronApp(metadata) {
 
   let quitInProgress = false
   let runtimeStopped = false
+  let shutdownPromise
+  let updateController
+  const shutdownRuntime = () => {
+    if (runtimeStopped) return Promise.resolve()
+    if (shutdownPromise) return shutdownPromise
+    shutdownPromise = Promise.resolve(saveWindowState())
+      .catch((error) => void logStore.append(`[shutdown] ${error.message}`))
+      .then(() => controller.stop())
+      .catch((error) => void logStore.append(`[shutdown] ${error.message}`))
+      .finally(() => {
+        runtimeStopped = true
+        updateController?.dispose()
+        removeMainWindowChrome()
+        unregisterIpc()
+        unregisterExtensionIpc()
+      })
+    return shutdownPromise
+  }
+
+  let autoUpdater
+  if (app.isPackaged && process.platform === 'win32' && process.env.DSH_DESKTOP_DISABLE_UPDATES !== '1') {
+    try {
+      autoUpdater = await loadElectronAutoUpdater()
+    } catch (error) {
+      void logStore.append(`[updater] failed to load: ${error.message}`)
+    }
+  }
+  if (process.env.DSH_DESKTOP_VERIFY_UPDATER === '1' && !autoUpdater) {
+    throw new Error('packaged updater verification failed')
+  }
+  updateController = new DesktopUpdateController({
+    updater: autoUpdater,
+    dialog,
+    getWindow: () => mainWindow,
+    currentVersion: app.getVersion(),
+    enabled: Boolean(autoUpdater),
+    log: (line) => void logStore.append(line),
+    beforeInstall: async () => {
+      quitInProgress = true
+      await shutdownRuntime()
+    },
+  })
+  const openLogs = () => shell.openPath(logsDirectory)
+  installApplicationMenu({
+    Menu,
+    app,
+    shell,
+    controller,
+    openExtensions: () => void createExtensionWindow(),
+    openLogs,
+    checkForUpdates: (options) => updateController.check(options),
+  })
+  updateController.start()
+
   app.on('before-quit', (event) => {
     if (runtimeStopped) return
     event.preventDefault()
     if (quitInProgress) return
     quitInProgress = true
-    void Promise.resolve(saveWindowState())
-      .catch(() => {})
-      .then(() => controller.stop())
-      .finally(() => {
-        runtimeStopped = true
-        removeMainWindowChrome()
-        unregisterIpc()
-        unregisterExtensionIpc()
-        app.quit()
-      })
+    void shutdownRuntime().then(() => app.quit())
   })
   app.on('window-all-closed', () => app.quit())
 }

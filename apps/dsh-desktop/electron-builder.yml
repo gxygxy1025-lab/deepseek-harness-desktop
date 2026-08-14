@@ -8,6 +8,10 @@ asarUnpack:
 compression: normal
 afterPack: scripts/after-pack.cjs
 
+extraResources:
+  - from: build/icon.png
+    to: app-icon.png
+
 directories:
   output: dist
   buildResources: build

@@ -40,4 +40,5 @@ jobs:
           files: |
             apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe
             apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe.blockmap
+            apps/dsh-desktop/dist/latest.yml
             apps/dsh-desktop/dist/SHA256SUMS.txt

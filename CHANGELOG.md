@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 - 2026-08-14
+
+- Applied the kawaii DeepSeek icon explicitly to every runtime window so the Windows taskbar no longer falls back to the Electron icon.
+- Added stable GitHub Release checks, release-note display, user-confirmed downloads, taskbar download progress, and user-confirmed restart installation.
+- Added a manual update command and shipped the GitHub `latest.yml` metadata required by future desktop releases.
+
 ## 0.1.2 - 2026-08-14
 
 - Replaced the failing Windows native folder-dialog worker with the official DSH in-app directory browser.

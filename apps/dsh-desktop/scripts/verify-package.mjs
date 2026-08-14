@@ -13,6 +13,7 @@ const resources = resolve(process.argv[2] || join(appDir, 'dist', 'win-unpacked'
 const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
 const requiredPackages = [
   ...DSH_BOOT_RUNTIME_PACKAGES,
+  'electron-updater',
   'pnpm',
   ...MANAGED_RUNTIME_PACKAGES,
 ]
@@ -26,5 +27,7 @@ for (const packageName of requiredPackages) {
 await access(join(unpackedModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
 await access(join(unpackedModules, 'pnpm', 'bin', 'pnpm.mjs'))
 await access(join(resources, 'app.asar'))
+await access(join(resources, 'app-icon.png'))
+await access(join(resources, 'app-update.yml'))
 
 console.log(`verified ${requiredPackages.length} packaged runtime packages in ${resources}`)

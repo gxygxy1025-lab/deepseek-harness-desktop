@@ -23,6 +23,7 @@ try {
       ...process.env,
       DSH_DESKTOP_USER_DATA: resolve(temporary, 'user-data'),
       DSH_HOME: resolve(temporary, 'dsh-home'),
+      DSH_DESKTOP_VERIFY_UPDATER: packagedExecutable ? '1' : '0',
     },
   })
   const page = await electronApp.firstWindow()
@@ -37,17 +38,28 @@ try {
   assert.equal(state.context, 'Web Surface')
   assert.equal(state.paddingTop, '46px')
   assert.equal(state.chromeCount, 1)
-  const nativeWindowState = await electronApp.evaluate(({ BrowserWindow }) => {
+  const nativeWindowState = await electronApp.evaluate(({ app, BrowserWindow, Menu, nativeImage }) => {
     const window = BrowserWindow.getAllWindows()[0]
+    const helpMenu = Menu.getApplicationMenu()?.items.find((item) => item.label.includes('Help'))
+    const updateMenu = helpMenu?.submenu?.items.find((item) => item.label.includes('Check for Updates'))
+    const packagedIcon = app.isPackaged
+      ? nativeImage.createFromPath(`${process.resourcesPath}\\app-icon.png`)
+      : undefined
     return {
+      appName: app.getName(),
       closable: window.isClosable(),
+      hasUpdateMenu: Boolean(updateMenu),
+      packagedIconValid: packagedIcon ? !packagedIcon.isEmpty() : true,
       maximizable: window.isMaximizable(),
       menuBarVisible: window.isMenuBarVisible(),
       minimizable: window.isMinimizable(),
     }
   })
   assert.deepEqual(nativeWindowState, {
+    appName: 'DeepSeek Harness Desktop',
     closable: true,
+    hasUpdateMenu: true,
+    packagedIconValid: true,
     maximizable: true,
     menuBarVisible: false,
     minimizable: true,

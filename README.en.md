@@ -17,6 +17,7 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 - Keeps the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, and every skin;
 - Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
 - Adds crash recovery, sanitized rotating logs, window-state restore, strict navigation, and denied-by-default permissions;
+- Checks stable GitHub Releases, shows release notes, and asks before downloading or restarting to install;
 - Adds a dock for transactional community DSH bundle management and safe discovery/import of project, DSH, and Agents skills;
 - Bundles official DSH, pnpm, and native dependencies, so users do not need a separate Node.js installation.
 

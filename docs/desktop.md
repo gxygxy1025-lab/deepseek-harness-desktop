@@ -16,6 +16,7 @@ The managed profile lives at `~/.dsh/profiles/desktop`. It composes `@deepseek-a
 | Plugins | Registry package syntax only, protected built-ins, serialized pnpm changes, DSH bundle validation, rollback |
 | Skills | Project/DSH/Agents root discovery, official precedence, shadow reporting, safe folder import |
 | Window | Single instance, persisted visible geometry, native menu, download destination prompt |
+| Updates | Stable GitHub Releases, release notes, user-confirmed download/install, taskbar progress |
 | Security | Sandbox, context isolation, no Node integration, loopback navigation allowlist, denied permissions |
 
 ## Performance and size
@@ -37,6 +38,8 @@ The large installed size is intentional: the release keeps the official DSH runt
 Download the x64 installer from GitHub Releases and verify its SHA-256 against `SHA256SUMS.txt`. The build is currently unsigned, so SmartScreen may display an unknown publisher. The default per-user location is recommended. Custom installation roots should be kept short because some transitive native tooling still depends on the legacy Win32 260-character path limit.
 
 No separate Node.js or pnpm installation is required for release users.
+
+Starting with version 0.1.3, the installed app checks stable GitHub Releases after startup and every six hours. Open `Help > Check for Updates` to check immediately. The app never downloads or installs an update without confirmation. Automatic check failures remain in the desktop log; manual check failures are shown to the user.
 
 ## Extension Dock
 
