@@ -1,8 +1,14 @@
-# dsh-web-ui · DSH Web UI
+# DeepSeek Harness Desktop
 
 中文 | [English](README.en.md)
 
 ![dsh-web-ui](docs/dsh-web-ui-banner.png)
+
+## 社区用户交流群
+
+QQ 群：**1105158177** · **[点击一键加入 QQ 群](https://qm.qq.com/q/vehlNjaeye)**
+
+<a href="https://qm.qq.com/q/vehlNjaeye"><img src="website/assets/qq-group-1105158177.jpg" width="280" alt="DeepSeek Harness Desktop QQ 群 1105158177 加群二维码"></a>
 
 ## Windows 桌面版
 
@@ -10,30 +16,40 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 [浏览产品介绍](https://ningbainb.github.io/deepseek-harness-desktop/) · [下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [更新日志](CHANGELOG.md)
 
-### 社区用户交流群
+### 最新版：0.1.6
 
-QQ 群：**1105158177** · **[点击一键加入 QQ 群](https://qm.qq.com/q/vehlNjaeye)**
+`desktop-v0.1.6` 已作为 Latest 稳定版发布：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.6) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.6/DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.6/SHA256SUMS.txt)
 
-<a href="https://qm.qq.com/q/vehlNjaeye"><img src="website/assets/qq-group-1105158177.jpg" width="280" alt="DeepSeek Harness Desktop QQ 群 1105158177 加群二维码"></a>
+| 版本 | 主要更新 |
+| --- | --- |
+| **0.1.6** | 内置腾讯官方 QQ Bot 与扫码 Connector；在扩展坞完成二维码绑定、刷新、取消、重新绑定和解绑，QQ 私聊与群聊可直接接入桌面版 Harness。AppSecret 使用 Windows 凭据保护加密，只注入 DSH 子进程。 |
+| **0.1.5** | 原生标题栏跟随亮色/暗色主题；全屏弹窗避开标题栏安全区；修复安装版皮肤发现与切换，并内置 `dshmarket` 和 `dsh-plugin-hub`。 |
+| **0.1.4** | 桌宠迁移到全局 Shell Overlay，首页和设置页均可见；恢复五张 Web UI 插件配置卡；皮肤中心完整展示安装版随附的九套皮肤。 |
+| **0.1.3** | 加入稳定版 GitHub Release 更新检查、双语更新说明、用户确认下载、任务栏进度和二次确认安装。 |
 
 | 原版界面无损加载 | 桌面扩展坞 |
 | --- | --- |
 | ![桌面启动界面](docs/screenshots/desktop-startup.png) | ![插件与技能扩展坞](docs/screenshots/desktop-extension-dock.png) |
 
 - 保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物与全部皮肤；
+- 内置腾讯官方 QQ Bot，可在扩展坞扫码绑定 QQ 私聊与群聊，无需编辑 YAML 或打开后台终端；
 - 独立 `desktop` profile，不覆盖既有 DSH 配置，运行时仅监听回环地址；
 - 内置崩溃恢复、日志脱敏与轮转、窗口状态恢复、严格导航与权限策略；
 - 内置 GitHub Release 更新检查，先展示中英双语更新内容，再由用户确认下载和重启安装；
-- 扩展坞支持社区 DSH bundle 安装/回滚，以及项目、DSH、Agents 技能发现与安全导入；
+- 扩展坞支持社区 DSH bundle 安装/回滚、内置插件市场，以及项目、DSH、Agents 技能发现与安全导入；
 - 安装包自带官方 DSH、pnpm 与原生依赖，无需另外安装 Node.js。
 
-当前公开构建未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目 Releases 下载并核对 SHA-256。默认安装路径已经过验证；自定义安装路径不宜过长，以免触发传统 Win32 的 260 字符限制。
-
-dsh-web-ui 是 DeepSeek Harness（DSH）Web UI 的插件与皮肤集合：任务看板、Git 图谱、右侧面板、移动端远程、远程连接、鲸鱼娘宠物、实时令牌统计，以及皮肤中心。所有插件既可独立安装，也可通过聚合包一次装齐。
+桌面版已预装任务看板、Git 图谱、右侧面板、移动端远程、远程连接、鲸鱼娘宠物、实时令牌统计、插件市场和皮肤中心。下载安装 EXE 即可使用，不需要另外安装 DSH、Node.js 或执行插件命令。
 
 ![DSH Web UI 主界面](docs/screenshots/13-hero-main.png)
 
 ## 功能插件
+
+### QQ 机器人扫码接入（桌面版 0.1.6）
+
+桌面版内置腾讯官方 `@tencent-connect/dsh-qqbot` 0.2.0 和 `@tencent-connect/qqbot-connector` 1.2.0。在扩展坞打开 QQ Bot 卡片即可获取自动刷新的二维码，使用手机 QQ 扫码后，QQ 私聊与群聊便可连接到本机 Harness；同时支持取消、重新绑定和彻底解绑。
+
+未绑定时插件保持禁用，不会让隐藏的后台进程等待终端扫码，也不会拖慢 Web UI 启动。绑定成功后桌面端会自动启用插件并重启 DSH。AppSecret 由 Electron `safeStorage` 结合 Windows 系统凭据保护加密保存，不会发送到渲染页面、写入日志或明文进入 `cordis.patch.yml`；运行时只通过子进程环境注入。
 
 ### 任务看板
 
@@ -59,7 +75,7 @@ dsh-web-ui 是 DeepSeek Harness（DSH）Web UI 的插件与皮肤集合：任务
 - **预览**：多标签预览 markdown、HTML、代码、diff、CSV、PDF、Office、图片与文本等格式，支持源码 / 预览切换、分屏编辑与保存；
 - **变更（SCM）**：真实 git 变更面板，支持 stage / unstage / discard；
 - 面板宽度可拖拽调整，双击把手复位默认宽度，折叠状态与宽度按项目持久化；
-- 8 款皮肤全部适配右侧面板，换肤后面板随之融入主题。
+- 9 款皮肤全部适配右侧面板，换肤后面板随之融入主题。
 
 ![右侧面板](docs/screenshots/19-right-panel.png)
 
@@ -99,9 +115,13 @@ dsh-web-ui 是 DeepSeek Harness（DSH）Web UI 的插件与皮肤集合：任务
 
 ### 设置中心
 
-全部插件的开关与参数统一收纳于「设置 > 插件配置」，修改即时生效。
+全部插件的开关与参数统一收纳于「设置 > 插件配置」，修改即时生效。桌面版会明确开放移动端远程控制、皮肤中心、实时令牌估算、任务看板和宠物五张配置卡，不会因 DSH Host 的设置命名空间过滤而缺项。
 
 ![插件配置中心](docs/screenshots/02-settings-web-ui-plugins.png)
+
+### 插件市场与扩展坞
+
+桌面 profile 内置 `dshmarket` 1.0.3 与 `dsh-plugin-hub` 0.1.0。市场安装目标固定为隔离的 `desktop` profile，支持社区 DSH bundle 的发现、安装、事务回滚和保留升级；项目技能、DSH 技能与 Agents 技能也可在扩展坞中发现并经过安全检查后导入。
 
 ## 皮肤
 
@@ -145,66 +165,15 @@ dsh-web-ui 是 DeepSeek Harness（DSH）Web UI 的插件与皮肤集合：任务
 
 其余三款：QQ2008 怀旧版（水晶蓝配色与企鹅元素）、同花顺风格（行情元素融入界面）、龙的传人（朱砂龙印主题）。
 
-## 安装
+## 下载、校验与升级
 
-DSH 插件通过 `dsh plugin` 命令安装进 **profile**（`dsh web` 对应 `web` profile）。推荐直接安装聚合包 `dsh-web-ui-all`——一个包装齐全部功能插件与皮肤；只想用皮肤则装 `dsh-skins`。
+1. 从 [GitHub Releases](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) 下载最新的 Windows x64 安装包。
+2. 运行 `DeepSeek-Harness-Desktop-Setup-<版本号>-x64.exe` 完成安装；DSH、插件、皮肤、pnpm 和原生依赖均已随安装包提供。
+3. 如需核验文件完整性，请下载同一 Release 中的 `SHA256SUMS.txt` 并比对安装包 SHA-256。
 
-### 方式一：从 npm 安装（推荐）
+应用会检查稳定版 GitHub Release，展示中英双语更新说明，并在下载和重启安装前分别请求确认。覆盖升级不会删除既有 `DSH_HOME`、桌面 profile、社区 bundle、桌宠状态、皮肤配置或已加密的 QQ Bot 凭据。
 
-插件已发布到 npm（`@linxin666` scope），一条命令装齐：
-
-```sh
-dsh plugin --profile web add @linxin666/dsh-web-ui-all
-```
-
-装完重启 `dsh web`，侧边栏即可看到全部插件入口。只想用皮肤则装 `@linxin666/dsh-skins`。
-
-> 首次安装若提示 `ERR_PNPM_IGNORED_BUILDS`（pnpm 拒绝依赖的构建脚本），按提示把 `cloudflared` / `cpu-features` / `ssh2` 加入 profile 的 `pnpm-workspace.yaml` `allowBuilds` 后重新执行即可。
-
-### 方式二：从 GitHub 仓库安装（改代码调试）
-
-插件包已在 npm 发布，仓库安装仅供开发调试（需要 Node.js >= 22 与 pnpm）：
-
-```sh
-# 1. 克隆仓库
-git clone https://github.com/zhu1090093659/dsh-web-ui.git
-cd dsh-web-ui
-
-# 2. 安装依赖并构建
-pnpm install
-pnpm -r build
-
-# 3. 把全家桶链接进 web profile（推荐，先链接全部子包再注册聚合包）
-node scripts/link-profile.mjs
-dsh plugin --profile web add link:$(pwd)/packages/dsh-web-ui-all
-
-# 4. 重启 dsh web，侧边栏即可看到全部插件入口
-dsh web
-```
-
-> 只想用皮肤：第 3 步只执行 link-profile 后安装 `packages/dsh-skins` 即可。
->
-> 注意：profile 目录不是 pnpm workspace，聚合包里的 `workspace:*` 依赖会回退拉取 npm 已发布版本；
-> 若 npm 版本滞后或损坏会出现「宿主已挂载但 UI 不显示」，此时先用 `node scripts/link-profile.mjs`
-> 让全部子包走仓库构建产物。
-
-### 单独安装某个插件
-
-不想装全家桶时，可单独安装任意插件（npm 已发布，直接用包名）：
-
-```sh
-dsh plugin --profile web add @linxin666/dsh-client-ui-task-board   # 任务看板
-dsh plugin --profile web add @linxin666/dsh-ssh                    # 远程连接（SSH）
-dsh plugin --profile web add @linxin666/dsh-pet                    # 鲸鱼娘宠物
-```
-
-### 验证与卸载
-
-安装成功后重启 `dsh web`，侧边栏出现对应入口即生效；也可用 `dsh --profile web --dump-config` 确认插件配置层已挂载。若侧边栏没有新入口，多半是安装后没有重启 `dsh web`。
-
-卸载：`dsh plugin --profile web remove @linxin666/dsh-web-ui-all`，然后重启 `dsh web`。
-
-技术细节见 [docs/plugins.md](docs/plugins.md)。
+当前安装包没有商业代码签名，Windows SmartScreen 可能显示“未知发布者”。请只使用本项目 Release 页面提供的安装包；推荐采用默认安装路径，避免过长路径触发传统 Win32 限制。
 
 ## 来源与版权
 
