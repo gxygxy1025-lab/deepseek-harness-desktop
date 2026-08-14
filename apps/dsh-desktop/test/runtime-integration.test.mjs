@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -62,12 +62,29 @@ test('official DSH host serves the complete desktop profile', { timeout: 60_000 
       })
       assert.equal(bundle.ok, true, `${skinId} skin bundle was not served`)
     }
+    const marketStatus = await fetch(new URL('/dsh-market/installed', url), {
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(marketStatus.ok, true, 'dshmarket status route was not served')
+    assert.equal((await marketStatus.json()).profile, 'desktop')
 
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage()
     await page.goto(url, { waitUntil: 'domcontentloaded' })
     await page.locator('[data-pet-dock]').waitFor({ state: 'attached', timeout: 10_000 })
     await page.getByRole('button', { name: 'whale girl' }).waitFor({ state: 'visible', timeout: 10_000 })
+    await page.getByRole('button', { name: '插件商店' }).waitFor({ state: 'visible', timeout: 10_000 })
+
+    const applySkin = await fetch(new URL('/api/skin-center/apply', url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ skin: 'qq98' }),
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(applySkin.ok, true)
+    assert.equal((await applySkin.json()).active, 'qq98')
+    const desktopPatch = await readFile(join(root, 'profiles', 'desktop', 'cordis.patch.yml'), 'utf8')
+    assert.match(desktopPatch, /- id: ui-skin-qq98/u)
   } catch (error) {
     error.message = `${error.message}\nRecent runtime log:\n${await logs.tail(80)}`
     throw error

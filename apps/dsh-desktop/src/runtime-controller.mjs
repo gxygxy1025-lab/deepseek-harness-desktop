@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { delimiter } from 'node:path'
 
 const READY_LINE = /^dsh web:\s+(http:\/\/\S+)/u
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
@@ -79,6 +80,7 @@ export class DshRuntimeController extends EventEmitter {
     probeReady = probeHttpReady,
     schedule = setTimeout,
     cancelSchedule = clearTimeout,
+    pathEntries = [],
   }) {
     super()
     if (!cliPath || !cwd || !dshHome) throw new TypeError('cliPath, cwd, and dshHome are required')
@@ -94,6 +96,7 @@ export class DshRuntimeController extends EventEmitter {
     this.probeReady = probeReady
     this.schedule = schedule
     this.cancelSchedule = cancelSchedule
+    this.pathEntries = pathEntries
     this.child = undefined
     this.readyPromise = undefined
     this.restartTimer = undefined
@@ -130,7 +133,10 @@ export class DshRuntimeController extends EventEmitter {
     const environment = {
       ...process.env,
       DSH_HOME: this.dshHome,
+      DSH_PROFILE: 'desktop',
+      DSH_SKIN_PROFILE: 'desktop',
       ELECTRON_RUN_AS_NODE: '1',
+      PATH: [...this.pathEntries, process.env.PATH].filter(Boolean).join(delimiter),
     }
     try {
       this.child = this.spawnProcess(

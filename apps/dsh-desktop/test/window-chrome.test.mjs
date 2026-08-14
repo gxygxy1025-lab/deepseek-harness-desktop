@@ -7,10 +7,12 @@ import {
   installWindowChrome,
   WINDOW_CHROME_CSS,
   WINDOW_CHROME_HEIGHT,
+  normalizeWindowChromeTheme,
+  setWindowChromeTheme,
   windowChromeBrowserOptions,
 } from '../src/window-chrome.mjs'
 
-test('window chrome uses a native overlay with a compact dark caption area', () => {
+test('window chrome uses a native overlay with a compact caption area', () => {
   assert.equal(WINDOW_CHROME_HEIGHT, 46)
   assert.deepEqual(windowChromeBrowserOptions(), {
     autoHideMenuBar: true,
@@ -23,6 +25,8 @@ test('window chrome uses a native overlay with a compact dark caption area', () 
   })
   assert.match(WINDOW_CHROME_CSS, /-webkit-app-region: drag/)
   assert.match(WINDOW_CHROME_CSS, /padding-top: var\(--dsh-desktop-window-chrome-height\)/)
+  assert.match(WINDOW_CHROME_CSS, /data-dsh-desktop-chrome-theme="light"/)
+  assert.match(WINDOW_CHROME_CSS, /dsh-desktop-modal-layer/)
 })
 
 test('window chrome script keeps labels as text content', () => {
@@ -32,7 +36,20 @@ test('window chrome script keeps labels as text content', () => {
   })
   assert.match(script, /textContent = data\.title/)
   assert.match(script, /textContent = data\.context/)
+  assert.match(script, /MutationObserver/)
+  assert.match(script, /setWindowChromeTheme/)
+  assert.match(script, /dsh-desktop-modal-layer/)
   assert.doesNotMatch(script, /DeepSeek <Harness><\/span>/)
+})
+
+test('window chrome theme validation and native overlay are bounded', () => {
+  assert.equal(normalizeWindowChromeTheme('light'), 'light')
+  assert.equal(normalizeWindowChromeTheme('dark'), 'dark')
+  assert.throws(() => normalizeWindowChromeTheme('transparent'), /window chrome theme/)
+  const calls = []
+  const browserWindow = { setTitleBarOverlay: (options) => calls.push(options) }
+  assert.equal(setWindowChromeTheme(browserWindow, 'light'), 'light')
+  assert.deepEqual(calls, [{ color: '#eef2f8', symbolColor: '#1f2937', height: 46 }])
 })
 
 test('window chrome applies CSS before mounting the drag surface', async () => {

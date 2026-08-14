@@ -4,6 +4,7 @@ const api = Object.freeze({
   getInfo: () => ipcRenderer.invoke('desktop:info'),
   getStatus: () => ipcRenderer.invoke('desktop:status'),
   action: (action) => ipcRenderer.invoke('desktop:action', action),
+  setWindowChromeTheme: (theme) => ipcRenderer.invoke('desktop:window-chrome-theme', theme),
   listExtensions: () => ipcRenderer.invoke('extensions:list'),
   installPlugin: (spec) => ipcRenderer.invoke('extensions:plugin-install', spec),
   removePlugin: (name) => ipcRenderer.invoke('extensions:plugin-remove', name),

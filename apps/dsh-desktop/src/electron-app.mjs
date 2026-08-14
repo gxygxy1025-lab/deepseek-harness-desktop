@@ -1,19 +1,19 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
-import { PluginManager } from './extensions/plugins.mjs'
+import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
 import { registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
 import { DshRuntimeController } from './runtime-controller.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
-import { installWindowChrome, windowChromeBrowserOptions } from './window-chrome.mjs'
+import { installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
@@ -28,6 +28,20 @@ function runtimeHome() {
 function runtimeWorkspace(app) {
   if (!app.isPackaged) return join(SOURCE_DIR, '..', '..', '..')
   return homedir()
+}
+
+export async function ensurePnpmCommandShim({ directory, executable, pnpmCli }) {
+  await mkdir(directory, { recursive: true })
+  const path = join(directory, process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm')
+  const content = process.platform === 'win32'
+    ? `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${executable}" "${pnpmCli}" %*\r\n`
+    : `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${executable}" "${pnpmCli}" "$@"\n`
+  const existing = await readFile(path, 'utf8').catch((error) => {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  })
+  if (existing !== content) await writeFile(path, content, { encoding: 'utf8', mode: 0o755 })
+  return directory
 }
 
 export async function startElectronApp(metadata) {
@@ -59,6 +73,11 @@ export async function startElectronApp(metadata) {
   const ensureProfile = () => ensureDesktopProfile({ dshHome })
   const profile = await ensureProfile()
   const projectRoot = runtimeWorkspace(app)
+  const runtimeBin = await ensurePnpmCommandShim({
+    directory: join(userData, 'runtime-bin'),
+    executable: process.execPath,
+    pnpmCli: resolvePnpmCliPath(),
+  })
 
   const controller = new DshRuntimeController({
     cliPath: resolveDshCliPath(),
@@ -68,6 +87,7 @@ export async function startElectronApp(metadata) {
     logStore,
     autoRestart: true,
     startupTimeoutMs: 60_000,
+    pathEntries: [runtimeBin],
   })
 
   const statePath = join(userData, 'window-state.json')
@@ -127,6 +147,11 @@ export async function startElectronApp(metadata) {
     ensureProfile,
     openLogs: () => shell.openPath(logsDirectory),
     exitApp: () => app.quit(),
+    setWindowChromeTheme: (sender, theme) => {
+      const target = BrowserWindow.fromWebContents(sender)
+      if (!target || target.isDestroyed()) return undefined
+      return setWindowChromeTheme(target, theme)
+    },
   })
 
   const createExtensionWindow = async () => {

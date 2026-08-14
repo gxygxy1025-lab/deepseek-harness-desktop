@@ -17,6 +17,8 @@ export const BUILTIN_BUNDLES = Object.freeze([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-web-app',
   '@linxin666/dsh-web-ui-all',
+  'dshmarket',
+  'dsh-plugin-hub',
 ])
 
 export const BUILTIN_SKIN_PACKAGES = Object.freeze([
@@ -53,6 +55,8 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-ssh',
   '@linxin666/dsh-web-ui-all',
   '@linxin666/dsh-web-ui-compat',
+  'dshmarket',
+  'dsh-plugin-hub',
 ].toSorted())
 
 export const DESKTOP_SUPPORT_PACKAGES = Object.freeze([
@@ -91,7 +95,9 @@ export const DSH_BOOT_RUNTIME_PACKAGES = Object.freeze([
 
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/
 const ROOT_CONFIG = '[]\n'
-export const DESKTOP_PATCH_CONFIG = `- id: directory-picker
+export const DESKTOP_PATCH_START = '# --- dsh-desktop managed (auto-generated; do not edit) ---'
+export const DESKTOP_PATCH_END = '# --- end dsh-desktop managed ---'
+const LEGACY_DESKTOP_PATCH_CONFIG = `- id: directory-picker
   name: '@deepseek-ai/dsh-host-directory-picker-auto'
   disabled: true
 - insert:
@@ -99,6 +105,13 @@ export const DESKTOP_PATCH_CONFIG = `- id: directory-picker
       name: '@deepseek-ai/dsh-host-directory-picker-browse'
     - id: directory-picker-desktop-client
       name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+`
+export const DESKTOP_PATCH_CONFIG = `${DESKTOP_PATCH_START}
+${LEGACY_DESKTOP_PATCH_CONFIG.trimEnd()}
+- id: dsh-market
+  config:
+    profile: desktop
+${DESKTOP_PATCH_END}
 `
 const WORKSPACE_CONFIG = `packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n`
 
@@ -129,6 +142,20 @@ export function createDesktopProfileManifest(existing = {}) {
       },
     },
   }
+}
+
+export function mergeDesktopPatch(existing = '') {
+  let userPatch = String(existing)
+  const start = userPatch.indexOf(DESKTOP_PATCH_START)
+  if (start !== -1) {
+    const end = userPatch.indexOf(DESKTOP_PATCH_END, start)
+    if (end === -1) throw new Error('desktop managed patch section is unterminated')
+    userPatch = `${userPatch.slice(0, start)}${userPatch.slice(end + DESKTOP_PATCH_END.length)}`
+  } else if (userPatch.startsWith(LEGACY_DESKTOP_PATCH_CONFIG)) {
+    userPatch = userPatch.slice(LEGACY_DESKTOP_PATCH_CONFIG.length)
+  }
+  const suffix = userPatch.trim()
+  return suffix ? `${DESKTOP_PATCH_CONFIG.trimEnd()}\n\n${suffix}\n` : DESKTOP_PATCH_CONFIG
 }
 
 async function readJsonIfPresent(path) {
@@ -238,7 +265,12 @@ export async function ensureDesktopProfile({
 
   let changed = false
   changed = (await writeIfChanged(join(profileDir, 'cordis.yml'), ROOT_CONFIG)) || changed
-  changed = (await writeIfChanged(join(profileDir, 'cordis.patch.yml'), DESKTOP_PATCH_CONFIG)) || changed
+  const patchPath = join(profileDir, 'cordis.patch.yml')
+  const existingPatch = await readFile(patchPath, 'utf8').catch((error) => {
+    if (error?.code === 'ENOENT') return ''
+    throw error
+  })
+  changed = (await writeIfChanged(patchPath, mergeDesktopPatch(existingPatch))) || changed
   changed = (await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), WORKSPACE_CONFIG)) || changed
   changed = (await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)) || changed
 

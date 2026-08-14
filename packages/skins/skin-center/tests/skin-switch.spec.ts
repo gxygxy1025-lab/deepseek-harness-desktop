@@ -34,13 +34,14 @@ afterAll(() => {
 function fakeHome(): string {
   home = mkdtempSync(join(tmpdir(), 'skin-switch-test-'))
   mkdirSync(join(home, '.dsh'), { recursive: true })
+  mkdirSync(join(home, '.dsh', 'profiles', 'web'), { recursive: true })
   // Mirror the CLI test: the profile symlink target is the real repo skin dir.
   mkdirSync(join(home, 'code', 'dsh-web-ui', 'packages', 'skins'), { recursive: true })
   return home
 }
 
 function patchPath(h: string): string {
-  return join(h, '.dsh', 'cordis.patch.yml')
+  return join(h, '.dsh', 'profiles', 'web', 'cordis.patch.yml')
 }
 
 /** A minimal registry for pure-function tests (deterministic, no disk reads). */
@@ -165,5 +166,37 @@ describe('useSkin / currentSkin against a throwaway HOME', () => {
   it('useSkin on an unknown skin rejects like the CLI', () => {
     const h = fakeHome()
     expect(() => useSkin('nope', { home: h })).toThrow(/unknown skin "nope"/)
+  })
+
+  it('defaults to DSH_HOME and the desktop-selected profile', () => {
+    const h = fakeHome()
+    const previousHome = process.env.DSH_HOME
+    const previousProfile = process.env.DSH_SKIN_PROFILE
+    process.env.DSH_HOME = join(h, '.dsh')
+    process.env.DSH_SKIN_PROFILE = 'desktop'
+    try {
+      expect(resolvePaths()).toEqual({
+        patchPath: join(h, '.dsh', 'profiles', 'desktop', 'cordis.patch.yml'),
+        profileModulesDir: join(h, '.dsh', 'profiles', 'desktop', 'node_modules'),
+      })
+    } finally {
+      if (previousHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previousHome
+      if (previousProfile === undefined) delete process.env.DSH_SKIN_PROFILE
+      else process.env.DSH_SKIN_PROFILE = previousProfile
+    }
+  })
+
+  it('loads registry metadata from installed profile packages', () => {
+    const h = fakeHome()
+    const packageDir = join(h, '.dsh', 'profiles', 'desktop', 'node_modules', '@linxin666', 'dsh-client-ui-skin-fixture')
+    mkdirSync(packageDir, { recursive: true })
+    writeFileSync(join(packageDir, 'skin.json'), JSON.stringify({
+      id: 'fixture',
+      package: '@linxin666/dsh-client-ui-skin-fixture',
+      wiring: { id: 'ui-skin-fixture', bundleWired: false },
+    }))
+    const registry = loadRegistry({ dshHome: join(h, '.dsh'), profile: 'desktop', includeRepo: false })
+    expect(registry.fixture?.dir).toBe(packageDir)
   })
 })
