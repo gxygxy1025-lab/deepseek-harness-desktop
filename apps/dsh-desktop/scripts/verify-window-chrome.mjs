@@ -10,13 +10,14 @@ import { _electron as electron } from 'playwright'
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const screenshotArgument = process.argv.find((argument) => argument.toLowerCase().endsWith('.png'))
 const screenshot = screenshotArgument ? resolve(screenshotArgument) : undefined
+const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-window-chrome-e2e-'))
 let electronApp
 
 try {
   electronApp = await electron.launch({
-    executablePath: electronPath,
-    args: [resolve(appDir, 'src', 'main.mjs')],
+    executablePath: packagedExecutable || electronPath,
+    args: packagedExecutable ? [] : [resolve(appDir, 'src', 'main.mjs')],
     cwd: appDir,
     env: {
       ...process.env,

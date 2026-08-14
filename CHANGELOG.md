@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 - 2026-08-14
+
+Natural Windows chrome refinement.
+
+- Replaced the disconnected bright title and menu rows with a 46-pixel deep-sea title surface.
+- Preserved native Windows caption buttons, resizing, keyboard menu access, and Snap layouts.
+- Added context-aware labels for startup, the original Web surface, and the Extension Dock.
+- Added page safe-area handling plus unit and real-runtime Electron verification.
+
 ## 0.1.0 - 2026-08-14
 
 Initial Windows desktop release.
