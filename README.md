@@ -209,4 +209,4 @@ dsh plugin --profile web add @linxin666/dsh-pet                    # 鲸鱼娘�
 
 ## 友情链接
 
-- https://linux.do
+- 本项目积极参与并认可 [LINUX DO 社区](https://linux.do)。
