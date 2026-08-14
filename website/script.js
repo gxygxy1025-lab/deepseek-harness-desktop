@@ -20,25 +20,19 @@ function formatReleaseDate(value) {
 
 function setText(selector, value) {
   if (!value) return
-  document.querySelectorAll(selector).forEach(node => {
-    node.textContent = value
-  })
+  document.querySelectorAll(selector).forEach(node => { node.textContent = value })
 }
 
 function setLinks(selector, value) {
   if (!value) return
-  document.querySelectorAll(selector).forEach(link => {
-    link.href = value
-  })
+  document.querySelectorAll(selector).forEach(link => { link.href = value })
 }
 
 async function hydrateLatestRelease() {
   const card = document.querySelector('[data-release-card]')
   const status = document.querySelector('[data-release-status]')
   try {
-    const response = await fetch(releaseApi, {
-      headers: { Accept: 'application/vnd.github+json' },
-    })
+    const response = await fetch(releaseApi, { headers: { Accept: 'application/vnd.github+json' } })
     if (!response.ok) throw new Error(`GitHub returned ${response.status}`)
 
     const release = await response.json()
@@ -60,18 +54,37 @@ async function hydrateLatestRelease() {
         node.dateTime = published.datetime
       })
     }
-    if (status) status.textContent = 'LIVE FROM GITHUB / 已同步'
+
+    const command = document.querySelector('#terminal-command')
+    if (command) {
+      command.dataset.downloadCommand = `下载 DeepSeek Harness Desktop ${version}`
+      if (document.querySelector('[data-terminal-tab="download"]')?.classList.contains('is-active')) {
+        command.textContent = command.dataset.downloadCommand
+      }
+    }
+    if (status) status.textContent = '已同步 GitHub'
     document.documentElement.dataset.releaseSource = 'live'
   } catch {
-    if (status) status.textContent = 'FALLBACK / 使用内置版本信息'
+    if (status) status.textContent = '使用内置版本信息'
     document.documentElement.dataset.releaseSource = 'fallback'
   } finally {
     card?.setAttribute('aria-busy', 'false')
   }
 }
 
+async function copyText(text, feedback) {
+  try {
+    await navigator.clipboard.writeText(text)
+    const original = feedback.textContent
+    feedback.textContent = '已复制'
+    window.setTimeout(() => { feedback.textContent = original }, 1400)
+  } catch {
+    feedback.textContent = '复制失败'
+  }
+}
+
 const header = document.querySelector('[data-header]')
-const syncHeader = () => header?.classList.toggle('is-scrolled', window.scrollY > 24)
+const syncHeader = () => header?.classList.toggle('is-scrolled', window.scrollY > 30)
 syncHeader()
 window.addEventListener('scroll', syncHeader, { passive: true })
 
@@ -82,15 +95,46 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 if (reduceMotion || !('IntersectionObserver' in window)) {
   revealAll()
 } else {
-  const observer = new IntersectionObserver(entries => {
+  const revealObserver = new IntersectionObserver(entries => {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return
       entry.target.classList.add('is-visible')
-      observer.unobserve(entry.target)
+      revealObserver.unobserve(entry.target)
     })
   }, { rootMargin: '240px 0px', threshold: 0.04 })
-  reveals.forEach(element => observer.observe(element))
-  window.setTimeout(revealAll, 2_400)
+  reveals.forEach(element => revealObserver.observe(element))
+  window.setTimeout(revealAll, 2400)
 }
+
+document.querySelectorAll('[data-terminal-tab]').forEach(button => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('[data-terminal-tab]').forEach(item => item.classList.remove('is-active'))
+    button.classList.add('is-active')
+    const command = document.querySelector('#terminal-command')
+    command.textContent = button.dataset.terminalTab === 'source' ? command.dataset.sourceCommand : command.dataset.downloadCommand
+  })
+})
+
+document.querySelector('[data-copy-target]')?.addEventListener('click', event => {
+  const command = document.querySelector(`#${event.currentTarget.dataset.copyTarget}`)
+  copyText(command.textContent.trim(), event.currentTarget.querySelector('span'))
+})
+
+document.querySelector('.copy-source')?.addEventListener('click', event => {
+  copyText(event.currentTarget.dataset.copy, event.currentTarget.querySelector('.code-action'))
+})
+
+document.querySelectorAll('[data-theme-image]').forEach(button => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('[data-theme-image]').forEach(item => item.classList.remove('is-active'))
+    button.classList.add('is-active')
+    const preview = document.querySelector('[data-theme-preview]')
+    preview.style.opacity = '0'
+    window.setTimeout(() => {
+      preview.src = button.dataset.themeImage
+      preview.style.opacity = '1'
+    }, 180)
+  })
+})
 
 hydrateLatestRelease()

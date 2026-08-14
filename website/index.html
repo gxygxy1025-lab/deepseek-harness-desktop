@@ -3,310 +3,232 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#061017">
-    <meta name="description" content="DeepSeek Harness Desktop 社区桌面版。把完整 Harness 装进 Windows 桌面，内置任务看板、Git 图谱、远程连接、移动控制与主题系统。">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="description" content="DeepSeek Harness Desktop 社区桌面版：完整 Web 能力、原生桌面体验、插件扩展、主题系统与移动远程。">
     <meta property="og:title" content="DeepSeek Harness Desktop">
-    <meta property="og:description" content="完整 Web 能力，原生桌面体验。立即下载 Windows x64 版本。">
+    <meta property="og:description" content="完整 Harness，原生桌面。立即下载 Windows x64。">
     <meta property="og:type" content="website">
     <meta property="og:image" content="assets/hero-main.png">
     <title>DeepSeek Harness Desktop - 完整 Harness，原生桌面</title>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <script>document.documentElement.classList.add('js')</script>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
     <script src="script.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳到主要内容</a>
 
-    <header class="site-header" data-header>
-      <div class="header-inner">
-        <a class="brand" href="#top" aria-label="DeepSeek Harness Desktop 首页">
-          <span class="brand-mark" aria-hidden="true"><span></span></span>
-          <span class="brand-name">DEEPSEEK HARNESS</span>
-          <span class="brand-edition">DESKTOP</span>
-        </a>
-
-        <nav class="desktop-nav" aria-label="主导航">
-          <a href="#release">版本</a>
-          <a href="#features">功能</a>
-          <a href="#themes">主题</a>
-          <a href="#remote">移动端</a>
-          <a href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer">GitHub</a>
-        </nav>
-
-        <a class="header-download download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-0.1.3-x64.exe">
+    <header class="topbar" data-header>
+      <a class="wordmark" href="#top" aria-label="DeepSeek Harness Desktop 首页">
+        <svg class="whale" viewBox="0 0 40 28" aria-hidden="true"><path d="M4 15c4-8 13-11 21-7 4 2 6 5 11 4-1 5-5 8-10 8-4 5-12 6-17 2-3-2-5-4-5-7Zm6 0c2 0 3-1 4-3-3 0-5 1-6 3h2Zm16-8c1-3 3-5 6-6-1 3-2 5-1 8"/></svg>
+        <span class="word-deepseek">deepseek</span>
+        <span class="brand-chip">Harness</span>
+        <span class="preview-chip">Desktop 社区版</span>
+      </a>
+      <nav class="top-actions" aria-label="页面导航">
+        <a href="#release">版本</a>
+        <a href="#features">特色</a>
+        <a href="#themes">主题</a>
+        <a href="https://github.com/ningbainb/deepseek-harness-desktop/blob/main/README.en.md" target="_blank" rel="noreferrer">EN</a>
+        <a class="nav-download download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-0.1.3-x64.exe">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m0 0 4-4m-4 4L6 8M3 15v2h14v-2"/></svg>
           下载 <span class="release-version">v0.1.3</span>
         </a>
-      </div>
+      </nav>
     </header>
 
     <main id="main">
       <section class="hero" id="top">
-        <div class="hero-grid" aria-hidden="true"></div>
-        <div class="orb orb-one" aria-hidden="true"></div>
-        <div class="orb orb-two" aria-hidden="true"></div>
-
-        <div class="hero-copy reveal">
-          <div class="eyebrow"><span class="status-dot"></span> COMMUNITY DESKTOP BUILD <span class="eyebrow-line"></span> WINDOWS x64</div>
-          <h1>把完整的 Harness<br><em>装进桌面。</em></h1>
-          <p class="hero-lead">原版 Web 能力无损加载，配上原生窗口、自动更新与独立配置。打开应用，就从想法直接进入工作。</p>
-
-          <div class="hero-actions">
-            <a class="button button-primary download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-0.1.3-x64.exe">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 2h7v7H2V2Zm9 0h7v7h-7V2ZM2 11h7v7H2v-7Zm9 0h7v7h-7v-7Z"/></svg>
-              <span>下载 Windows x64</span>
-              <span class="button-arrow" aria-hidden="true">&gt;</span>
-            </a>
-            <a class="button button-secondary" href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer">
-              查看源代码
-              <span class="button-arrow" aria-hidden="true">&gt;</span>
-            </a>
-          </div>
-
-          <div class="release-meta" aria-label="版本信息">
-            <span><strong class="release-version">v0.1.3</strong> 最新稳定版</span>
-            <span><strong class="release-size">184.9 MB</strong> 安装包</span>
-            <span><strong>BSD-3-Clause</strong> 开源许可</span>
-          </div>
-          <p class="build-notice"><span>COMMUNITY / UNSIGNED</span> 社区维护版本，当前未使用商业代码签名。请仅从本项目 GitHub Release 下载。</p>
-        </div>
-
-        <div class="hero-stage reveal reveal-late">
-          <div class="stage-label stage-label-left"><span>01</span> ORIGINAL WEB SURFACE</div>
-          <div class="stage-label stage-label-right">LOCAL FIRST <span>LOOPBACK ONLY</span></div>
-          <div class="app-frame">
-            <div class="window-chrome">
-              <span></span><span></span><span></span>
-              <p>DeepSeek Harness Desktop</p>
-              <small>LOCAL SURFACE / READY</small>
+        <div class="hero-backdrop" aria-hidden="true"></div>
+        <div class="container hero-inner">
+          <div class="hero-copy reveal">
+            <p class="overline">DeepSeek Harness Desktop 社区版</p>
+            <h1>完整 Harness，<br>原生桌面</h1>
+            <p class="hero-summary">把官方 Web Surface 完整装进 Windows 桌面，并加入插件扩展、自动更新、独立配置与原生应用生命周期。</p>
+            <p class="hero-summary">无需另外安装 Node.js。下载、启动，然后直接开始工作。</p>
+            <div class="hero-buttons">
+              <a class="btn btn-primary download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-0.1.3-x64.exe">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 2h7v7H2V2Zm9 0h7v7h-7V2ZM2 11h7v7H2v-7Zm9 0h7v7h-7v-7Z"/></svg>
+                下载 Windows x64
+              </a>
+              <a class="btn btn-ghost" href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.49c-2.24.49-2.71-1.08-2.71-1.08-.37-.93-.9-1.18-.9-1.18-.73-.5.06-.49.06-.49.81.06 1.23.83 1.23.83.72 1.23 1.89.88 2.35.67.07-.52.28-.88.51-1.08-1.79-.2-3.67-.9-3.67-3.99 0-.88.31-1.6.83-2.16-.08-.2-.36-1.02.08-2.13 0 0 .68-.22 2.2.82A7.67 7.67 0 0 1 10 4.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.93.08 2.13.52.56.83 1.28.83 2.16 0 3.1-1.89 3.78-3.69 3.98.29.25.55.74.55 1.5v2.22c0 .21.14.46.55.38A8 8 0 0 0 10 2Z"/></svg>
+                查看 GitHub
+              </a>
+              <a class="btn btn-ghost" href="#features">桌面特色</a>
             </div>
-            <img src="assets/hero-main.png" width="1600" height="900" alt="DeepSeek Harness Desktop 主界面，展示会话、工具调用、输入区和鲸鱼主题" fetchpriority="high">
           </div>
-          <div class="stage-note">
-            <span class="note-index">LIVE / 01</span>
-            <p>真实产品界面<br>所有能力均在本地运行</p>
+
+          <div class="download-terminal reveal reveal-delay">
+            <div class="terminal-tabs">
+              <button class="terminal-tab is-active" type="button" data-terminal-tab="download">一键下载</button>
+              <button class="terminal-tab" type="button" data-terminal-tab="source">源码安装</button>
+            </div>
+            <div class="terminal-window">
+              <div class="terminal-bar">
+                <span class="dot dot-red"></span><span class="dot dot-yellow"></span><span class="dot dot-green"></span>
+                <button class="copy-button" type="button" data-copy-target="terminal-command" aria-label="复制命令">
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6V3h10v10h-3M3 7h10v10H3V7Z"/></svg><span>复制</span>
+                </button>
+              </div>
+              <code id="terminal-command" data-download-command="下载 DeepSeek Harness Desktop v0.1.3" data-source-command="git clone https://github.com/ningbainb/deepseek-harness-desktop">下载 DeepSeek Harness Desktop v0.1.3</code>
+              <div class="terminal-meta"><span>Windows 10 / 11</span><span>x64</span><span class="release-size">184.9 MB</span></div>
+            </div>
           </div>
         </div>
-
-        <a class="scroll-cue" href="#intro" aria-label="继续浏览">
-          <span>SCROLL TO EXPLORE</span>
-          <i aria-hidden="true"></i>
-        </a>
       </section>
 
-      <section class="signal-strip" aria-label="产品特点">
-        <div><span class="signal-number">01</span><p><strong>完整 Web Surface</strong>不是功能缩水的桌面重写</p></div>
-        <div><span class="signal-number">02</span><p><strong>独立 Desktop Profile</strong>不覆盖现有 DSH 配置</p></div>
-        <div><span class="signal-number">03</span><p><strong>内置自动更新</strong>新版本确认后安装</p></div>
+      <section class="foundation">
+        <div class="container">
+          <div class="center-heading reveal">
+            <span class="eyebrow-chip">DESKTOP = HARNESS + NATIVE</span>
+            <h2><strong>DESKTOP</strong> 让 Harness 在桌面持续工作</h2>
+            <p>原版能力是核心，桌面体验是外壳。所有增强都通过独立 profile 与插件组合完成。</p>
+          </div>
+
+          <div class="principle-grid">
+            <article class="principle-card reveal">
+              <svg class="principle-icon orbit-icon" viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="32" cy="32" rx="23" ry="9"/><ellipse cx="32" cy="32" rx="23" ry="9" transform="rotate(60 32 32)"/><ellipse cx="32" cy="32" rx="23" ry="9" transform="rotate(120 32 32)"/><circle cx="32" cy="32" r="3"/></svg>
+              <h3>完整 Web Surface</h3><span>ORIGINAL INTERFACE</span>
+              <p>不是缩水重写。会话、工具调用、模型选择、权限与插件界面保持完整。</p>
+            </article>
+            <article class="principle-card reveal">
+              <svg class="principle-icon" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="19"/><circle cx="32" cy="32" r="7"/><path d="M32 6v7M32 51v7M6 32h7M51 32h7M14 14l5 5M45 45l5 5M50 14l-5 5M19 45l-5 5"/></svg>
+              <h3>原生桌面生命周期</h3><span>NATIVE LIFECYCLE</span>
+              <p>本地主机启停、崩溃恢复、日志轮转、窗口状态与自动更新统一管理。</p>
+            </article>
+            <article class="principle-card reveal">
+              <svg class="principle-icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="10" y="10" width="17" height="17" rx="3"/><rect x="37" y="10" width="17" height="17" rx="3"/><rect x="10" y="37" width="17" height="17" rx="3"/><rect x="37" y="37" width="17" height="17" rx="3"/><path d="M32 18h5M18 32v5M46 27v10M27 46h10"/></svg>
+              <h3>社区能力自由组合</h3><span>COMMUNITY EXTENSIONS</span>
+              <p>任务看板、Git 图谱、远程连接、宠物、统计与主题都可独立启用。</p>
+            </article>
+          </div>
+        </div>
       </section>
 
-      <section class="release-pulse section-shell" id="release" aria-labelledby="release-title">
-        <div class="release-rail" aria-hidden="true">
-          <span>RELEASE</span>
-          <strong>03</strong>
-          <i></i>
-          <small>STABLE CHANNEL</small>
+      <section class="features" id="features">
+        <div class="container">
+          <div class="section-title reveal"><span>桌面特色</span><h2>完整 Harness，原生体验</h2></div>
+
+          <article class="feature-row reveal">
+            <div class="feature-copy">
+              <div class="feature-title"><span class="play-icon">1</span><h3>打开即用，不改官方源码</h3></div>
+              <p>Electron 安全启动官方 DSH 本地主机，再加载桌面 profile。原版 Web 界面、插件协议和数据结构保持不变。</p>
+              <ul><li>内置官方 DSH 与 pnpm</li><li>仅监听本地回环地址</li><li>独立配置，不覆盖现有环境</li></ul>
+            </div>
+            <figure class="product-shot"><img src="assets/desktop-startup.png" width="1440" height="900" loading="lazy" alt="DeepSeek Harness Desktop 启动界面"></figure>
+          </article>
+
+          <article class="feature-row feature-row-reverse reveal">
+            <div class="feature-copy">
+              <div class="feature-title"><span class="play-icon">2</span><h3>插件与技能统一管理</h3></div>
+              <p>扩展坞发现已安装插件、社区 bundle 与本地技能。安装前确认来源，支持回滚，内置能力始终受到保护。</p>
+              <ul><li>插件与技能发现</li><li>安装、更新与回滚</li><li>桌面内置能力保护</li></ul>
+            </div>
+            <figure class="product-shot"><img src="assets/desktop-extension-dock.png" width="1440" height="900" loading="lazy" alt="DeepSeek Harness Desktop 扩展坞"></figure>
+          </article>
+
+          <article class="feature-row reveal">
+            <div class="feature-copy">
+              <div class="feature-title"><span class="play-icon">3</span><h3>从会话到执行系统</h3></div>
+              <p>任务看板将工作拆成待规划、待办、进行中、已完成和失败五种状态。支持交给真实会话执行与 cron 定时调度。</p>
+              <ul><li>任务状态自动回写</li><li>执行过程可追溯</li><li>Git 图谱与文件预览</li></ul>
+            </div>
+            <figure class="product-shot"><img src="assets/task-board.png" width="1454" height="722" loading="lazy" alt="DeepSeek Harness 任务看板"></figure>
+          </article>
         </div>
+      </section>
 
-        <div class="release-dossier reveal" data-release-card aria-busy="true">
-          <header class="dossier-head">
-            <div>
-              <span class="dossier-kicker">LATEST RELEASE / 双语发行日志</span>
-              <h2 id="release-title">每次更新，<br><em>先把变化说清楚。</em></h2>
-            </div>
-            <div class="release-stamp" aria-label="最新版本">
-              <span>STABLE</span>
-              <strong class="release-version">v0.1.3</strong>
-              <small data-release-status>CHECKING GITHUB / 正在同步</small>
-            </div>
-          </header>
+      <section class="theme-showcase" id="themes">
+        <div class="theme-bg" aria-hidden="true"></div>
+        <div class="container theme-content reveal">
+          <span class="section-pill">主题系统</span>
+          <h2>自定义你的 DeepSeek Harness</h2>
+          <p>九款主题完整适配核心界面和桌面插件。先试穿，再应用，浅色与深色状态保持一致。</p>
+          <div class="theme-switch" role="tablist" aria-label="主题预览">
+            <button type="button" class="is-active" data-theme-image="assets/whale-song-dark.png" role="tab">鲸吟</button>
+            <button type="button" data-theme-image="assets/xp-light.png" role="tab">Luna</button>
+            <button type="button" data-theme-image="assets/trading-light.png" role="tab">交易终端</button>
+          </div>
+          <figure class="theme-frame"><img data-theme-preview src="assets/whale-song-dark.png" width="2880" height="1800" loading="lazy" alt="DeepSeek Harness 主题预览"></figure>
+        </div>
+      </section>
 
-          <div class="dossier-body">
-            <div class="release-summary">
-              <p>从 0.1.3 开始，发行说明固定采用中文在前、English 在后的同页结构。应用会先展示完整更新内容，再由你决定是否下载和重启安装。</p>
-              <dl class="release-facts">
-                <div><dt>发布日期 / Published</dt><dd><time class="release-date" datetime="2026-08-14">2026-08-14</time></dd></div>
-                <div><dt>安装包 / Installer</dt><dd class="release-size">184.9 MB</dd></div>
-                <div><dt>更新通道 / Channel</dt><dd>STABLE</dd></div>
-              </dl>
-              <div class="release-actions">
-                <a class="text-link release-page-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest" target="_blank" rel="noreferrer">查看中英双语日志 <span aria-hidden="true">&gt;</span></a>
-                <a class="text-link checksum-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/SHA256SUMS.txt">下载 SHA-256 <span aria-hidden="true">&gt;</span></a>
+      <section class="mobile-section">
+        <div class="container mobile-layout">
+          <div class="mobile-copy reveal">
+            <span class="section-pill">移动远程</span>
+            <h2>桌面在工作，<br>手机也能接手</h2>
+            <p>扫码配对后，在手机上查看工作区、继续会话、切换模型与权限。支持局域网直连与 Cloudflare 公网隧道。</p>
+            <div class="mobile-points"><span>一次性限时令牌</span><span>会话实时同步</span><span>随时吊销设备</span></div>
+          </div>
+          <div class="phones reveal">
+            <figure><img src="assets/mobile-workspaces.png" width="780" height="1688" loading="lazy" alt="移动端工作区列表"></figure>
+            <figure class="phone-main"><img src="assets/mobile-chat.png" width="780" height="1688" loading="lazy" alt="移动端会话"></figure>
+            <figure><img src="assets/mobile-models.png" width="780" height="1688" loading="lazy" alt="移动端模型选择"></figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="install" id="download">
+        <div class="container">
+          <div class="section-title reveal"><span>开始使用</span><h2>下载桌面版或从源码构建</h2></div>
+          <div class="install-grid">
+            <article class="install-card reveal">
+              <h3>Windows 一键安装</h3><p>下载 x64 安装包，应用会自动检查后续更新。</p>
+              <a class="code-line download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-0.1.3-x64.exe"><span class="prompt">$</span><code>DeepSeek Harness Desktop <span class="release-version">v0.1.3</span></code><span class="code-action">下载</span></a>
+            </article>
+            <article class="install-card reveal">
+              <h3>源码构建</h3><p>克隆完整项目，安装依赖后打包 Windows 桌面应用。</p>
+              <button class="code-line copy-source" type="button" data-copy="git clone https://github.com/ningbainb/deepseek-harness-desktop"><span class="prompt">$</span><code>git clone .../deepseek-harness-desktop</code><span class="code-action">复制</span></button>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="release" id="release" aria-labelledby="release-title">
+        <div class="container">
+          <div class="section-title reveal"><span>最新版本</span><h2 id="release-title">先看清变化，再决定更新</h2></div>
+          <article class="release-card reveal" data-release-card aria-busy="true">
+            <div class="release-copy">
+              <div class="release-heading">
+                <span class="release-state">STABLE / 稳定通道</span>
+                <strong class="release-version">v0.1.3</strong>
+              </div>
+              <p>每次发行都提供中文在前、English 在后的同页日志。应用会先展示完整更新内容，下载与重启安装均由你确认。</p>
+              <div class="release-facts">
+                <span><small>发布日期</small><time class="release-date" datetime="2026-08-14">2026-08-14</time></span>
+                <span><small>安装包</small><strong class="release-size">184.9 MB</strong></span>
+                <span><small>同步状态</small><strong data-release-status>正在同步 GitHub</strong></span>
+              </div>
+              <div class="release-links">
+                <a class="btn btn-primary release-page-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest" target="_blank" rel="noreferrer">查看中英双语日志</a>
+                <a class="btn btn-ghost checksum-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/SHA256SUMS.txt">下载 SHA-256</a>
               </div>
             </div>
-
             <ol class="update-flow" aria-label="内置更新流程">
-              <li><span>01</span><div><strong>发现版本</strong><small>CHECK GITHUB RELEASES</small><p>启动后与每六小时检查稳定发行版。</p></div></li>
-              <li><span>02</span><div><strong>阅读并确认</strong><small>REVIEW BILINGUAL NOTES</small><p>先显示中英双语更新内容，再决定下载。</p></div></li>
-              <li><span>03</span><div><strong>重启安装</strong><small>RESTART ON APPROVAL</small><p>下载和重启安装都需要单独确认。</p></div></li>
+              <li><span>01</span><div><strong>发现版本</strong><small>连接 GitHub Releases</small></div></li>
+              <li><span>02</span><div><strong>阅读并确认</strong><small>先展示双语更新内容</small></div></li>
+              <li><span>03</span><div><strong>重启安装</strong><small>操作由你最终确认</small></div></li>
             </ol>
-          </div>
-        </div>
-      </section>
-
-      <section class="intro section-shell" id="intro">
-        <div class="section-kicker"><span>ABOUT / 01</span><i></i><span>THE DESKTOP SURFACE</span></div>
-        <div class="intro-grid">
-          <h2>不是网页的壳。<br><em>是一套完整工作台。</em></h2>
-          <div class="intro-copy">
-            <p>DeepSeek Harness Desktop 用安全的 Electron 窗口启动官方 DSH 本地主机，再加载这个项目的全部插件与主题。</p>
-            <p>你得到的是熟悉的 Harness，也是更适合长期工作的桌面环境：窗口状态会恢复，日志会轮转，崩溃可以重启，更新清晰可控。</p>
-          </div>
-        </div>
-
-        <div class="split-visual reveal">
-          <figure class="visual-panel visual-large">
-            <div class="figure-bar"><span>STARTUP SEQUENCE</span><small>DESKTOP / LOCAL</small></div>
-            <img src="assets/desktop-startup.png" width="1440" height="900" loading="lazy" alt="DeepSeek Harness Desktop 启动与本地主机控制界面">
-            <figcaption><span>原生生命周期</span>启动、停止与状态恢复都在一个窗口里完成。</figcaption>
-          </figure>
-          <figure class="visual-panel visual-small">
-            <div class="figure-bar"><span>EXTENSION DOCK</span><small>MANAGED</small></div>
-            <img src="assets/desktop-extension-dock.png" width="1440" height="900" loading="lazy" alt="DeepSeek Harness Desktop 扩展坞界面">
-            <figcaption><span>社区扩展坞</span>发现、安装和回滚 DSH bundle 与技能。</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section class="features section-shell" id="features">
-        <div class="section-heading">
-          <div>
-            <div class="section-kicker"><span>CAPABILITIES / 02</span><i></i><span>BUILT FOR REAL WORK</span></div>
-            <h2>从一条消息，<br>到一套<strong>执行系统。</strong></h2>
-          </div>
-          <p>任务、代码、文件和远程主机都在同一个上下文里。少切窗口，把注意力留给真正的工作。</p>
-        </div>
-
-        <div class="feature-grid">
-          <article class="feature-card feature-wide reveal">
-            <div class="feature-copy">
-              <span class="feature-index">01 / TASKS</span>
-              <h3>任务看板会自己开工</h3>
-              <p>五列状态组织任务，一键交给真实 DSH 会话执行。支持 cron 定时、状态回写与执行会话追溯。</p>
-              <ul>
-                <li>看板式工作流</li>
-                <li>定时自动执行</li>
-                <li>完整过程可追溯</li>
-              </ul>
-            </div>
-            <div class="feature-image">
-              <img src="assets/task-board.png" width="1454" height="722" loading="lazy" alt="五列任务看板，包含待规划、待办、进行中、已完成与失败状态">
-            </div>
-          </article>
-
-          <article class="feature-card reveal">
-            <div class="feature-copy">
-              <span class="feature-index">02 / GIT</span>
-              <h3>把提交历史变成地图</h3>
-              <p>分支泳道、提交历史和变更定位收进可视化 Git 图谱，大仓库也能顺着时间线快速阅读。</p>
-            </div>
-            <div class="feature-image feature-image-tall">
-              <img src="assets/git-graph.png" width="1470" height="859" loading="lazy" alt="DeepSeek Harness Git 图谱界面">
-            </div>
-          </article>
-
-          <article class="feature-card reveal">
-            <div class="feature-copy">
-              <span class="feature-index">03 / FILES</span>
-              <h3>文件、预览与变更并排展开</h3>
-              <p>多标签预览 Markdown、代码、Diff、PDF 与 Office 文件，支持编辑保存以及真实 Git stage 操作。</p>
-            </div>
-            <div class="feature-image feature-image-tall">
-              <img src="assets/right-panel.png" width="1440" height="900" loading="lazy" alt="文件树、预览与源码变更右侧面板">
-            </div>
           </article>
         </div>
       </section>
 
-      <section class="themes" id="themes">
-        <div class="section-shell">
-          <div class="themes-heading">
-            <div class="section-kicker section-kicker-light"><span>SURFACES / 03</span><i></i><span>NINE THEMES</span></div>
-            <h2>工作台不必<br><em>只有一种表情。</em></h2>
-            <p>九款主题全部适配核心插件与右侧面板。先试穿，再应用；浅色、深色与功能状态保持完整。</p>
-          </div>
-
-          <div class="theme-mosaic reveal">
-            <figure class="theme-main">
-              <img src="assets/whale-song-dark.png" width="2880" height="1800" loading="lazy" alt="鲸吟深色主题">
-              <figcaption><span>01</span> WHALE SONG / DARK</figcaption>
-            </figure>
-            <div class="theme-stack">
-              <figure>
-                <img src="assets/xp-light.png" width="1470" height="859" loading="lazy" alt="Windows XP Luna 主题">
-                <figcaption><span>02</span> LUNA / LIGHT</figcaption>
-              </figure>
-              <figure>
-                <img src="assets/trading-light.png" width="2880" height="1800" loading="lazy" alt="交易终端主题">
-                <figcaption><span>03</span> TRADING / LIVE</figcaption>
-              </figure>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="remote section-shell" id="remote">
-        <div class="remote-copy">
-          <div class="section-kicker"><span>REMOTE / 04</span><i></i><span>TAKE IT WITH YOU</span></div>
-          <h2>桌面在工作，<br><em>手机也能接手。</em></h2>
-          <p>扫码配对后，在手机上查看工作区、继续会话、切换模型与权限。一次性限时令牌，随时停止并吊销全部设备。</p>
-          <div class="remote-facts">
-            <span><strong>01</strong> 局域网直连</span>
-            <span><strong>02</strong> Cloudflare 公网隧道</span>
-            <span><strong>03</strong> 会话实时同步</span>
-          </div>
-        </div>
-
-        <div class="phone-gallery reveal" aria-label="移动端界面预览">
-          <figure class="phone phone-back">
-            <img src="assets/mobile-workspaces.png" width="780" height="1688" loading="lazy" alt="移动端工作区列表">
-          </figure>
-          <figure class="phone phone-front">
-            <img src="assets/mobile-chat.png" width="780" height="1688" loading="lazy" alt="移动端会话界面">
-          </figure>
-          <figure class="phone phone-side">
-            <img src="assets/mobile-models.png" width="780" height="1688" loading="lazy" alt="移动端模型选择界面">
-          </figure>
-        </div>
-      </section>
-
-      <section class="download-section" id="download">
-        <div class="download-grid" aria-hidden="true"></div>
-        <div class="download-inner section-shell reveal">
-          <span class="download-code">READY / WINDOWS x64 / <span class="release-version">v0.1.3</span></span>
-          <h2>把 Harness<br><em>留在桌面。</em></h2>
-          <p>安装包自带官方 DSH、pnpm 与原生依赖，无需另外安装 Node.js。</p>
-          <div class="hero-actions download-actions">
-            <a class="button button-primary download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-0.1.3-x64.exe">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 2h7v7H2V2Zm9 0h7v7h-7V2ZM2 11h7v7H2v-7Zm9 0h7v7h-7v-7Z"/></svg>
-              <span>立即下载 <span class="release-version">v0.1.3</span></span>
-              <span class="button-arrow" aria-hidden="true">&gt;</span>
-            </a>
-            <a class="button button-secondary release-page-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest" target="_blank" rel="noreferrer">查看中英双语日志 <span class="button-arrow" aria-hidden="true">&gt;</span></a>
-          </div>
-          <div class="download-notes">
-            <span>Windows 10 / 11</span>
-            <span>x64</span>
-            <a class="checksum-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/SHA256SUMS.txt">SHA-256 校验</a>
+      <section class="join">
+        <div class="join-glow" aria-hidden="true"></div>
+        <div class="container join-inner reveal">
+          <h2>加入 DeepSeek Harness Desktop 社区</h2>
+          <p>这是由社区维护的开源桌面发行版。欢迎提交问题、贡献插件、分享主题，或参与桌面体验的持续改进。</p>
+          <div class="hero-buttons join-buttons">
+            <a class="btn btn-primary" href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer">查看 GitHub</a>
+            <a class="btn btn-ghost" href="https://github.com/ningbainb/deepseek-harness-desktop/issues" target="_blank" rel="noreferrer">反馈问题</a>
+            <a class="btn btn-ghost" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest" target="_blank" rel="noreferrer">更新日志</a>
           </div>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer">
-      <div class="footer-inner">
-        <div class="brand footer-brand">
-          <span class="brand-mark" aria-hidden="true"><span></span></span>
-          <span class="brand-name">DEEPSEEK HARNESS</span>
-          <span class="brand-edition">DESKTOP</span>
-        </div>
-        <p>社区维护的 DeepSeek Harness 桌面发行版。DeepSeek Harness 与相关标识归其各自权利人所有。</p>
-        <div class="footer-links">
-          <a href="https://github.com/ningbainb/deepseek-harness-desktop">GitHub</a>
-          <a href="https://github.com/ningbainb/deepseek-harness-desktop/issues">反馈问题</a>
-          <a href="https://github.com/ningbainb/deepseek-harness-desktop/blob/main/LICENSE">开源许可</a>
-        </div>
-      </div>
-    </footer>
+    <footer><div class="container footer-inner"><div class="wordmark"><svg class="whale" viewBox="0 0 40 28" aria-hidden="true"><path d="M4 15c4-8 13-11 21-7 4 2 6 5 11 4-1 5-5 8-10 8-4 5-12 6-17 2-3-2-5-4-7Zm6 0c2 0 3-1 4-3-3 0-5 1-6 3h2Z"/></svg><span class="word-deepseek">deepseek</span><span class="brand-chip">Harness Desktop</span></div><p>社区维护的开源桌面发行版。DeepSeek Harness 与相关标识归其各自权利人所有。</p><a href="https://github.com/ningbainb/deepseek-harness-desktop/blob/main/LICENSE">BSD-3-Clause</a></div></footer>
   </body>
 </html>
