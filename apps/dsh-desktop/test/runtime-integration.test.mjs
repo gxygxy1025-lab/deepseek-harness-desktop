@@ -3,15 +3,22 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { chromium } from 'playwright'
 
 import { BoundedLogStore } from '../src/log-store.mjs'
-import { ensureDesktopProfile, resolveDshCliPath } from '../src/profile.mjs'
+import {
+  BUILTIN_SKIN_PACKAGES,
+  WEB_UI_SETTINGS_NAMESPACES,
+  ensureDesktopProfile,
+  resolveDshCliPath,
+} from '../src/profile.mjs'
 import { DshRuntimeController } from '../src/runtime-controller.mjs'
 
 test('official DSH host serves the complete desktop profile', { timeout: 60_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-runtime-'))
   const logs = new BoundedLogStore({ directory: join(root, 'logs') })
   let controller
+  let browser
   try {
     await ensureDesktopProfile({ dshHome: root })
     controller = new DshRuntimeController({
@@ -25,10 +32,47 @@ test('official DSH host serves the complete desktop profile', { timeout: 60_000 
     const response = await fetch(url, { signal: AbortSignal.timeout(5_000) })
     assert.equal(response.ok, true)
     assert.match(await response.text(), /__DSH_BOOT__/)
+
+    const settingsResponse = await fetch(new URL('/api/settings.describe', url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: 'desktop-runtime-settings',
+        method: 'settings.describe',
+        payload: {},
+      }),
+      signal: AbortSignal.timeout(5_000),
+    })
+    const settings = await settingsResponse.json()
+    assert.equal(settings.result.ok, true)
+    const namespaces = new Set(settings.result.value.namespaces.map((entry) => entry.ns))
+    for (const namespace of WEB_UI_SETTINGS_NAMESPACES) {
+      assert.equal(namespaces.has(namespace), true, `settings namespace ${namespace} is hidden`)
+    }
+
+    for (const path of ['/api/pet/state', '/pet/whale/pet.json', '/pet/whale/spritesheet.webp']) {
+      const asset = await fetch(new URL(path, url), { signal: AbortSignal.timeout(5_000) })
+      assert.equal(asset.ok, true, `${path} was not served`)
+    }
+    for (const packageName of BUILTIN_SKIN_PACKAGES) {
+      const skinId = packageName.slice(packageName.lastIndexOf('-skin-') + '-skin-'.length)
+      const bundle = await fetch(new URL(`/api/skin-center/bundle/${skinId}`, url), {
+        signal: AbortSignal.timeout(5_000),
+      })
+      assert.equal(bundle.ok, true, `${skinId} skin bundle was not served`)
+    }
+
+    browser = await chromium.launch({ headless: true })
+    const page = await browser.newPage()
+    await page.goto(url, { waitUntil: 'domcontentloaded' })
+    await page.locator('[data-pet-dock]').waitFor({ state: 'attached', timeout: 10_000 })
+    await page.getByRole('button', { name: 'whale girl' }).waitFor({ state: 'visible', timeout: 10_000 })
   } catch (error) {
     error.message = `${error.message}\nRecent runtime log:\n${await logs.tail(80)}`
     throw error
   } finally {
+    await browser?.close()
     await controller?.stop()
     await rm(root, { recursive: true, force: true })
   }

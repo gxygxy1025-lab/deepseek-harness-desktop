@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.4 - 2026-08-14
+
+中文：
+
+- 修复桌宠客户端挂载在已失效会话插槽、导致主页看不到鲸鱼娘的问题，改为使用全局 Shell Overlay。
+- 修复 DSH rc.6 设置接口过滤自定义命名空间的问题，Web UI 插件分组现在会显示移动端远程控制、皮肤中心、实时令牌估算、任务看板和宠物五个配置项。
+- 重新生成并构建皮肤中心清单，完整展示随桌面版安装的 9 套可选皮肤，并增加运行时、资源与打包回归检查。
+
+English:
+
+- Fixed the whale-girl desktop pet disappearing because its client was attached to a conversation slot no longer rendered by the rc.6 shell; it now uses the root shell overlay.
+- Exposed the five bundled Web UI settings namespaces through the rc.6 Host API allowlist, restoring the Remote, Skin Center, Live Stats, Task Board, and Pet cards.
+- Regenerated the Skin Center bundle so all nine installed skins are listed, and added runtime, asset, and packaged-payload regression coverage.
+
 ## 0.1.3 - 2026-08-14
 
 中文：

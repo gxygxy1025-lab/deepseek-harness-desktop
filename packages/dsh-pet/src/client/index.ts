@@ -1,12 +1,11 @@
 /**
- * dsh-pet browser half — registers the whale-girl into the conversation
- * input selector row (the same every-phase row the git branch chip uses) and
+ * dsh-pet browser half — registers the whale-girl into the shell's global
+ * overlay layer and
  * drives it from the host's same-origin `/api/pet/*` JSON endpoints: poll the
  * host snapshot (~800 ms), forward interactions, persist drag positions. The
- * row anchor mounts the floating pet via portal; when the pet is hidden the
- * anchor becomes the summon button. Anchoring in the selector row (rather
- * than the session-only composer dock band) keeps the pet floating on the
- * new-conversation screen too, where no session exists to scope a slot by.
+ * overlay entry mounts the floating pet via portal; when the pet is hidden the
+ * entry becomes the summon button. The root-scoped overlay remains mounted on
+ * the new-conversation screen and across session navigation.
  * @module @linxin666/dsh-pet/client
  */
 
@@ -233,13 +232,11 @@ export function apply(ctx: ClientContext): void {
         },
       })
 
-      // The input selector row mounts in EVERY conversation phase (cold
-      // start, blank-session hero, active seat) — the composer dock band
-      // only renders for an active session, which is why the pet used to
-      // vanish on the new-conversation screen.
-      const disposeDock = ctx.slots.inject('conversation.input.selector.context', () =>
+      // The shell overlay is root-scoped and rendered above every column, so
+      // the pet exists on cold start, the blank-session hero, and active seats.
+      const disposeDock = ctx.slots.inject('shell.overlay', () =>
         ctx.slots.register({
-          name: 'conversation.input.selector.context',
+          name: 'shell.overlay',
           id: 'pet',
           order: 110,
           inject: injected,

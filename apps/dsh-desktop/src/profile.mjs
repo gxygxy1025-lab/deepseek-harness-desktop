@@ -19,11 +19,8 @@ export const BUILTIN_BUNDLES = Object.freeze([
   '@linxin666/dsh-web-ui-all',
 ])
 
-export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
-  '@linxin666/dsh-client-ui-aionui-panel',
-  '@linxin666/dsh-client-ui-git-graph',
+export const BUILTIN_SKIN_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-blue-fantasy',
-  '@linxin666/dsh-client-ui-skin-center',
   '@linxin666/dsh-client-ui-skin-dragon-heir',
   '@linxin666/dsh-client-ui-skin-miku',
   '@linxin666/dsh-client-ui-skin-minecraft',
@@ -32,6 +29,21 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-trading',
   '@linxin666/dsh-client-ui-skin-whale-song',
   '@linxin666/dsh-client-ui-skin-xp',
+].toSorted())
+
+export const WEB_UI_SETTINGS_NAMESPACES = Object.freeze([
+  'live-stats',
+  'pet',
+  'remote-web-ui',
+  'skin-background',
+  'task-board',
+].toSorted())
+
+export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
+  '@linxin666/dsh-client-ui-aionui-panel',
+  '@linxin666/dsh-client-ui-git-graph',
+  '@linxin666/dsh-client-ui-skin-center',
+  ...BUILTIN_SKIN_PACKAGES,
   '@linxin666/dsh-client-ui-task-board',
   '@linxin666/dsh-client-ui-web-ui-settings',
   '@linxin666/dsh-live-stats',

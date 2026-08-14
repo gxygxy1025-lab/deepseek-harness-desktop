@@ -1,15 +1,13 @@
 /**
- * Dock anchor inside `conversation.input.selector.context`: the input
- * selector row mounts in EVERY conversation phase (no-session cold start,
- * the blank-session hero, and the active seat), so the floating pet stays on
- * screen on the new-conversation screen too. While visible it mounts the
+ * Root-scoped entry inside `shell.overlay`, which remains mounted in every
+ * conversation phase (no-session cold start, blank-session hero, and active
+ * seat). While visible it mounts the
  * floating WhalePet (portal); while hidden it renders the summon button.
  * @module @linxin666/dsh-pet/client/PetDockEntry
  */
 
 import { useEffect, useSyncExternalStore, type ReactElement } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PetDisplayConfig } from '../persist.ts'
 import type { PetStoreInstance } from './pet-store.ts'
 import { WhalePet } from './WhalePet.tsx'
@@ -40,7 +38,7 @@ export interface PetInjected {
 
 /** Composed props of the dock entry (runtime + locale + injected). */
 export type PetDockEntryProps =
-  PropsRuntime<'conversation.input.selector.context'>
+  PropsRuntime<'shell.overlay'>
   & PetInjected
   & PropsLocale<typeof NS>
 

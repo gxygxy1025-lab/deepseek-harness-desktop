@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Lossless desktop shell for DeepSeek Harness and the complete dsh-web-ui plugin collection",
   "author": "DeepSeek Harness Desktop contributors",
@@ -16,6 +16,7 @@
     "test": "node --test test/*.test.mjs",
     "pack:dir": "electron-builder --dir",
     "pack:verify": "node scripts/verify-package.mjs",
+    "pack:verify:dir": "node scripts/verify-package.mjs --allow-missing-update-metadata",
     "pack:win": "electron-builder --win nsis --publish never"
   },
   "dependencies": {

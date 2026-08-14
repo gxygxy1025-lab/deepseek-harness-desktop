@@ -8,6 +8,9 @@ packages:
 # turtle-ui convention used by the bundled plugins.
 autoInstallPeers: false
 
+patchedDependencies:
+  '@deepseek-ai/dsh-host-apiproxy@0.1.0-rc.6': 'patches/@deepseek-ai__dsh-host-apiproxy@0.1.0-rc.6.patch'
+
 allowBuilds:
   # The cloudflared postinstall downloads the platform binary (the auto-tunnel
   # feature ships its own tunnel client — users install nothing).
