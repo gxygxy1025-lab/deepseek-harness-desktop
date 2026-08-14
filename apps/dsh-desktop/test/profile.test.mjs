@@ -12,6 +12,7 @@ import {
   MANAGED_RUNTIME_PACKAGES,
   createDesktopProfileManifest,
   ensureDesktopProfile,
+  mergeDesktopPatch,
   materializeFilesystemPath,
   packagePathSegments,
   resolveRuntimePackages,
@@ -45,6 +46,29 @@ test('profile manifest preserves community bundles after managed bundles', () =>
   assert.equal(manifest.name, 'dsh-profile-desktop')
 })
 
+test('desktop profile includes both bundled plugin stores', () => {
+  assert.equal(BUILTIN_BUNDLES.includes('dshmarket'), true)
+  assert.equal(BUILTIN_BUNDLES.includes('dsh-plugin-hub'), true)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('dshmarket'), true)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('dsh-plugin-hub'), true)
+  assert.match(DESKTOP_PATCH_CONFIG, /id: dsh-market[\s\S]*profile: desktop/)
+})
+
+test('desktop profile includes the official QQ Bot bundle', () => {
+  assert.equal(BUILTIN_BUNDLES.includes('@tencent-connect/dsh-qqbot'), true)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@tencent-connect/dsh-qqbot'), true)
+})
+
+test('desktop patch refresh preserves skin and community-owned sections', () => {
+  const skinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- id: ui-skin-qq98\n# --- end dsh-skin managed ---'
+  const communityRow = "- id: community\n  name: '@community/plugin'"
+  const merged = mergeDesktopPatch(`${DESKTOP_PATCH_CONFIG}\n${skinSection}\n${communityRow}\n`)
+  assert.equal(merged.match(/dsh-desktop managed/gu)?.length, 2)
+  assert.match(merged, /ui-skin-qq98/u)
+  assert.match(merged, /@community\/plugin/u)
+  assert.equal(mergeDesktopPatch(merged), merged)
+})
+
 test('profile bootstrap is idempotent and links every managed package', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-profile-'))
   const dshHome = join(root, 'home')
@@ -59,13 +83,19 @@ test('profile bootstrap is idempotent and links every managed package', async ()
   }
 
   const first = await ensureDesktopProfile({ dshHome, packageRoots })
+  const firstPatch = await readFile(join(first.profileDir, 'cordis.patch.yml'), 'utf8')
+  await writeFile(join(first.profileDir, 'cordis.patch.yml'), `${firstPatch}\n- id: retained\n`)
   const second = await ensureDesktopProfile({ dshHome, packageRoots })
+  const third = await ensureDesktopProfile({ dshHome, packageRoots })
   assert.equal(first.profileDir, second.profileDir)
-  assert.equal(second.changed, false)
+  assert.equal(second.changed, true)
+  assert.equal(third.changed, false)
 
   const manifest = JSON.parse(await readFile(join(first.profileDir, 'package.json'), 'utf8'))
   assert.deepEqual(manifest.dsh.profile.bundles, BUILTIN_BUNDLES)
-  assert.equal(await readFile(join(first.profileDir, 'cordis.patch.yml'), 'utf8'), DESKTOP_PATCH_CONFIG)
+  const retainedPatch = await readFile(join(first.profileDir, 'cordis.patch.yml'), 'utf8')
+  assert.match(retainedPatch, /id: im-qqbot\n  disabled: true/u)
+  assert.match(retainedPatch, /- id: retained/u)
   for (const [packageName, source] of packageRoots) {
     const linked = join(first.profileDir, 'node_modules', ...packagePathSegments(packageName))
     assert.equal(await realpath(linked), await realpath(source))
@@ -107,6 +137,10 @@ test('official DSH CLI composes the isolated desktop profile', async () => {
     assert.match(result.stdout, /dsh-host-directory-picker-browse/)
     assert.match(result.stdout, /directory-picker-desktop-client/)
     assert.match(result.stdout, /dsh-client-ui-directory-picker-browse/)
+    assert.match(result.stdout, /- id: dsh-market/)
+    assert.match(result.stdout, /profile: desktop/)
+    assert.match(result.stdout, /- id: dsh-plugin-hub/)
+    assert.match(result.stdout, /- id: im-qqbot[\s\S]*?disabled: true/)
     assert.doesNotMatch(result.stdout, /dsh-host-directory-picker-native/)
   } finally {
     await rm(root, { recursive: true, force: true })

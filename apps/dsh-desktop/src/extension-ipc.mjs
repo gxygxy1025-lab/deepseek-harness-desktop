@@ -10,6 +10,10 @@ const CHANNELS = [
   'extensions:skill-import',
   'extensions:skill-open',
   'extensions:skill-root',
+  'extensions:qqbot-status',
+  'extensions:qqbot-bind',
+  'extensions:qqbot-cancel',
+  'extensions:qqbot-unbind',
 ]
 
 export function registerExtensionIpc({
@@ -23,6 +27,7 @@ export function registerExtensionIpc({
   projectRoot,
   dshHome,
   agentsHome,
+  qqBotBinding,
 }) {
   for (const channel of CHANNELS) ipcMain.removeHandler(channel)
   let skillPaths = new Map()
@@ -48,6 +53,7 @@ export function registerExtensionIpc({
     return {
       plugins,
       skills,
+      qqbot: qqBotBinding.status(),
       diagnostics: catalog.diagnostics.map((item) => ({ error: item.error })),
     }
   }
@@ -88,8 +94,20 @@ export function registerExtensionIpc({
     await mkdir(root, { recursive: true })
     return shell.openPath(root)
   })
+  ipcMain.handle('extensions:qqbot-status', () => qqBotBinding.status())
+  ipcMain.handle('extensions:qqbot-bind', () => qqBotBinding.start())
+  ipcMain.handle('extensions:qqbot-cancel', () => qqBotBinding.cancel())
+  ipcMain.handle('extensions:qqbot-unbind', () => qqBotBinding.unbind())
+
+  const forwardQqBotEvent = (payload) => {
+    const window = getWindow()
+    if (!window || window.isDestroyed?.()) return
+    window.webContents.send('extensions:qqbot-event', payload)
+  }
+  qqBotBinding.on('event', forwardQqBotEvent)
 
   return () => {
+    qqBotBinding.off('event', forwardQqBotEvent)
     for (const channel of CHANNELS) ipcMain.removeHandler(channel)
   }
 }

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.5 - 2026-08-14
+
+中文：
+
+- 窗口标题栏现在跟随 DSH 的亮色/暗色主题，并让原生 Windows 窗口按钮同步使用匹配的前景与背景色。
+- 修复设置等全屏弹窗被自定义标题栏遮住上边界的问题，弹窗统一使用标题栏下方的安全可视区域。
+- 修复打包版皮肤中心扫描源码路径和写错配置层的问题；现在从 `~/.dsh/profiles/desktop/node_modules` 发现皮肤，并更新桌面 profile 的 `cordis.patch.yml`。
+- 将 `dshmarket` 1.0.3 与 `dsh-plugin-hub` 0.1.0 作为内置桌面插件，并让市场安装目标指向 `desktop` profile。
+
+English:
+
+- Made the custom title bar follow the DSH light/dark theme, including matching native Windows caption colors.
+- Kept full-screen dialogs below the custom title bar so their top border and rounded corners are no longer clipped.
+- Fixed packaged Skin Center discovery and configuration: skins are read from the desktop profile and switches update that profile's patch file.
+- Bundled `dshmarket` 1.0.3 and `dsh-plugin-hub` 0.1.0, with marketplace installs targeting the desktop profile.
+
 ## 0.1.4 - 2026-08-14
 
 中文：

@@ -1,45 +1,47 @@
-# DeepSeek Harness Desktop 0.1.4
+# DeepSeek Harness Desktop 0.1.6
 
 ## 中文
 
 ### 本次亮点
 
-- 鲸鱼娘桌宠现在挂载到 DSH 的全局 Shell Overlay，不再依赖新版界面已经停止渲染的会话输入插槽。首次启动、空白会话页、已有会话和设置窗口中都能正常看到桌宠，拖动、抚摸、喂食、隐藏与重新召唤仍沿用原有持久化状态。
-- 修复 DSH rc.6 Host API 会过滤第三方设置命名空间的问题。设置 → 插件 → Web UI 插件现在完整显示移动端远程控制、皮肤中心、实时令牌估算、任务看板和宠物五张配置卡，不会再只剩一张皮肤中心卡片。
-- 皮肤中心已重新生成并构建，完整列出桌面版随附的 9 套可选皮肤，包括初音未来与交易终端。安装时选择全家桶后，每套皮肤的清单、客户端脚本和即时试穿入口都会一并进入桌面发行包。
+- 内置腾讯官方 `@tencent-connect/dsh-qqbot` 0.2.0，并固定安装到隔离的 `desktop` profile。QQ 私聊与群聊现在可以直接接入桌面版 Harness。
+- 扩展坞新增 QQ 机器人绑定卡片。首次使用会在桌面窗口显示可自动刷新的二维码，支持取消、重新绑定和解除绑定，不再依赖不可见的后台终端。
+- 未绑定时 QQ Bot 插件保持禁用，不会在启动阶段等待终端扫码或影响 Web UI 就绪；扫码成功后会自动启用插件并重启 DSH。
+- AppSecret 使用 Electron `safeStorage` 和 Windows 系统凭据保护加密保存，只注入 DSH 子进程环境，不会发送给渲染页面、写入运行日志或明文落到 `cordis.patch.yml`。
 
 ### 验证
 
-- 新增真实 DSH Host 集成检查：验证五个自定义设置命名空间均可从配置接口读取，桌宠状态、角色清单和精灵图资源均可访问，并用无头浏览器确认鲸鱼娘按钮真实出现在页面上。
-- 新增全部 9 套皮肤脚本的运行时检查，并在打包校验中逐一确认每个皮肤包的 `skin.json` 与 `lib/client.js` 存在。
-- 桌宠包额外校验 `lib/client.js`、`assets/whale/pet.json` 与 `assets/whale/spritesheet.webp`，防止以后再次出现“代码已安装但角色资源未进入安装包”的回归。
+- 53 项桌面测试覆盖 profile 合成、加密凭据边界、二维码生命周期、取消与解绑、IPC 安全载荷、运行时环境注入和真实 DSH Host 启动。
+- Electron 端到端检查已调用腾讯官方 Connector 获取真实二维码，并确认二维码可在扩展坞正确显示和取消，过程中未完成绑定或保存凭据。
+- 打包校验会确认官方 QQ Bot 包及其运行依赖存在于安装版，并继续检查所有桌面运行时包、皮肤清单和客户端 bundle。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-0.1.4-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新会先显示版本号、发布时间与本页更新内容，只有用户确认后才会下载；安装和重启也会再次请求确认。
+下载 `DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek 官方发行版。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目的 GitHub Release 页面下载，并优先使用经过自动化验证的默认安装路径。若从旧版本升级，现有桌宠名字、亲密度、位置和皮肤配置都会保留。
+这是社区构建版本，并非 DeepSeek 或腾讯官方发行版。QQ Bot 插件和扫码 Connector 来自腾讯官方 npm 包。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目的 GitHub Release 页面下载并核对 SHA-256。升级会保留现有 DSH_HOME、桌面 profile、桌宠状态、皮肤配置和已加密的 QQ Bot 绑定凭据。
 
 ## English
 
 ### Highlights
 
-- The whale-girl desktop pet now mounts in the root-scoped DSH Shell Overlay instead of a conversation input slot that the rc.6 interface no longer renders. The companion is visible on first launch, on the empty conversation screen, inside active sessions, and while the settings window is open. Existing dragging, petting, feeding, hiding, summoning, naming, and persisted affinity behavior remains unchanged.
-- The rc.6 Host API filters settings namespaces through an explicit security allowlist. This release adds only the five bundled Web UI namespaces to that boundary. Settings → Plugins → Web UI Plugins now shows Remote Control, Skin Center, Live Token Estimates, Task Board, and Pet instead of silently hiding four cards.
-- The Skin Center registry and client bundle were regenerated. All nine selectable skins shipped by the desktop aggregate are listed, including Miku and Trading Terminal, and their real client bundles remain available for instant try-on and one-click application.
+- Bundled Tencent's official `@tencent-connect/dsh-qqbot` 0.2.0 in the isolated `desktop` profile, enabling QQ direct-message and group-chat access to the desktop Harness.
+- Added a QQ Bot binding card to Extension Dock. First use now shows an auto-refreshing QR code in the desktop window with cancel, rebind, and unbind controls, without relying on a hidden terminal.
+- The QQ Bot plugin stays disabled until credentials exist, so terminal QR setup cannot delay Web UI startup. A successful scan enables the plugin and restarts DSH automatically.
+- AppSecret is encrypted through Electron `safeStorage` and Windows credential protection. It is supplied only to the DSH child environment and is never sent to renderer code, written to logs, or stored in plaintext in `cordis.patch.yml`.
 
 ### Verification
 
-- The real DSH Host integration test now reads the settings API and asserts that all five custom namespaces are exposed. It also verifies the pet state endpoint, character manifest, sprite sheet, and every installed skin bundle.
-- A headless Chromium check waits for the actual whale-girl control in the rendered page, covering the slot regression that endpoint-only tests previously missed.
-- Packaged-payload verification now checks each skin's `skin.json` and `lib/client.js`, plus the pet client, manifest, and sprite atlas. This prevents a release from passing when profile metadata exists but visual assets were omitted.
+- 53 desktop tests cover profile composition, encrypted credential boundaries, QR lifecycle, cancellation and unbinding, renderer-safe IPC payloads, runtime environment injection, and the real DSH Host.
+- Electron end-to-end verification requested a real QR code from Tencent's official Connector and confirmed that it renders and cancels correctly in Extension Dock without completing a binding or saving credentials.
+- Packaged-payload verification checks the official QQ Bot package and its runtime dependencies in addition to every managed desktop package, skin manifest, and client bundle.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-0.1.4-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater displays the target version, publication time, and these notes before downloading. Downloading begins only after user confirmation, and installation plus restart requires a second confirmation.
+Download `DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
 
 ### Notice
 
-This is a community build and not an official DeepSeek distribution. It is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's GitHub Release page and prefer the automatically verified default installation path. Upgrading preserves the existing pet name, affinity, position, visibility, and selected skin configuration.
+This is a community build and not an official DeepSeek or Tencent distribution. The QQ Bot plugin and QR Connector are official Tencent npm packages. The installer is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's GitHub Release page and verify the SHA-256 checksum. Upgrading preserves the existing DSH home, desktop profile, pet state, skin configuration, and encrypted QQ Bot binding credentials.

@@ -62,14 +62,20 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   const child = new FakeChild()
   const logLines = []
   const states = []
+  let childEnvironment
   const controller = new DshRuntimeController({
     cliPath: 'dsh-bin.js',
     cwd: process.cwd(),
     dshHome: 'C:\\isolated-home',
-    spawnProcess: () => child,
+    spawnProcess: (_executable, _arguments, options) => {
+      childEnvironment = options.env
+      return child
+    },
     logStore: { append: async (line) => logLines.push(line) },
     probeReady: async () => {},
     startupTimeoutMs: 2_000,
+    pathEntries: ['C:\\desktop-runtime-bin'],
+    environmentProvider: () => ({ QQBOT_APPID: 'desktop-app', QQBOT_SECRET: 'runtime-only' }),
   })
   controller.on('status', (status) => states.push(status.state))
 
@@ -79,6 +85,11 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   assert.equal(controller.status.state, 'ready')
   assert.deepEqual(states.slice(0, 2), ['starting', 'ready'])
   assert.ok(logLines.some((line) => line.includes('booting')))
+  assert.equal(childEnvironment.DSH_PROFILE, 'desktop')
+  assert.equal(childEnvironment.DSH_SKIN_PROFILE, 'desktop')
+  assert.equal(childEnvironment.QQBOT_APPID, 'desktop-app')
+  assert.equal(childEnvironment.QQBOT_SECRET, 'runtime-only')
+  assert.ok(childEnvironment.PATH.startsWith(`C:\\desktop-runtime-bin${process.platform === 'win32' ? ';' : ':'}`))
 
   await controller.stop()
   assert.equal(controller.status.state, 'stopped')

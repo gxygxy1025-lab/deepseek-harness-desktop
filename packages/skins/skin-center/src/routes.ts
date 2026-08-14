@@ -18,12 +18,11 @@
  * @module @linxin666/dsh-client-ui-skin-center/routes
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join as joinPath } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { currentSkin, useSkin } from './skin-switch.ts'
+import { currentSkin, loadRegistry, useSkin } from './skin-switch.ts'
 
 /** Browser-facing base path of the skin-center API. */
 export const SKIN_CENTER_API_PREFIX = '/api/skin-center'
@@ -165,31 +164,6 @@ export interface SkinCenterRoutesDeps {
   run?: (args: string[]) => Promise<string>
 }
 
-/** Repo layout: skin bundles live at packages/skins/<id>/lib/client.js. */
-const SKINS_DIR = fileURLToPath(new URL('../../../skins/', import.meta.url))
-
-/**
- * Map skin id -> directory under packages/skins/, scanned from each
- * skin.json. The id is validated against this map (never used as a raw
- * path) so the bundle route cannot be walked off the skins tree.
- * @returns skin id -> directory name.
- */
-function skinDirectories(): Map<string, string> {
-  const out = new Map<string, string>()
-  for (const dir of readdirSync(SKINS_DIR)) {
-    const metaFile = joinPath(SKINS_DIR, dir, 'skin.json')
-    if (!statSync(metaFile, { throwIfNoEntry: false })) continue
-    let meta: { id?: unknown }
-    try {
-      meta = JSON.parse(readFileSync(metaFile, 'utf8'))
-    } catch {
-      continue
-    }
-    if (typeof meta.id === 'string' && /^[a-z0-9-]+$/.test(meta.id)) out.set(meta.id, dir)
-  }
-  return out
-}
-
 /**
  * The on-demand bundle route: serve packages/skins/<id>/lib/client.js as a
  * same-origin script. Try-on loads it through a script tag (the kernel's
@@ -217,12 +191,12 @@ function bundleRoute(): WebRoute {
         return
       }
       try {
-        const dir = skinDirectories().get(id)
-        if (dir === undefined) {
+        const entry = loadRegistry()[id]
+        if (entry === undefined) {
           json(res, 404, { ok: false, error: 'skin-not-found' })
           return
         }
-        const bundle = joinPath(SKINS_DIR, dir, 'lib', 'client.js')
+        const bundle = joinPath(entry.dir, 'lib', 'client.js')
         if (!statSync(bundle, { throwIfNoEntry: false })) {
           json(res, 404, { ok: false, error: 'skin-bundle-missing' })
           return

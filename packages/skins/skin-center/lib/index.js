@@ -1,9 +1,9 @@
 import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
 import z from "schemastery";
-import { lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 //#region src/skin-switch.ts
 /**
 * In-process skin switching for the skin center — the official `dsh-skin use`
@@ -22,13 +22,18 @@ import { homedir } from "node:os";
 * dictionary, so adding a skin needs no code change here.
 * @module @linxin666/dsh-client-ui-skin-center/skin-switch
 */
-/** Repo layout: skin bundles live at packages/skins/<id>. */
-const SKINS_DIR$1 = fileURLToPath(new URL("../../../skins/", import.meta.url));
+/** Source checkout fallback; packaged builds discover skins from the active profile. */
+const REPO_SKINS_DIR = fileURLToPath(new URL("../../../skins/", import.meta.url));
 /** Managed patch-section delimiters (the CLI's SINGLE authority boundaries). */
 const MANAGED_START = "# --- dsh-skin managed (auto-generated; do not edit) ---";
 const MANAGED_END = "# --- end dsh-skin managed ---";
 /** The GUI profile this machine runs (dsh web); overridable via DSH_SKIN_PROFILE. */
-const DEFAULT_PROFILE = process.env.DSH_SKIN_PROFILE ?? "web";
+function defaultProfile() {
+	return process.env.DSH_SKIN_PROFILE ?? process.env.DSH_PROFILE ?? "web";
+}
+function defaultDshHome() {
+	return process.env.DSH_HOME ?? join(homedir(), ".dsh");
+}
 /**
 * Parse the switch-relevant fields of one skin.json. Returns null for
 * anything that is not a valid skin so it is simply skipped — never walking
@@ -37,7 +42,7 @@ const DEFAULT_PROFILE = process.env.DSH_SKIN_PROFILE ?? "web";
 */
 function readSkinMeta(dir) {
 	try {
-		const meta = JSON.parse(readFileSync(join(SKINS_DIR$1, dir, "skin.json"), "utf8"));
+		const meta = JSON.parse(readFileSync(join(dir, "skin.json"), "utf8"));
 		if (typeof meta !== "object" || meta === null) return null;
 		const record = meta;
 		if (typeof record.id !== "string" || !/^[a-z0-9-]+$/.test(record.id)) return null;
@@ -64,15 +69,26 @@ function readSkinMeta(dir) {
 * needs no code change here.
 * @returns skin id -> switch metadata.
 */
-function loadRegistry() {
+function loadRegistry(opts = {}) {
 	const out = {};
-	for (const dir of readdirSync(SKINS_DIR$1)) {
+	const dshHome = opts.dshHome ?? defaultDshHome();
+	const profile = opts.profile ?? defaultProfile();
+	const candidates = [];
+	const installedScope = join(dshHome, "profiles", profile, "node_modules", "@linxin666");
+	try {
+		for (const name of readdirSync(installedScope)) if (name.startsWith("dsh-client-ui-skin-")) candidates.push(join(installedScope, name));
+	} catch {}
+	if (opts.includeRepo !== false) try {
+		for (const name of readdirSync(REPO_SKINS_DIR)) candidates.push(join(REPO_SKINS_DIR, name));
+	} catch {}
+	for (const dir of candidates) {
 		const meta = readSkinMeta(dir);
 		if (meta === null || meta.wiring === void 0 || meta.package === void 0) continue;
+		if (out[meta.id] !== void 0) continue;
 		out[meta.id] = {
 			pkg: meta.package,
 			id: meta.wiring.id,
-			dir: join(SKINS_DIR$1, dir),
+			dir,
 			bundleWired: meta.wiring.bundleWired === true
 		};
 	}
@@ -156,10 +172,12 @@ function currentActive(patch, registry = loadRegistry()) {
 * @param home - home dir (defaults to the process HOME).
 * @param profile - profile name (defaults to DSH_SKIN_PROFILE or 'web').
 */
-function resolvePaths(home = homedir(), profile = DEFAULT_PROFILE) {
+function resolvePaths(home, profile) {
+	const dshHome = home === void 0 ? defaultDshHome() : join(home, ".dsh");
+	const activeProfile = profile ?? defaultProfile();
 	return {
-		patchPath: join(home, ".dsh", "cordis.patch.yml"),
-		profileModulesDir: join(home, ".dsh", "profiles", profile, "node_modules")
+		patchPath: join(dshHome, "profiles", activeProfile, "cordis.patch.yml"),
+		profileModulesDir: join(dshHome, "profiles", activeProfile, "node_modules")
 	};
 }
 function readPatch(patchPath) {
@@ -197,12 +215,20 @@ function ensureSymlink(entry, profileModulesDir) {
 		stat = lstatSync(target);
 	} catch {}
 	if (stat) {
-		if (!stat.isSymbolicLink()) throw new Error(`${target} exists and is not a symlink — refusing to touch it`);
+		try {
+			if (realpathSync(target) === realpathSync(entry.dir)) return false;
+		} catch {}
+		if (!stat.isSymbolicLink()) {
+			try {
+				if (JSON.parse(readFileSync(join(target, "package.json"), "utf8")).name === entry.pkg) return false;
+			} catch {}
+			throw new Error(`${target} exists and is not the selected skin package — refusing to touch it`);
+		}
 		if (readlinkSync(target) === entry.dir) return false;
 		unlinkSync(target);
 	}
 	mkdirSync(dirname(target), { recursive: true });
-	symlinkSync(entry.dir, target);
+	symlinkSync(entry.dir, target, process.platform === "win32" ? "junction" : "dir");
 	return true;
 }
 /** Windows/privilege code points where symlinkSync fails. */
@@ -236,9 +262,10 @@ function symlinkFriendly(caller, fn) {
 function checkInstalled(entry, profileModulesDir) {
 	let ok = false;
 	try {
-		ok = lstatSync(join(profileModulesDir, entry.pkg)).isSymbolicLink();
+		const target = join(profileModulesDir, entry.pkg);
+		ok = lstatSync(target).isDirectory() || lstatSync(target).isSymbolicLink();
 	} catch {}
-	return ok ? null : `${entry.pkg} 未安装到 profile；先用 dsh-skin install ${entry.id.replace(/^ui-skin-/, "")}（或 dsh plugin --profile ${DEFAULT_PROFILE} add ${entry.dir}）安装，否则加载会失败。`;
+	return ok ? null : `${entry.pkg} 未安装到 profile；先用 dsh-skin install ${entry.id.replace(/^ui-skin-/, "")}（或 dsh plugin --profile ${defaultProfile()} add ${entry.dir}）安装，否则加载会失败。`;
 }
 /**
 * Switch the active skin. Equivalent to `dsh-skin use <name>`:
@@ -435,29 +462,6 @@ function postRoute(path, run) {
 		}
 	};
 }
-/** Repo layout: skin bundles live at packages/skins/<id>/lib/client.js. */
-const SKINS_DIR = fileURLToPath(new URL("../../../skins/", import.meta.url));
-/**
-* Map skin id -> directory under packages/skins/, scanned from each
-* skin.json. The id is validated against this map (never used as a raw
-* path) so the bundle route cannot be walked off the skins tree.
-* @returns skin id -> directory name.
-*/
-function skinDirectories() {
-	const out = /* @__PURE__ */ new Map();
-	for (const dir of readdirSync(SKINS_DIR)) {
-		const metaFile = join(SKINS_DIR, dir, "skin.json");
-		if (!statSync(metaFile, { throwIfNoEntry: false })) continue;
-		let meta;
-		try {
-			meta = JSON.parse(readFileSync(metaFile, "utf8"));
-		} catch {
-			continue;
-		}
-		if (typeof meta.id === "string" && /^[a-z0-9-]+$/.test(meta.id)) out.set(meta.id, dir);
-	}
-	return out;
-}
 /**
 * The on-demand bundle route: serve packages/skins/<id>/lib/client.js as a
 * same-origin script. Try-on loads it through a script tag (the kernel's
@@ -491,15 +495,15 @@ function bundleRoute() {
 				return;
 			}
 			try {
-				const dir = skinDirectories().get(id);
-				if (dir === void 0) {
+				const entry = loadRegistry()[id];
+				if (entry === void 0) {
 					json(res, 404, {
 						ok: false,
 						error: "skin-not-found"
 					});
 					return;
 				}
-				const bundle = join(SKINS_DIR, dir, "lib", "client.js");
+				const bundle = join(entry.dir, "lib", "client.js");
 				if (!statSync(bundle, { throwIfNoEntry: false })) {
 					json(res, 404, {
 						ok: false,
