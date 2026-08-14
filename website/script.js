@@ -141,6 +141,12 @@ document.querySelector('.copy-source')?.addEventListener('click', event => {
   copyText(event.currentTarget.dataset.copy, event.currentTarget.querySelector('.code-action'))
 })
 
+document.querySelectorAll('[data-copy-value]').forEach(button => {
+  button.addEventListener('click', event => {
+    copyText(event.currentTarget.dataset.copyValue, event.currentTarget.querySelector('[data-copy-feedback]'))
+  })
+})
+
 document.querySelectorAll('[data-theme-image]').forEach(button => {
   button.addEventListener('click', () => {
     document.querySelectorAll('[data-theme-image]').forEach(item => item.classList.remove('is-active'))

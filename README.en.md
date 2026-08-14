@@ -10,6 +10,12 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 
 [Explore the product site](https://ningbainb.github.io/deepseek-harness-desktop/) · [Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Changelog](CHANGELOG.md)
 
+### Community QQ Group
+
+Group number: **1105158177** · **[Join the QQ group](https://qm.qq.com/q/vehlNjaeye)**
+
+<a href="https://qm.qq.com/q/vehlNjaeye"><img src="website/assets/qq-group-1105158177.jpg" width="280" alt="QR code for DeepSeek Harness Desktop QQ group 1105158177"></a>
+
 | Lossless original surface | Desktop Extension Dock |
 | --- | --- |
 | ![Desktop startup](docs/screenshots/desktop-startup.png) | ![Plugin and skill Extension Dock](docs/screenshots/desktop-extension-dock.png) |
