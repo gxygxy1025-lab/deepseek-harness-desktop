@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SettingsScope, SettingsScopeSpec } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the settings-surface SlotMap merge (the definitions that
@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-token-meter/client'
 import { LiveStatsSettingsCard, LiveStatsSettingsCardController, type LiveStatsSettings } from './LiveStatsSettingsCard.tsx'
+import { TpsLineDockEntry } from './TpsLine.tsx'
 import { en, zh, type SettingsCardKey } from './locales.ts'
 
 export { TpsLine, formatTokensPerSecond } from './TpsLine.tsx'
@@ -35,6 +36,18 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /**
+     * Optional rc.6 compatibility binder provided by dsh-web-ui-settings;
+     * absent when that group plugin is not installed, so callers fall back to
+     * the official settings scope.
+     */
+    webUiSettings?: { bind<S>(spec: SettingsScopeSpec<S>): SettingsScope<S> }
+  }
+}
+
+
 /** Dictionary namespace owned by this plugin. */
 const NS = 'live-stats'
 
@@ -56,8 +69,9 @@ export function apply(ctx: ClientContext): void {
 
   // Plugin configuration card: one staged form over the `live-stats` settings
   // namespace, contributed to the plugin-configuration section.
+  const binder = ctx.get('webUiSettings') ?? ctx.settingsScope
   const liveStatsSettings = new LiveStatsSettingsCardController(
-    ctx.settingsScope.bind<LiveStatsSettings>({ namespace: LIVE_STATS_NS }),
+    binder.bind<LiveStatsSettings>({ namespace: LIVE_STATS_NS }),
   )
   ctx.slots.inject('web-ui.plugin.item', () => ctx.slots.register({
     name: 'web-ui.plugin.item',
@@ -66,4 +80,15 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => liveStatsSettings.inject(),
   }, LiveStatsSettingsCard))
+
+  // The live TPS row mounts on the composer dock (the shipped stats-line
+  // seat). Its session standard kit supplies `useProjection`, which reads the
+  // host's `liveTokenUsage` projection. Previously TpsLine was only exported
+  // for shell integration and never actually mounted on rc.6 (issue #56).
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+    name: 'conversation.composer.dock',
+    id: 'live-stats',
+    order: 100,
+    inject: () => ({}),
+  }, TpsLineDockEntry))
 }

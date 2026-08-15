@@ -35,9 +35,12 @@ for (const packageName of requiredPackages) {
 await access(join(unpackedModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
 await access(join(unpackedModules, 'pnpm', 'bin', 'pnpm.mjs'))
 for (const packageName of BUILTIN_SKIN_PACKAGES) {
-  const packageRoot = join(unpackedModules, ...packagePathSegments(packageName))
+  const skinId = packageName.slice(packageName.lastIndexOf('-skin-') + '-skin-'.length)
+  const packageRoot = join(unpackedModules, '@linxin666', 'dsh-skins', 'skins', skinId)
   await access(join(packageRoot, 'lib', 'client.js'))
   await access(join(packageRoot, 'skin.json'))
+  const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+  if (manifest.name !== packageName) throw new Error(`bundled skin manifest mismatch for ${packageName}`)
 }
 const petRoot = join(unpackedModules, ...packagePathSegments('@linxin666/dsh-pet'))
 await access(join(petRoot, 'lib', 'client.js'))

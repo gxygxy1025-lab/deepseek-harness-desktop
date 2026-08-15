@@ -72,6 +72,11 @@ test('profile manifest removes bundles already supplied by the web UI aggregate'
   assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-client-ui-aionui-panel'), true)
   assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-client-ui-git-graph'), true)
   assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-client-ui-skin-center'), true)
+  assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-liangshen'), true)
+  assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-tool-describe-image'), true)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-web-ui-compat'), false)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-client-ui-skin-harbor'), false)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-client-ui-skin-qq2006'), false)
 })
 
 test('desktop profile includes both bundled plugin stores', () => {
@@ -80,6 +85,7 @@ test('desktop profile includes both bundled plugin stores', () => {
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('dshmarket'), true)
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('dsh-plugin-hub'), true)
   assert.match(DESKTOP_PATCH_CONFIG, /id: dsh-market[\s\S]*profile: desktop/)
+  assert.match(DESKTOP_PATCH_CONFIG, /id: dsh-market[\s\S]*allowRestart: false/)
 })
 
 test('desktop profile includes the official QQ Bot bundle', () => {

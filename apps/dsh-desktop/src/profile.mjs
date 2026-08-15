@@ -37,19 +37,22 @@ export const AGGREGATED_BUNDLES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-center',
   '@linxin666/dsh-client-ui-task-board',
   '@linxin666/dsh-client-ui-web-ui-settings',
+  '@linxin666/dsh-liangshen',
   '@linxin666/dsh-live-stats',
   '@linxin666/dsh-pet',
   '@linxin666/dsh-remote-web-ui',
   '@linxin666/dsh-skins',
   '@linxin666/dsh-ssh',
-  '@linxin666/dsh-web-ui-compat',
+  '@linxin666/dsh-tool-describe-image',
 ].toSorted())
 
 export const BUILTIN_SKIN_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-blue-fantasy',
   '@linxin666/dsh-client-ui-skin-dragon-heir',
+  '@linxin666/dsh-client-ui-skin-harbor',
   '@linxin666/dsh-client-ui-skin-miku',
   '@linxin666/dsh-client-ui-skin-minecraft',
+  '@linxin666/dsh-client-ui-skin-qq2006',
   '@linxin666/dsh-client-ui-skin-qq98',
   '@linxin666/dsh-client-ui-skin-ths',
   '@linxin666/dsh-client-ui-skin-trading',
@@ -70,16 +73,16 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-git-graph',
   '@linxin666/dsh-client-ui-mode-switcher',
   '@linxin666/dsh-client-ui-skin-center',
-  ...BUILTIN_SKIN_PACKAGES,
   '@linxin666/dsh-client-ui-task-board',
   '@linxin666/dsh-client-ui-web-ui-settings',
+  '@linxin666/dsh-liangshen',
   '@linxin666/dsh-live-stats',
   '@linxin666/dsh-pet',
   '@linxin666/dsh-remote-web-ui',
   '@linxin666/dsh-skins',
   '@linxin666/dsh-ssh',
+  '@linxin666/dsh-tool-describe-image',
   '@linxin666/dsh-web-ui-all',
-  '@linxin666/dsh-web-ui-compat',
   '@tencent-connect/dsh-qqbot',
   'dshmarket',
   'dsh-plugin-hub',
@@ -137,6 +140,7 @@ ${LEGACY_DESKTOP_PATCH_CONFIG.trimEnd()}
 - id: dsh-market
   config:
     profile: desktop
+    allowRestart: false
 ${DESKTOP_PATCH_END}
 `
 const WORKSPACE_CONFIG = `packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n`

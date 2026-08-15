@@ -32,7 +32,7 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 | --- | --- |
 | ![Desktop startup](docs/screenshots/desktop-startup.png) | ![Plugin and skill Extension Dock](docs/screenshots/desktop-extension-dock.png) |
 
-- Keeps the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, and every skin;
+- Bundles the dsh-web-ui 0.1.15 suite with the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, plus Describe Image and the Liangshen agent;
 - Bundles Tencent's official QQ Bot, with in-dock QR binding for QQ direct messages and group chats — no YAML editing or background terminal required;
 - Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
 - Adds crash recovery, sanitized rotating logs, window-state restore, strict navigation, and denied-by-default permissions;
@@ -48,7 +48,7 @@ The desktop app already includes the task board, Git graph, right panel, mobile 
 
 ### QQ Bot QR Binding (Desktop 0.1.6)
 
-The desktop app bundles Tencent's official `@tencent-connect/dsh-qqbot` 0.2.0 and `@tencent-connect/qqbot-connector` 1.2.0. Open the QQ Bot card in Extension Dock to request an auto-refreshing QR code; scan it with mobile QQ to connect direct messages and group chats to the local Harness. The same card supports cancellation, rebinding, and complete unbinding.
+The desktop app bundles Tencent's official `@tencent-connect/dsh-qqbot` 0.3.0 and `@tencent-connect/qqbot-connector` 1.2.0. Open the QQ Bot card in Extension Dock to request an auto-refreshing QR code; scan it with mobile QQ to connect direct messages and group chats to the local Harness. The same card supports cancellation, rebinding, and complete unbinding.
 
 The plugin remains disabled until credentials exist, so a hidden background process never waits for terminal QR setup or delays Web UI readiness. Successful binding enables the plugin and restarts DSH automatically. AppSecret is encrypted by Electron `safeStorage` with Windows credential protection; it is never sent to renderer code, written to logs, or stored in plaintext in `cordis.patch.yml`, and is supplied only through the DSH child environment at runtime.
 
@@ -76,7 +76,7 @@ When a project session is open, two panels appear to the right of the chat area 
 - **Preview**: multi-tab preview for markdown, HTML, code, diff, CSV, PDF, Office, images and plain text, with source/preview switching, split-screen editing and saving;
 - **Changes (SCM)**: a real git changes panel with stage / unstage / discard;
 - Panel widths are draggable (double-click a handle to reset), and the collapsed state plus widths persist per project;
-- All nine selectable skins adapt the right panel — switching skins restyles the panels to match the theme.
+- All eleven selectable skins adapt the right panel — switching skins restyles the panels to match the theme.
 
 ![Right panel](docs/screenshots/19-right-panel.png)
 
@@ -122,11 +122,11 @@ All family plugins' toggles and parameters live under "Settings > Plugin config"
 
 ### Plugin Stores and Extension Dock
 
-The desktop profile bundles `dshmarket` 1.0.3 and `dsh-plugin-hub` 0.1.0. Marketplace installs target the isolated `desktop` profile and support community DSH bundle discovery, installation, transactional rollback, and upgrade preservation. Project, DSH, and Agents skills can also be discovered in Extension Dock and imported after safety checks.
+The desktop profile bundles `dshmarket` 1.3.0 and `dsh-plugin-hub` 0.1.1. Marketplace installs target the isolated `desktop` profile and support community DSH bundle discovery, installation, transactional rollback, and upgrade preservation. Runtime restarts remain owned by the desktop host so the market cannot launch a second DSH process. Project, DSH, and Agents skills can also be discovered in Extension Dock and imported after safety checks.
 
 ## Skins
 
-The skin center ships nine selectable skins, each supporting try-on before applying: preview applies instantly and reverts fully on exit; once you are satisfied, apply it with one click.
+The skin center ships eleven selectable skins, including Harbor and QQ2006. Each supports try-on before applying: preview applies instantly and reverts fully on exit; once you are satisfied, apply it with one click.
 
 ![Skin center](docs/screenshots/03-settings-skin-center.png)
 

@@ -8,6 +8,7 @@
  * phone-side pair/accept + deep-link flow.
  */
 
+import { createRequire } from 'node:module'
 import { setInterval as nodeSetInterval } from 'node:timers'
 import type { IncomingMessage } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
@@ -16,11 +17,20 @@ import z from 'schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { PairingService } from './pairing.ts'
 import { makeGateListener } from './gate.ts'
-import { makeRoutes } from './routes.ts'
+import { isTrustedApiRequest, makeRoutes } from './routes.ts'
 import { makeMobileRoutes } from './mobile-routes.ts'
 import { makeMobileApiRoutes } from './mobile-api.ts'
 import { lanIPv4Addresses } from './lan.ts'
 import { TunnelManager, type TunnelInfo } from './tunnel.ts'
+import {
+  checkUpdates,
+  fetchLatestVersion,
+  resolveAnchorManifest,
+  resolveUpdateTarget,
+  runUpdate,
+  type UpdateRunResult,
+} from './update.ts'
+import { makeUpdateRoutes } from './update-routes.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -86,6 +96,13 @@ export interface Config {
    * tunnel setup. The manual `publicBaseUrl` is ignored while this is on.
    */
   autoTunnel?: boolean
+  /**
+   * Mobile composer behavior: when true (default), a plain Enter in the
+   * phone chat textarea sends the prompt and Shift+Enter inserts a newline.
+   * When false, plain Enter inserts a newline and only the send button
+   * sends (Shift+Enter keeps inserting a newline).
+   */
+  mobileEnterToSend?: boolean
   /** Master switch for the plugin (browser half + host pairing surfaces). */
   enabled?: boolean
 }
@@ -98,6 +115,7 @@ export const Config: z<Config> = z.object({
   requirePairingForLan: z.boolean().default(true),
   publicBaseUrl: z.string(),
   autoTunnel: z.boolean().default(false),
+  mobileEnterToSend: z.boolean().default(true),
   enabled: z.boolean().default(true),
 })
 
@@ -120,6 +138,7 @@ const DEFAULTS: ResolvedConfig = {
   requirePairingForLan: true,
   publicBaseUrl: undefined,
   autoTunnel: false,
+  mobileEnterToSend: true,
   enabled: true,
 }
 
@@ -137,6 +156,7 @@ export function apply(ctx: Context, config?: Config): void {
     requirePairingForLan: config?.requirePairingForLan ?? DEFAULTS.requirePairingForLan,
     publicBaseUrl: config?.publicBaseUrl,
     autoTunnel: config?.autoTunnel ?? DEFAULTS.autoTunnel,
+    mobileEnterToSend: config?.mobileEnterToSend ?? DEFAULTS.mobileEnterToSend,
     enabled: config?.enabled ?? DEFAULTS.enabled,
   }
   // The live source the pairing service and the gate read: the settings
@@ -153,6 +173,7 @@ export function apply(ctx: Context, config?: Config): void {
       requirePairingForLan: value.requirePairingForLan ?? DEFAULTS.requirePairingForLan,
       publicBaseUrl: value.publicBaseUrl,
       autoTunnel: value.autoTunnel ?? DEFAULTS.autoTunnel,
+      mobileEnterToSend: value.mobileEnterToSend ?? DEFAULTS.mobileEnterToSend,
       enabled: value.enabled ?? DEFAULTS.enabled,
     }
   }
@@ -215,10 +236,52 @@ export function apply(ctx: Context, config?: Config): void {
   if (apiProxy === undefined) {
     console.warn('remote-web-ui: apiProxy service unavailable — the mobile data channel is disabled')
   }
+  // ── remote update ────────────────────────────────────────────────────────
+  // The dsh-web-ui self-update surface: probe the npm registry for family
+  // releases and run `pnpm update` in the owning profile. Resolutions anchor
+  // on the host process's own module graph, so the update always targets the
+  // profile the running web GUI was booted from. The probe path resolves once
+  // (the anchor stays the same package across updates); versions are re-read
+  // from disk per check.
+  const requireFromHost = createRequire(import.meta.url)
+  const anchorManifestPath = resolveAnchorManifest(specifier => requireFromHost.resolve(specifier))
+  const updateRoutes = makeUpdateRoutes({
+    // Control endpoints are host-surface only: a LAN/phone origin must never
+    // trigger a real install on this machine.
+    fence: request => isTrustedApiRequest(request, []),
+    check: () => checkUpdates({
+      anchorManifestPath,
+      resolve: specifier => {
+        try {
+          return requireFromHost.resolve(specifier)
+        } catch {
+          return undefined
+        }
+      },
+      fetchLatest: name => fetchLatestVersion(name, fetch),
+    }),
+    run: async (): Promise<UpdateRunResult> => {
+      const target = resolveUpdateTarget({ anchorManifestPath })
+      if ('error' in target) {
+        const code = target.error
+        return {
+          ok: false,
+          exitCode: null,
+          output: '',
+          error: code === 'not-found' ? 'dsh-web-ui aggregate not installed' : 'local link install — update unavailable',
+          errorCode: code,
+        }
+      }
+      return runUpdate({ profileDir: target.profileDir, packages: target.packages })
+    },
+  })
   const routes = [
     ...makeRoutes({ service, lanAddresses }),
     ...makeMobileRoutes(),
-    ...(apiProxy !== undefined ? makeMobileApiRoutes({ service, apiProxy }) : []),
+    ...(apiProxy !== undefined
+      ? makeMobileApiRoutes({ service, apiProxy, mobileEnterToSend: () => resolve().mobileEnterToSend })
+      : []),
+    ...updateRoutes,
   ]
   const gate = makeGateListener(service, () => resolve().requirePairingForLan, () => resolve().enabled)
   ctx.effect(() => ctx.on('api/gate', gate), 'remote-web-ui: api gate')
