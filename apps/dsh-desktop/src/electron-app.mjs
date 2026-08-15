@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
@@ -62,6 +63,7 @@ export async function ensurePnpmCommandShim({ directory, executable, pnpmCli }) 
 }
 
 export async function startElectronApp(metadata) {
+  const applicationStartedAt = performance.now()
   const electron = await import('electron')
   const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, shell } = electron
   if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
@@ -73,6 +75,7 @@ export async function startElectronApp(metadata) {
   app.setName(metadata.productName)
   app.setAppUserModelId(metadata.appId)
   await app.whenReady()
+  const applicationReadyAt = performance.now()
 
   const appIconPath = resolveAppIconPath({
     isPackaged: app.isPackaged,
@@ -92,7 +95,9 @@ export async function startElectronApp(metadata) {
   const logsDirectory = join(userData, 'logs')
   await mkdir(logsDirectory, { recursive: true })
   const logStore = new BoundedLogStore({ directory: logsDirectory })
+  await logStore.append(`[startup] application-ready=${Math.round(applicationReadyAt - applicationStartedAt)}ms`)
   const dshHome = runtimeHome()
+  const profileStartedAt = performance.now()
   const runtimePackages = resolveRuntimePackages()
   let qqBotCredentials
   const ensureProfile = async () => {
@@ -111,6 +116,9 @@ export async function startElectronApp(metadata) {
     await logStore.append(`[qqbot] failed to load credentials: ${error.message}`)
   }
   await setQqBotProfileEnabled({ profileDir: profile.profileDir, enabled: Boolean(qqBotCredentials) })
+  await logStore.append(
+    `[startup] profile-ready=${Math.round(performance.now() - profileStartedAt)}ms packages=${runtimePackages.size}`,
+  )
   const qqBotEnvironment = () => qqBotCredentials
     ? { QQBOT_APPID: qqBotCredentials.appId, QQBOT_SECRET: qqBotCredentials.appSecret }
     : { QQBOT_APPID: '', QQBOT_SECRET: '' }
@@ -354,11 +362,18 @@ export async function startElectronApp(metadata) {
       await mainWindow.loadFile(STARTUP_PATH, preview ? { query: { preview } } : undefined)
     }
   }
+  let runtimeStartedAt
   controller.on('status', (status) => {
+    if (status.state === 'starting') runtimeStartedAt = performance.now()
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (status.state === 'ready' && status.url) {
+      const runtimeReadyAt = performance.now()
+      if (runtimeStartedAt !== undefined) {
+        void logStore.append(`[startup] runtime-ready=${Math.round(runtimeReadyAt - runtimeStartedAt)}ms`)
+      }
       activeOrigin = new URL(status.url).origin
       void mainWindow.loadURL(status.url).then(() => {
+        void logStore.append(`[startup] renderer-loaded=${Math.round(performance.now() - runtimeReadyAt)}ms`)
         if (process.env.DSH_DESKTOP_SMOKE_EXIT === '1') {
           console.log(`desktop smoke ready: ${activeOrigin}`)
           app.quit()
