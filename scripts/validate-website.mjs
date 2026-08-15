@@ -46,6 +46,7 @@ export async function collectWebsiteErrors(html, expectedVersion) {
     ['GitHub Star CTA', /\bdata-star-cta\b/i],
     ['GitHub Star count', /\bdata-star-count\b/i],
     ['release download count', /\bdata-download-count\b/i],
+    ['cumulative download label', /累计安装包下载/],
   ]
 
   for (const [label, pattern] of requiredMarkers) {
