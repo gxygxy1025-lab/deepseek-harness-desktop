@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
+import semver from 'semver'
 
 import {
   AGGREGATED_BUNDLES,
@@ -11,6 +12,8 @@ import {
   materializeFilesystemPath,
   packagePathSegments,
 } from '../profile.mjs'
+import { assessPluginCompatibility } from './plugin-compatibility.mjs'
+import { PluginRegistry } from './plugin-registry.mjs'
 
 const PROTECTED_PACKAGES = new Set([
   ...BUILTIN_BUNDLES,
@@ -18,6 +21,11 @@ const PROTECTED_PACKAGES = new Set([
   ...DESKTOP_SUPPORT_PACKAGES,
 ])
 const VERSION_PATTERN = /^[a-z0-9][a-z0-9._+~^*<>=|-]*$/i
+const UNKNOWN_COMPATIBILITY = Object.freeze({
+  status: 'unknown',
+  reasons: Object.freeze([Object.freeze({ code: 'compatibility-undeclared' })]),
+})
+const MANAGED_COMPATIBILITY = Object.freeze({ status: 'compatible', reasons: Object.freeze([]) })
 
 export function validatePluginSpec(value) {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
@@ -54,23 +62,69 @@ export function validatePluginSpec(value) {
   return { name, spec: value }
 }
 
-export function createPluginInventory(manifest) {
+export function createPluginInventory(manifest, {
+  installedManifests = new Map(),
+  hostCompatibility,
+  updateStates = new Map(),
+} = {}) {
   const dependencies = manifest?.dependencies ?? {}
   const bundles = new Set(manifest?.dsh?.profile?.bundles ?? [])
   return Object.entries(dependencies)
-    .map(([name, requested]) => ({
-      name,
-      requested,
-      builtIn: PROTECTED_PACKAGES.has(name),
-      enabled: bundles.has(name)
-        || AGGREGATED_BUNDLES.includes(name)
-        || DESKTOP_SUPPORT_PACKAGES.includes(name),
-    }))
+    .map(([name, requested]) => {
+      const builtIn = PROTECTED_PACKAGES.has(name)
+      const installed = installedManifests.get(name)
+      const compatibility = builtIn
+        ? MANAGED_COMPATIBILITY
+        : hostCompatibility === undefined
+          ? UNKNOWN_COMPATIBILITY
+          : assessPluginCompatibility(installed, hostCompatibility)
+      return {
+        name,
+        requested,
+        version: typeof installed?.version === 'string' ? installed.version : undefined,
+        builtIn,
+        managedByDesktop: builtIn,
+        enabled: bundles.has(name)
+          || AGGREGATED_BUNDLES.includes(name)
+          || DESKTOP_SUPPORT_PACKAGES.includes(name),
+        compatibility,
+        ...(updateStates.get(name) ?? {}),
+      }
+    })
     .toSorted((left, right) => Number(right.builtIn) - Number(left.builtIn) || left.name.localeCompare(right.name))
 }
 
 async function readManifest(profileDir) {
   return JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+}
+
+async function readInstalledManifest(profileDir, name) {
+  try {
+    return JSON.parse(await readFile(
+      join(profileDir, 'node_modules', ...packagePathSegments(name), 'package.json'),
+      'utf8',
+    ))
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+async function readInstalledManifests(profileDir, names) {
+  const entries = await Promise.all(names.map(async (name) => [name, await readInstalledManifest(profileDir, name)]))
+  return new Map(entries)
+}
+
+function requestedVersion(parsed) {
+  const suffix = parsed.spec.slice(parsed.name.length)
+  return suffix.startsWith('@') ? suffix.slice(1) : 'latest'
+}
+
+function compatibilityError(message, code, compatibility) {
+  const error = new Error(message)
+  error.code = code
+  error.compatibility = compatibility
+  return error
 }
 
 async function writeManifest(profileDir, manifest) {
@@ -117,11 +171,21 @@ export function runPnpm({ pnpmCli, profileDir, args, executable = process.execPa
 }
 
 export class PluginManager {
-  constructor({ profileDir, pnpmCli = resolvePnpmCliPath(), runner = runPnpm, executable = process.execPath }) {
+  constructor({
+    profileDir,
+    pnpmCli = resolvePnpmCliPath(),
+    runner = runPnpm,
+    executable = process.execPath,
+    registry = new PluginRegistry(),
+    hostCompatibility,
+  }) {
     this.profileDir = profileDir
     this.pnpmCli = pnpmCli
     this.runner = runner
     this.executable = executable
+    this.registry = registry
+    this.hostCompatibility = hostCompatibility
+    this.updateStates = new Map()
     this.queue = Promise.resolve()
   }
 
@@ -133,7 +197,83 @@ export class PluginManager {
 
   async inventory() {
     await this.queue
-    return createPluginInventory(await readManifest(this.profileDir))
+    return this.#inventoryNow()
+  }
+
+  async #inventoryNow(manifest = undefined) {
+    const profileManifest = manifest ?? await readManifest(this.profileDir)
+    const names = Object.keys(profileManifest.dependencies ?? {})
+    const installedManifests = await readInstalledManifests(this.profileDir, names)
+    return createPluginInventory(profileManifest, {
+      installedManifests,
+      hostCompatibility: this.hostCompatibility,
+      updateStates: this.updateStates,
+    })
+  }
+
+  checkUpdates() {
+    return this.#enqueue(async () => {
+      const manifest = await readManifest(this.profileDir)
+      const names = Object.keys(manifest.dependencies ?? {})
+        .filter((name) => !PROTECTED_PACKAGES.has(name))
+        .toSorted()
+      const installedManifests = await readInstalledManifests(this.profileDir, names)
+      const results = await this.registry.check(names)
+      this.updateStates = new Map(results.map(({ name, manifest: candidate, error }) => {
+        if (error || candidate === undefined) return [name, { updateError: 'unavailable' }]
+        const installedVersion = installedManifests.get(name)?.version
+        const updateCompatibility = this.hostCompatibility === undefined
+          ? UNKNOWN_COMPATIBILITY
+          : assessPluginCompatibility(candidate, this.hostCompatibility)
+        return [name, {
+          latestVersion: candidate.version,
+          updateAvailable: typeof installedVersion === 'string'
+            && semver.valid(installedVersion) !== null
+            && semver.gt(candidate.version, installedVersion),
+          updateCompatibility,
+        }]
+      }))
+      return this.#inventoryNow(manifest)
+    })
+  }
+
+  prepare(rawSpec, { allowUnknown = false } = {}) {
+    const parsed = validatePluginSpec(rawSpec)
+    return this.#enqueue(async () => {
+      if (PROTECTED_PACKAGES.has(parsed.name)) throw new Error(`${parsed.name} is a built-in desktop plugin`)
+      const candidate = await this.registry.fetchManifest(parsed.name, requestedVersion(parsed))
+      const compatibility = this.hostCompatibility === undefined
+        ? UNKNOWN_COMPATIBILITY
+        : assessPluginCompatibility(candidate, this.hostCompatibility)
+      if (compatibility.status === 'incompatible') {
+        throw compatibilityError(
+          `${parsed.name}@${candidate.version} is incompatible with this desktop runtime`,
+          'plugin-incompatible',
+          compatibility,
+        )
+      }
+      if (compatibility.status === 'unknown' && !allowUnknown) {
+        throw compatibilityError(
+          `${parsed.name}@${candidate.version} does not declare desktop compatibility`,
+          'plugin-compatibility-unknown',
+          compatibility,
+        )
+      }
+      const spec = `${parsed.name}@${candidate.version}`
+      await this.runner({
+        pnpmCli: this.pnpmCli,
+        profileDir: this.profileDir,
+        executable: this.executable,
+        args: ['store', 'add', spec],
+      })
+      return Object.freeze({
+        name: parsed.name,
+        version: candidate.version,
+        spec,
+        manifest: candidate,
+        compatibility,
+      })
+    })
   }
 
   install(rawSpec) {
@@ -162,6 +302,7 @@ export class PluginManager {
         bundles.add(parsed.name)
         manifest.dsh = { ...(manifest.dsh ?? {}), profile: { bundles: [...bundles] } }
         await writeManifest(this.profileDir, manifest)
+        this.updateStates.delete(parsed.name)
         return { name: parsed.name, version: packageManifest.version, restartRequired: true }
       } catch (error) {
         if (added) {
@@ -193,6 +334,7 @@ export class PluginManager {
       if (manifest.dependencies) delete manifest.dependencies[name]
       manifest.dsh.profile.bundles = (manifest.dsh?.profile?.bundles ?? []).filter((bundle) => bundle !== name)
       await writeManifest(this.profileDir, manifest)
+      this.updateStates.delete(name)
       return { name, restartRequired: true }
     })
   }
