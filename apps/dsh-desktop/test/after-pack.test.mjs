@@ -23,6 +23,30 @@ test('release pruner classifies only non-runtime package files', () => {
   assert.equal(classifyPrunableFile('pnpm/dist/pnpm.mjs'), undefined)
   assert.equal(classifyPrunableFile('@deepseek-ai/dsh/lib/index.js'), undefined)
   assert.equal(classifyPrunableFile('pnpm/bin/pnpm.mjs'), undefined)
+  assert.equal(
+    classifyPrunableFile('@linxin666/dsh-client-ui-task-board/docs/e2e/demo.png'),
+    'first-party-source',
+  )
+  assert.equal(
+    classifyPrunableFile('@linxin666/dsh-client-ui-skin-dragon-heir/src/client/art.ts'),
+    'first-party-source',
+  )
+  assert.equal(
+    classifyPrunableFile('@linxin666/dsh-client-ui-skin-dragon-heir/artwork/original.png'),
+    'first-party-source',
+  )
+  assert.equal(
+    classifyPrunableFile('@linxin666/dsh-client-ui-skin-dragon-heir/preview/light.png'),
+    undefined,
+  )
+  assert.equal(
+    classifyPrunableFile('@linxin666/dsh-client-ui-task-board/lib/client.js.map'),
+    'source-map',
+  )
+  assert.equal(
+    classifyPrunableFile('@linxin666/dsh-client-ui-task-board/lib/client.js'),
+    undefined,
+  )
 })
 
 test('release pruner removes classified files and preserves runtime entries', async () => {
@@ -34,6 +58,10 @@ test('release pruner removes classified files and preserves runtime entries', as
       ['zod/index.d.cts', 'types'],
       ['node-pty/prebuilds/win32-arm64/pty.node', 'arm64'],
       ['node-pty/prebuilds/win32-x64/pty.node', 'x64'],
+      ['@linxin666/dsh-client-ui-task-board/docs/e2e/demo.png', 'docs'],
+      ['@linxin666/dsh-client-ui-task-board/lib/client.js', 'runtime'],
+      ['@linxin666/dsh-client-ui-skin-dragon-heir/preview/light.png', 'preview'],
+      ['@linxin666/dsh-client-ui-skin-dragon-heir/src/client/art.ts', 'source'],
     ])
     for (const [path, content] of fixtures) {
       const absolute = join(root, ...path.split('/'))
@@ -42,11 +70,19 @@ test('release pruner removes classified files and preserves runtime entries', as
     }
 
     const report = await prunePackagedRuntime(root)
-    assert.equal(report.removedFiles, 3)
+    assert.equal(report.removedFiles, 5)
     assert.equal(await readFile(join(root, 'openai', 'index.js'), 'utf8'), 'runtime')
     assert.equal(
       await readFile(join(root, 'node-pty', 'prebuilds', 'win32-x64', 'pty.node'), 'utf8'),
       'x64',
+    )
+    assert.equal(
+      await readFile(join(root, '@linxin666', 'dsh-client-ui-task-board', 'lib', 'client.js'), 'utf8'),
+      'runtime',
+    )
+    assert.equal(
+      await readFile(join(root, '@linxin666', 'dsh-client-ui-skin-dragon-heir', 'preview', 'light.png'), 'utf8'),
+      'preview',
     )
   } finally {
     await rm(root, { recursive: true, force: true })

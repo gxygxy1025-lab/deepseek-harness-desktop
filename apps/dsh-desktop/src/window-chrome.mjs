@@ -1,4 +1,4 @@
-export const WINDOW_CHROME_HEIGHT = 46
+export const WINDOW_CHROME_HEIGHT = 32
 
 const WINDOW_CHROME_ID = 'dsh-desktop-window-chrome'
 
@@ -45,48 +45,32 @@ html[data-dsh-desktop-window-chrome="true"] body {
   display: flex;
   height: var(--dsh-desktop-window-chrome-height);
   align-items: center;
-  justify-content: space-between;
-  padding: 0 154px 0 16px;
+  padding: 0 140px 0 10px;
   overflow: hidden;
-  color: var(--dsh-desktop-chrome-fg, #d9edf4);
-  border-bottom: 1px solid var(--dsh-desktop-chrome-border, rgba(114, 213, 238, 0.16));
-  background: var(--dsh-desktop-chrome-bg, linear-gradient(180deg, #0b1a22, #071117));
-  box-shadow: var(--dsh-desktop-chrome-shadow, 0 10px 28px rgba(0, 4, 7, 0.24));
-  font-family: "Bahnschrift", "Aptos Display", sans-serif;
+  border-bottom: 1px solid var(--dsh-desktop-chrome-border, rgba(174, 232, 245, 0.12));
+  background-color: var(--dsh-desktop-chrome-bg, rgba(8, 18, 24, 0.7));
+  background-image: linear-gradient(180deg, var(--dsh-desktop-chrome-highlight, rgba(255, 255, 255, 0.08)), transparent 58%);
+  box-shadow: var(--dsh-desktop-chrome-shadow, inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12));
+  -webkit-backdrop-filter: blur(26px) saturate(145%);
+  backdrop-filter: blur(26px) saturate(145%);
+  isolation: isolate;
   user-select: none;
 }
 
 html[data-dsh-desktop-chrome-theme="dark"] {
-  --dsh-desktop-chrome-fg: #d9edf4;
-  --dsh-desktop-chrome-border: rgba(114, 213, 238, 0.16);
-  --dsh-desktop-chrome-bg: radial-gradient(circle at 17px 50%, rgba(105, 227, 255, 0.16), transparent 26px), linear-gradient(90deg, rgba(79, 191, 219, 0.08), transparent 30%), linear-gradient(180deg, #0b1a22 0%, #071117 100%);
-  --dsh-desktop-chrome-shadow: inset 0 1px rgba(225, 249, 255, 0.08), 0 10px 28px rgba(0, 4, 7, 0.24);
+  --dsh-desktop-chrome-border: rgba(174, 232, 245, 0.12);
+  --dsh-desktop-chrome-bg: rgba(8, 18, 24, 0.7);
+  --dsh-desktop-chrome-highlight: rgba(255, 255, 255, 0.08);
+  --dsh-desktop-chrome-sheen: rgba(148, 226, 245, 0.055);
+  --dsh-desktop-chrome-shadow: inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12);
 }
 
 html[data-dsh-desktop-chrome-theme="light"] {
-  --dsh-desktop-chrome-fg: #1f2937;
-  --dsh-desktop-chrome-border: rgba(71, 85, 105, 0.18);
-  --dsh-desktop-chrome-bg: radial-gradient(circle at 17px 50%, rgba(59, 130, 246, 0.12), transparent 26px), linear-gradient(90deg, rgba(59, 130, 246, 0.06), transparent 32%), linear-gradient(180deg, #f8fafc 0%, #eef2f8 100%);
-  --dsh-desktop-chrome-shadow: inset 0 1px rgba(255, 255, 255, 0.9), 0 8px 24px rgba(15, 23, 42, 0.1);
-}
-
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-title {
-  color: #111827;
-}
-
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-context,
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-mode {
-  color: rgba(51, 65, 85, 0.7);
-}
-
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-mark {
-  border-color: rgba(37, 99, 235, 0.42);
-  background: rgba(255, 255, 255, 0.76);
-}
-
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-mark::after {
-  background: #2563eb;
-  box-shadow: 0 0 7px rgba(37, 99, 235, 0.55);
+  --dsh-desktop-chrome-border: rgba(71, 85, 105, 0.13);
+  --dsh-desktop-chrome-bg: rgba(246, 248, 252, 0.72);
+  --dsh-desktop-chrome-highlight: rgba(255, 255, 255, 0.58);
+  --dsh-desktop-chrome-sheen: rgba(255, 255, 255, 0.3);
+  --dsh-desktop-chrome-shadow: inset 0 1px rgba(255, 255, 255, 0.82), 0 1px 6px rgba(15, 23, 42, 0.08);
 }
 
 html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
@@ -95,106 +79,34 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
   max-height: calc(100vh - var(--dsh-desktop-window-chrome-height)) !important;
 }
 
-#${WINDOW_CHROME_ID}::after {
+#${WINDOW_CHROME_ID}::before {
   position: absolute;
-  right: 154px;
-  bottom: 0;
-  left: 48px;
-  height: 1px;
+  z-index: -1;
+  inset: 0;
   content: "";
-  opacity: 0.65;
-  background: linear-gradient(90deg, rgba(105, 227, 255, 0.55), transparent 24%);
+  pointer-events: none;
+  background:
+    linear-gradient(108deg, var(--dsh-desktop-chrome-sheen, rgba(148, 226, 245, 0.055)), transparent 24%),
+    linear-gradient(90deg, transparent 54%, rgba(255, 255, 255, 0.025) 72%, transparent 90%);
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-brand,
-#${WINDOW_CHROME_ID} .dsh-window-chrome-context {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-brand {
-  gap: 10px;
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-mark {
+#${WINDOW_CHROME_ID} .dsh-window-chrome-icon {
   position: relative;
-  width: 20px;
-  height: 20px;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
   flex: none;
-  border: 1px solid rgba(124, 224, 248, 0.42);
-  border-radius: 50%;
-  background: rgba(4, 14, 20, 0.78);
-  box-shadow: inset 0 0 0 4px rgba(105, 227, 255, 0.035);
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-mark::before,
-#${WINDOW_CHROME_ID} .dsh-window-chrome-mark::after {
-  position: absolute;
-  content: "";
-  border-radius: 50%;
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-mark::before {
-  inset: 4px;
-  border: 1px solid rgba(124, 224, 248, 0.5);
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-mark::after {
-  top: 8px;
-  left: 8px;
-  width: 3px;
-  height: 3px;
-  background: #bff5ff;
-  box-shadow: 0 0 7px rgba(105, 227, 255, 0.9);
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-title {
-  overflow: hidden;
-  color: #e8f6fa;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.11em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-divider {
-  width: 28px;
-  height: 1px;
-  margin: 0 10px;
-  background: linear-gradient(90deg, rgba(105, 227, 255, 0.48), rgba(105, 227, 255, 0.06));
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-context {
-  color: rgba(171, 209, 220, 0.62);
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-#${WINDOW_CHROME_ID} .dsh-window-chrome-mode {
-  color: rgba(171, 209, 220, 0.36);
-  font-size: 8px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-@media (max-width: 760px) {
-  #${WINDOW_CHROME_ID} .dsh-window-chrome-divider,
-  #${WINDOW_CHROME_ID} .dsh-window-chrome-context,
-  #${WINDOW_CHROME_ID} .dsh-window-chrome-mode {
-    display: none;
-  }
+  border-radius: 5px;
+  object-fit: contain;
+  filter: saturate(106%) drop-shadow(0 1px 2px rgba(0, 8, 18, 0.3));
 }
 
 @media (prefers-contrast: more) {
   #${WINDOW_CHROME_ID} {
     border-bottom-color: rgba(190, 238, 250, 0.5);
     background: #071117;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 `
@@ -211,11 +123,10 @@ export function windowChromeBrowserOptions() {
   }
 }
 
-export function createWindowChromeScript({ title, context }) {
+export function createWindowChromeScript({ iconDataUrl = '' } = {}) {
   const data = JSON.stringify({
-    context: String(context || 'Desktop'),
+    iconDataUrl: String(iconDataUrl),
     id: WINDOW_CHROME_ID,
-    title: String(title || 'DeepSeek Harness'),
   })
   return `(() => {
     const data = ${data};
@@ -223,9 +134,12 @@ export function createWindowChromeScript({ title, context }) {
     const chrome = document.createElement('div');
     chrome.id = data.id;
     chrome.setAttribute('aria-hidden', 'true');
-    chrome.innerHTML = '<div class="dsh-window-chrome-brand"><span class="dsh-window-chrome-mark"></span><span class="dsh-window-chrome-title"></span><span class="dsh-window-chrome-divider"></span><span class="dsh-window-chrome-context"></span></div><span class="dsh-window-chrome-mode">LOCAL SURFACE</span>';
-    chrome.querySelector('.dsh-window-chrome-title').textContent = data.title;
-    chrome.querySelector('.dsh-window-chrome-context').textContent = data.context;
+    const icon = document.createElement('img');
+    icon.className = 'dsh-window-chrome-icon';
+    icon.alt = '';
+    icon.draggable = false;
+    if (data.iconDataUrl) icon.src = data.iconDataUrl;
+    chrome.append(icon);
     document.documentElement.dataset.dshDesktopWindowChrome = 'true';
     document.body.prepend(chrome);
 
@@ -271,18 +185,16 @@ export function createWindowChromeScript({ title, context }) {
   })()`
 }
 
-export async function applyWindowChrome({ webContents, title, context }) {
+export async function applyWindowChrome({ webContents, iconDataUrl }) {
   if (!webContents || webContents.isDestroyed?.()) return false
   await webContents.insertCSS(WINDOW_CHROME_CSS, { cssOrigin: 'author' })
-  return webContents.executeJavaScript(createWindowChromeScript({ title, context }), true)
+  return webContents.executeJavaScript(createWindowChromeScript({ iconDataUrl }), true)
 }
 
-export function installWindowChrome({ browserWindow, title, getContext, onError = () => {} }) {
+export function installWindowChrome({ browserWindow, iconDataUrl, onError = () => {} }) {
   const { webContents } = browserWindow
   const apply = () => {
-    const url = webContents.getURL()
-    const context = getContext?.(url) || 'Desktop'
-    void applyWindowChrome({ webContents, title, context }).catch(onError)
+    void applyWindowChrome({ webContents, iconDataUrl }).catch(onError)
   }
   webContents.on('did-finish-load', apply)
   return () => webContents.removeListener('did-finish-load', apply)

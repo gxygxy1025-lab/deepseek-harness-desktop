@@ -6,6 +6,7 @@ patchFrom:
   - ../dsh-aionui-panel
   - ../dsh-task-board
   - ../dsh-git-graph
+  - ../dsh-mode-switcher
   - ../dsh-pet
   - ../dsh-remote-web-ui
   - ../dsh-live-stats
@@ -17,6 +18,7 @@ deps:
   - ../dsh-aionui-panel
   - ../dsh-task-board
   - ../dsh-git-graph
+  - ../dsh-mode-switcher
   - ../dsh-pet
   - ../dsh-remote-web-ui
   - ../dsh-live-stats

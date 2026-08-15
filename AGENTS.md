@@ -20,7 +20,8 @@
 
 **此后新建的插件包（`packages/` 下新目录）一律以 `dsh-` 开头**（如 `dsh-aionui-panel`、
 `dsh-task-board`）。既有包已全部更名对齐，新包直接沿用，不允许再出现不带 `dsh-` 前缀的
-包目录。npm 包名沿用 `@deepseek-ai/dsh-*`（UI 类插件按惯例用 `@deepseek-ai/dsh-client-ui-*`）。
+包目录。仓库自有 npm 包名沿用已发布的 `@linxin666/dsh-*`（UI 类插件按惯例用
+`@linxin666/dsh-client-ui-*`）；`@deepseek-ai/*` 仅用于官方 SDK 和官方运行时包。
 
 ## 禁止使用 emoji
 
@@ -36,5 +37,5 @@
 **git push 已放开**：可正常执行 `git push` 到远程仓库 `dsh-external/dsh-web-ui`，
 推送前仍须核验目标仓库为 PRIVATE。
 
-**内测已结束，NPM 包可按正常流程发布**：本仓库任何包（`@deepseek-ai/dsh-*`）发布前
+**内测已结束，NPM 包可按正常流程发布**：本仓库任何包（`@linxin666/dsh-*`）发布前
 仍需由维护者确认发布动作、版本号与 registry 规范，避免误发或破坏线上包。

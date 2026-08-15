@@ -13,33 +13,35 @@ import {
 } from '../src/window-chrome.mjs'
 
 test('window chrome uses a native overlay with a compact caption area', () => {
-  assert.equal(WINDOW_CHROME_HEIGHT, 46)
+  assert.equal(WINDOW_CHROME_HEIGHT, 32)
   assert.deepEqual(windowChromeBrowserOptions(), {
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#071117',
       symbolColor: '#d9edf4',
-      height: 46,
+      height: 32,
     },
   })
   assert.match(WINDOW_CHROME_CSS, /-webkit-app-region: drag/)
   assert.match(WINDOW_CHROME_CSS, /padding-top: var\(--dsh-desktop-window-chrome-height\)/)
   assert.match(WINDOW_CHROME_CSS, /data-dsh-desktop-chrome-theme="light"/)
   assert.match(WINDOW_CHROME_CSS, /dsh-desktop-modal-layer/)
+  assert.match(WINDOW_CHROME_CSS, /backdrop-filter: blur\(26px\) saturate\(145%\)/)
+  assert.match(WINDOW_CHROME_CSS, /dsh-desktop-window-chrome::before/)
+  assert.match(WINDOW_CHROME_CSS, /width: 18px/)
 })
 
-test('window chrome script keeps labels as text content', () => {
+test('window chrome script mounts only the application icon', () => {
   const script = createWindowChromeScript({
-    title: 'DeepSeek <Harness>',
-    context: 'Web Surface',
+    iconDataUrl: 'data:image/png;base64,application-icon',
   })
-  assert.match(script, /textContent = data\.title/)
-  assert.match(script, /textContent = data\.context/)
+  assert.match(script, /document\.createElement\('img'\)/)
+  assert.match(script, /icon\.src = data\.iconDataUrl/)
   assert.match(script, /MutationObserver/)
   assert.match(script, /setWindowChromeTheme/)
   assert.match(script, /dsh-desktop-modal-layer/)
-  assert.doesNotMatch(script, /DeepSeek <Harness><\/span>/)
+  assert.doesNotMatch(script, /LOCAL SURFACE|dsh-window-chrome-title|dsh-window-chrome-context/)
 })
 
 test('window chrome theme validation and native overlay are bounded', () => {
@@ -49,7 +51,7 @@ test('window chrome theme validation and native overlay are bounded', () => {
   const calls = []
   const browserWindow = { setTitleBarOverlay: (options) => calls.push(options) }
   assert.equal(setWindowChromeTheme(browserWindow, 'light'), 'light')
-  assert.deepEqual(calls, [{ color: '#eef2f8', symbolColor: '#1f2937', height: 46 }])
+  assert.deepEqual(calls, [{ color: '#eef2f8', symbolColor: '#1f2937', height: 32 }])
 })
 
 test('window chrome applies CSS before mounting the drag surface', async () => {
@@ -62,7 +64,7 @@ test('window chrome applies CSS before mounting the drag surface', async () => {
       return true
     },
   }
-  assert.equal(await applyWindowChrome({ webContents, title: 'Harness', context: 'Startup' }), true)
+  assert.equal(await applyWindowChrome({ webContents, iconDataUrl: 'data:image/png;base64,icon' }), true)
   assert.equal(calls[0][0], 'css')
   assert.deepEqual(calls[0][2], { cssOrigin: 'author' })
   assert.equal(calls[1][0], 'script')
@@ -80,8 +82,7 @@ test('window chrome follows page navigations and can be detached', () => {
   }
   const dispose = installWindowChrome({
     browserWindow: { webContents },
-    title: 'Harness',
-    getContext: () => 'Startup',
+    iconDataUrl: 'data:image/png;base64,icon',
   })
   assert.equal(typeof listeners.get('did-finish-load'), 'function')
   dispose()

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { FsService, probeImageSize } from '../src/host/fs-service.ts'
+import { FsService, IMAGE_CAP_BYTES, probeImageSize, TEXT_CAP_CHARS } from '../src/host/fs-service.ts'
 import { GitService, type GitRunner } from '../src/host/git-service.ts'
 import type { WorkspaceGate } from '../src/host/gate.ts'
 
@@ -55,7 +55,7 @@ describe('FsService symlink escape (C1)', () => {
     await mkdir(outsideDir)
     await writeFile(join(outsideDir, 'secret.txt'), 'secret')
     // A symlink inside root pointing at the outside directory.
-    await symlink(outsideDir, join(root, 'link'))
+    await symlink(outsideDir, join(root, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
     const service = new FsService(gate)
 
     // read through the link must be refused (path-outside-root).
@@ -126,6 +126,23 @@ describe('FsService.readRaw (markdown image route)', () => {
 
     await rm(dir, { recursive: true, force: true })
   })
+
+  it('caps text before decoding and rejects oversized raw/image payloads', async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), 'aionui-caps-')))
+    const root = join(dir, 'proj')
+    await mkdir(root)
+    await writeFile(join(root, 'large.txt'), 'x'.repeat(TEXT_CAP_CHARS * 6))
+    await writeFile(join(root, 'large.png'), Buffer.alloc(IMAGE_CAP_BYTES + 1))
+    const service = new FsService(gate)
+
+    const text = await service.read(root, 'large.txt', false)
+    expect(text).toMatchObject({ truncated: true, size: TEXT_CAP_CHARS * 6 })
+    if ('content' in text) expect(text.content).toHaveLength(TEXT_CAP_CHARS)
+    expect(await service.read(root, 'large.png', true)).toMatchObject({ code: 'read-failed' })
+    expect(await service.readRaw(root, 'large.png')).toMatchObject({ code: 'read-failed' })
+
+    await rm(dir, { recursive: true, force: true })
+  })
 })
 
 describe('GitService.discard path derivation (H1)', () => {
@@ -182,7 +199,7 @@ describe('GitService.discard path derivation (H1)', () => {
     await mkdir(outsideDir)
     await mkdir(repoDir)
     await writeFile(join(outsideDir, 'victim.txt'), 'keep')
-    await symlink(outsideDir, join(repoDir, 'link'))
+    await symlink(outsideDir, join(repoDir, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
     const runner: GitRunner = {
       async run(argv) {
         if (argv[0] === 'rev-parse' && argv[1] === '--show-toplevel') {

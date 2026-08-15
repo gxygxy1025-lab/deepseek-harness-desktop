@@ -1,0 +1,3 @@
+- insert:
+    - id: ui-mode-switcher
+      name: '@linxin666/dsh-client-ui-mode-switcher'

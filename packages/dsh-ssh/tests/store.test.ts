@@ -100,7 +100,7 @@ describe('CRUD', () => {
     const store = makeStore()
     const entry = store.create({ ...basePayload, auth: { kind: 'key', keyPath: '~/keys/id' } })
     expect(entry.auth.keyPath).not.toContain('~')
-    expect(entry.auth.keyPath).toContain('keys/id')
+    expect(entry.auth.keyPath).toContain(join('keys', 'id'))
   })
 })
 
@@ -178,7 +178,12 @@ describe('file safety', () => {
     const store = makeStore()
     store.create(basePayload)
     const mode = statSync(store.path).mode & 0o777
-    expect(mode).toBe(0o600)
+    if (process.platform === 'win32') {
+      // Windows does not expose POSIX owner/group/other permission bits.
+      expect(mode & 0o200).toBe(0o200)
+    } else {
+      expect(mode).toBe(0o600)
+    }
   })
 
   it('renames a corrupt store aside instead of silently overwriting it', () => {
@@ -221,7 +226,7 @@ describe('partial updates', () => {
     const store = makeStore()
     store.create({ ...basePayload, auth: { kind: 'key', keyPath: '~/keys/old', passphrase: 'secret' } })
     const switched = store.update('web-01', { auth: { kind: 'key', keyPath: '~/keys/new' } })
-    expect(switched.auth.keyPath).toContain('keys/new')
+    expect(switched.auth.keyPath).toContain(join('keys', 'new'))
     expect(switched.auth.passphrase).toBeUndefined()
   })
 

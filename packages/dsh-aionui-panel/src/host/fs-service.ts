@@ -9,7 +9,7 @@
  * @module dsh-aionui-panel/host/fs-service
  */
 
-import { readdir, readFile, realpath, stat, writeFile, rm, mkdir } from 'node:fs/promises'
+import { mkdir, open, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { watch as watchDir, type Dirent, type FSWatcher } from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { DirListing, FileRead, FsEntry, PanelError, SearchHit, SearchView } from '../core/types.ts'
@@ -18,7 +18,9 @@ import { isPathInside, type GateVerdict, type WorkspaceGate } from './gate.ts'
 /** Preview text ceiling — mirrors AionUi's single-tab 80k-char cap. */
 export const TEXT_CAP_CHARS = 80_000
 /** Image read cap (data URL payload budget). */
-const IMAGE_CAP_BYTES = 8 << 20
+export const IMAGE_CAP_BYTES = 8 << 20
+/** Enough UTF-8 bytes to cover the character ceiling plus one partial rune. */
+const TEXT_READ_CAP_BYTES = TEXT_CAP_CHARS * 4 + 3
 /** Filename-search caps (results and scanned entries). */
 const SEARCH_HIT_CAP = 200
 const SEARCH_SCAN_CAP = 20_000
@@ -151,6 +153,19 @@ function imageMime(rel: string, data: Buffer): string {
   return 'application/octet-stream'
 }
 
+/** Read at most maxBytes from the start of a file without buffering the rest. */
+async function readPrefix(path: string, maxBytes: number): Promise<Buffer> {
+  if (maxBytes <= 0) return Buffer.alloc(0)
+  const handle = await open(path, 'r')
+  try {
+    const buffer = Buffer.allocUnsafe(maxBytes)
+    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0)
+    return buffer.subarray(0, bytesRead)
+  } finally {
+    await handle.close()
+  }
+}
+
 /**
  * Filesystem service: gated listing/read/write/search/delete plus a change
  * watcher. All relative paths are resolved against the gated root.
@@ -206,18 +221,22 @@ export class FsService {
     if (!gated.ok) return gated.error
     const resolved = await resolveInsideRoot(gated.canonical, rel)
     if (!resolved.ok) return resolved.error
-    let data: Buffer
     let info: Awaited<ReturnType<typeof stat>>
     try {
-      data = await readFile(resolved.abs)
       info = await stat(resolved.abs)
     } catch {
       return { code: 'not-found', message: `cannot read ${rel}` }
     }
     if (info.isDirectory()) return { code: 'is-directory', message: `${rel} is a directory` }
     if (asImage) {
-      if (data.length > IMAGE_CAP_BYTES) {
+      if (info.size > IMAGE_CAP_BYTES) {
         return { code: 'read-failed', message: 'image exceeds preview cap' }
+      }
+      let data: Buffer
+      try {
+        data = await readPrefix(resolved.abs, info.size)
+      } catch {
+        return { code: 'not-found', message: `cannot read ${rel}` }
       }
       const mime = imageMime(rel, data)
       return {
@@ -228,12 +247,18 @@ export class FsService {
         image: probeImageSize(data),
       }
     }
+    let data: Buffer
+    try {
+      data = await readPrefix(resolved.abs, Math.min(info.size, TEXT_READ_CAP_BYTES))
+    } catch {
+      return { code: 'not-found', message: `cannot read ${rel}` }
+    }
     const text = data.toString('utf8')
-    const truncated = text.length > TEXT_CAP_CHARS
+    const truncated = info.size > data.length || text.length > TEXT_CAP_CHARS
     return {
       content: truncated ? text.slice(0, TEXT_CAP_CHARS) : text,
       truncated,
-      size: data.length,
+      size: info.size,
       mtime: info.mtimeMs,
     }
   }
@@ -249,7 +274,6 @@ export class FsService {
     if (isGitPath(rel)) return { code: 'path-outside-root', message: 'refusing to read .git' }
     const resolved = await resolveInsideRoot(gated.canonical, rel)
     if (!resolved.ok) return resolved.error
-    let data: Buffer
     let info: Awaited<ReturnType<typeof stat>>
     try {
       info = await stat(resolved.abs)
@@ -257,8 +281,10 @@ export class FsService {
       return { code: 'not-found', message: `cannot read ${rel}` }
     }
     if (info.isDirectory()) return { code: 'is-directory', message: `${rel} is a directory` }
+    if (info.size > IMAGE_CAP_BYTES) return { code: 'read-failed', message: 'file exceeds preview cap' }
+    let data: Buffer
     try {
-      data = await readFile(resolved.abs)
+      data = await readPrefix(resolved.abs, info.size)
     } catch {
       return { code: 'not-found', message: `cannot read ${rel}` }
     }

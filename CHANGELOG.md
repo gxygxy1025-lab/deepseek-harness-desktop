@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.7 - 2026-08-15
+
+中文：
+
+- 全新设计深海探索启动界面，以状态驱动的真实进度、三阶段启动提示、完整恢复操作、减少动态效果适配和无障碍进度语义替代旧启动页。
+- 将顶部窗口栏压缩为 32 像素的 macOS 风格磨砂玻璃材质，只保留真实软件图标，同时继续使用原生 Windows 窗口按钮并安全避让全屏弹窗。
+- 大文件预览改为有界读取和流式原始响应，标签页内容加入内存预算；相同仓库的 Git 状态轮询合并执行，慢请求不再重叠堆积。
+- SSH 输出改为按真实字节限额并安全处理跨块 UTF-8，目录上传移除同步遍历；首次冷启动容忍时间提升至 120 秒，安装版验收失败会输出最近运行日志。
+- 扩大 Windows CI 与发布门禁，统一 Node 版本边界、全量测试、生成文件检查、官网回退版本校验和安装载荷裁剪验证。
+
+English:
+
+- Replaced the old launch screen with a deep-ocean discovery experience driven by real runtime state, three visible phases, complete recovery actions, reduced-motion handling, and accessible progress semantics.
+- Refined the top chrome into a 32-pixel macOS-inspired frosted-glass surface with only the real app icon, while retaining native Windows caption controls and modal safe-area behavior.
+- Bounded large-file preview reads, streamed raw responses, and added a tab-content memory budget; Git status polling is shared per repository and slow polls can no longer overlap.
+- Made SSH output limits byte-accurate across split UTF-8 chunks and removed synchronous upload traversal; expanded first-run startup tolerance to 120 seconds and added recent runtime logs to packaged E2E failures.
+- Strengthened Windows CI and release gates around supported Node versions, complete tests, generated assets, website fallback versions, and packaged-payload pruning.
+
+## 0.1.6 - 2026-08-14
+
+中文：
+
+- 内置腾讯官方 QQ Bot 与扫码 Connector，在扩展坞提供二维码绑定、刷新、取消、重新绑定和解绑。
+- 未绑定时保持插件禁用，扫码成功后自动启用并重启 DSH；AppSecret 通过 Windows 凭据保护加密，只注入子进程。
+
+English:
+
+- Bundled Tencent's official QQ Bot and QR Connector with in-dock QR binding, refresh, cancellation, rebinding, and unbinding.
+- Kept the plugin disabled until binding succeeds, then enabled it and restarted DSH automatically; AppSecret is protected by Windows credential encryption and supplied only to the child process.
+
 ## 0.1.5 - 2026-08-14
 
 中文：

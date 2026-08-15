@@ -1,11 +1,11 @@
 {
   "name": "dsh-web-ui",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "description": "DeepSeek Harness Web GUI 皮肤集合 + 主题库预览页（仿 Codex-Dream-Skin / DreamSkin.cc）。每个皮肤是符合官方标准（turtle-ui 式 setup）的独立可安装插件包。",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --workspace-concurrency=2 test",
     "typecheck": "pnpm -r typecheck",
     "desktop:dev": "pnpm --filter @deepseek-ai/dsh-desktop dev",
     "desktop:test": "pnpm --filter @deepseek-ai/dsh-desktop test",
@@ -16,9 +16,13 @@
     "gallery:check": "node scripts/gallery-build --check",
     "skin-center:check": "node scripts/skin-center-bundles --check",
     "test:scripts": "node --test scripts/*.test.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm test:scripts && pnpm release:notes:check && pnpm website:check && pnpm aggregate:check && pnpm gallery:check && pnpm skin-center:check",
     "skin:new": "node scripts/dsh-skin-new",
     "gallery:build": "node scripts/gallery-build",
     "gallery:capture": "node scripts/capture-previews"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
   },
   "packageManager": "pnpm@11.21.0",
   "devDependencies": {

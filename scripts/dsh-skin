@@ -190,7 +190,9 @@ function ensureSymlink(name) {
   // The link's parent scoped dir may not exist on a fresh machine (the
   // profiles/node_modules/@deepseek-ai tree is created incrementally).
   fs.mkdirSync(path.dirname(target), { recursive: true })
-  fs.symlinkSync(dir, target)
+  // Directory junctions do not require Developer Mode or elevated symlink
+  // privileges on Windows; POSIX keeps the ordinary directory symlink.
+  fs.symlinkSync(dir, target, process.platform === 'win32' ? 'junction' : 'dir')
   return true
 }
 

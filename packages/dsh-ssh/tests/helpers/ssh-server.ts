@@ -44,6 +44,16 @@ function handleCommand(command: string, stream: ClientChannel): void {
     stream.exit(0)
     stream.close()
   } else if (command === 'exit 7') respond('', 7)
+  else if (command === 'utf8-output') respond('你好\n', 0)
+  else if (command === 'utf8-split') {
+    const bytes = Buffer.from('你好\n')
+    stream.write(bytes.subarray(0, 1))
+    setTimeout(() => {
+      stream.write(bytes.subarray(1))
+      stream.exit(0)
+      stream.close()
+    }, 10)
+  }
   else if (command === 'true') respond('', 0)
   else if (command === 'hang') {
     // Never respond: the caller's timeout must kill the channel.

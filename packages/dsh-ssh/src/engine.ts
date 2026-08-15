@@ -6,8 +6,10 @@
  */
 
 import { createServer, type Server as NetServer } from 'node:net'
-import { existsSync, mkdirSync, readFileSync, statSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdir, readdir, stat } from 'node:fs/promises'
 import { dirname, join, relative, resolve as resolvePath } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { Client, type ClientChannel, type ConnectConfig } from 'ssh2'
 import type { ClusterResult, ExecResult, SshHostEntry, SshHostSummary, TestResult, TransferProgress, TunnelInfo } from './protocol.ts'
 import { expandHome, type HostStore } from './store.ts'
@@ -131,32 +133,48 @@ function connectClient(config: ConnectConfig): Promise<Client> {
   })
 }
 
+interface OutputCapture {
+  chunks: Buffer[]
+  bytes: number
+  truncated: boolean
+}
+
 /** Cap captured output at the configured byte budget (marks truncation). */
-function appendOutput(target: { text: string; truncated: boolean }, chunk: Buffer, maxBytes: number): void {
+function appendOutput(target: OutputCapture, chunk: Buffer, maxBytes: number): void {
   if (target.truncated) return
-  if (target.text.length + chunk.length > maxBytes) {
-    let cut = chunk.toString('utf8').slice(0, maxBytes - target.text.length)
-    // Never split a surrogate pair at the cut boundary.
-    if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1)
-    target.text += cut + '…[output truncated]'
+  const remaining = Math.max(0, maxBytes - target.bytes)
+  if (chunk.length > remaining) {
+    if (remaining > 0) target.chunks.push(Buffer.from(chunk.subarray(0, remaining)))
+    target.bytes += remaining
     target.truncated = true
     return
   }
-  target.text += chunk.toString('utf8')
+  target.chunks.push(Buffer.from(chunk))
+  target.bytes += chunk.length
+}
+
+/** Decode all retained bytes once so split UTF-8 sequences remain intact. */
+function renderOutput(target: OutputCapture): string {
+  const decoder = new StringDecoder('utf8')
+  const text = decoder.write(Buffer.concat(target.chunks, target.bytes))
+    + (target.truncated ? '' : decoder.end())
+  return target.truncated ? text + '…[output truncated]' : text
 }
 
 /** Walk a local directory, collecting relative paths of every file. */
-function walkLocalDir(root: string): string[] {
-  const files: string[] = []
-  const visit = (dir: string): void => {
-    for (const name of readdirSync(dir)) {
+export async function walkLocalDir(root: string): Promise<Array<{ path: string; size: number }>> {
+  const files: Array<{ path: string; size: number }> = []
+  const pending = [root]
+  while (pending.length > 0) {
+    const dir = pending.pop()!
+    const entries = await readdir(dir)
+    for (const name of entries) {
       const full = join(dir, name)
-      const stat = statSync(full)
-      if (stat.isDirectory()) visit(full)
-      else if (stat.isFile()) files.push(relative(root, full))
+      const info = await stat(full)
+      if (info.isDirectory()) pending.push(full)
+      else if (info.isFile()) files.push({ path: relative(root, full), size: info.size })
     }
   }
-  visit(root)
   return files
 }
 
@@ -337,8 +355,8 @@ export class SshEngine {
             reject(error)
             return
           }
-          const stdout = { text: '', truncated: false }
-          const stderr = { text: '', truncated: false }
+          const stdout: OutputCapture = { chunks: [], bytes: 0, truncated: false }
+          const stderr: OutputCapture = { chunks: [], bytes: 0, truncated: false }
           let timedOut = false
           let settled = false
           const finish = (): void => {
@@ -349,8 +367,8 @@ export class SshEngine {
               success: false,
               exitCode: null,
               timedOut,
-              stdout: stdout.text,
-              stderr: stderr.text,
+              stdout: renderOutput(stdout),
+              stderr: renderOutput(stderr),
               durationMs: Date.now() - started,
               error: timedOut ? `command timed out after ${budget} ms` : undefined,
             })
@@ -373,8 +391,8 @@ export class SshEngine {
               success: code === 0 && !timedOut,
               exitCode: code,
               timedOut,
-              stdout: stdout.text,
-              stderr: stderr.text,
+              stdout: renderOutput(stdout),
+              stderr: renderOutput(stderr),
               durationMs: Date.now() - started,
             })
           })
@@ -489,27 +507,32 @@ export class SshEngine {
       throw new Error(`remotePath must be an absolute path (got '${remotePath}')`)
     }
     const local = resolvePath(localPath)
-    if (!existsSync(local)) throw new Error(`local path not found: '${localPath}'`)
+    let localInfo: Awaited<ReturnType<typeof stat>>
+    try {
+      localInfo = await stat(local)
+    } catch {
+      throw new Error(`local path not found: '${localPath}'`)
+    }
     return this.withClient(alias, async (client) => {
       const sftp = await this.sftp(client)
-      const stat = statSync(local)
-      let files: string[]
-      if (stat.isDirectory()) {
+      let files: Array<{ path: string; size: number }>
+      if (localInfo.isDirectory()) {
         if (!recursive) throw new Error(`'${localPath}' is a directory — enable recursive upload`)
-        files = walkLocalDir(local)
+        files = await walkLocalDir(local)
         await this.ensureRemoteDir(sftp, remotePath)
       } else {
-        files = ['']
+        files = [{ path: '', size: localInfo.size }]
         await this.ensureRemoteDir(sftp, dirname(remotePath))
       }
       let bytes = 0
-      for (const rel of files) {
+      for (const file of files) {
+        const rel = file.path
         const src = rel === '' ? local : join(local, rel)
         // Remote paths always use forward slashes; normalize any OS separators.
         const remoteRel = rel.split(/[\\/]/).join('/')
         const dst = rel === '' ? remotePath : remotePath.replace(/\/$/, '') + '/' + remoteRel
-        await this.fastPut(sftp, src, dst, onProgress)
-        bytes += statSync(src).size
+        await this.fastPut(sftp, src, dst, file.size, onProgress)
+        bytes += file.size
       }
       return { bytes, files: files.length }
     })
@@ -519,16 +542,16 @@ export class SshEngine {
   async download(alias: string, remotePath: string, localPath: string, onProgress?: (progress: TransferProgress) => void): Promise<{ bytes: number }> {
     return this.withClient(alias, async (client) => {
       const sftp = await this.sftp(client)
-      const stat = await new Promise<{ isDirectory: () => boolean }>((resolve, reject) => {
+      const remoteInfo = await new Promise<{ isDirectory: () => boolean; size: number }>((resolve, reject) => {
         sftp.stat(remotePath, (error, stats) => error !== undefined ? reject(error) : resolve(stats))
       })
-      if (stat.isDirectory()) {
+      if (remoteInfo.isDirectory()) {
         throw new Error(`'${remotePath}' is a directory — directory download is not supported yet (download individual files)`)
       }
       const local = resolvePath(localPath)
-      if (!existsSync(dirname(local))) mkdirSync(dirname(local), { recursive: true })
+      await mkdir(dirname(local), { recursive: true })
       await this.fastGet(sftp, remotePath, local, onProgress)
-      return { bytes: statSync(local).size }
+      return { bytes: remoteInfo.size }
     })
   }
 
@@ -591,12 +614,12 @@ export class SshEngine {
     })
   }
 
-  private fastPut(sftp: import('ssh2').SFTPWrapper, src: string, dst: string, onProgress?: (progress: TransferProgress) => void): Promise<void> {
+  private fastPut(sftp: import('ssh2').SFTPWrapper, src: string, dst: string, totalBytes: number, onProgress?: (progress: TransferProgress) => void): Promise<void> {
     return new Promise((resolve, reject) => {
       let last = 0
       let lastEmit = 0
       const started = Date.now()
-      onProgress?.({ phase: 'transferring', file: dst, transferred: 0, total: statSync(src).size, percent: 0 })
+      onProgress?.({ phase: 'transferring', file: dst, transferred: 0, total: totalBytes, percent: 0 })
       sftp.fastPut(src, dst, { concurrency: this.opts.sftpConcurrency, step: (transferred: number, _chunk: number, total: number) => {
         const now = Date.now()
         // Throttle: high-speed links fire one callback per chunk; the UI only
@@ -618,7 +641,7 @@ export class SshEngine {
           onProgress?.({ phase: 'error', file: dst, transferred: 0, total: 0, percent: 0, error: String(error) })
           reject(error)
         } else {
-          onProgress?.({ phase: 'done', file: dst, transferred: statSync(src).size, total: statSync(src).size, percent: 100 })
+          onProgress?.({ phase: 'done', file: dst, transferred: totalBytes, total: totalBytes, percent: 100 })
           resolve()
         }
       })
@@ -629,8 +652,10 @@ export class SshEngine {
     return new Promise((resolve, reject) => {
       let last = 0
       let lastEmit = 0
+      let totalBytes = 0
       const started = Date.now()
       sftp.fastGet(src, dst, { concurrency: this.opts.sftpConcurrency, step: (transferred: number, _chunk: number, total: number) => {
+        totalBytes = total
         const now = Date.now()
         if (now - lastEmit < 100 && transferred < total) return
         lastEmit = now
@@ -649,7 +674,7 @@ export class SshEngine {
           onProgress?.({ phase: 'error', file: src, transferred: 0, total: 0, percent: 0, error: String(error) })
           reject(error)
         } else {
-          onProgress?.({ phase: 'done', file: src, transferred: statSync(dst).size, total: statSync(dst).size, percent: 100 })
+          onProgress?.({ phase: 'done', file: src, transferred: totalBytes, total: totalBytes, percent: 100 })
           resolve()
         }
       })

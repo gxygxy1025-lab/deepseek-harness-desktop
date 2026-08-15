@@ -20,6 +20,10 @@ import css from './board.module.css'
 /** Stable data attribute identifying the injected entry row. */
 export const ENTRY_SELECTOR = '[data-dsh-taskboard-entry]'
 
+/** Cross-plugin navigation event used by full-column custom surfaces. */
+export const SURFACE_NAVIGATION_EVENT = 'dsh-web-ui:surface-navigation'
+const SURFACE_ID = 'task-board'
+
 /** Inline icon (matches the shell's 16px nav-icon look). */
 const ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M2 6.5h12M6.5 6.5v7"/></svg>`
 
@@ -52,7 +56,14 @@ function createEntry(controller: BoardController): HTMLButtonElement {
   entry.className = css.entry
   entry.setAttribute('aria-label', t('entry.label'))
   entry.innerHTML = `<span class="${css.entryIcon}">${ICON}</span><span class="${css.entryLabel}">${t('entry.label')}</span>`
-  entry.addEventListener('click', () => { controller.toggleBoard() })
+  entry.addEventListener('click', () => {
+    if (!controller.getSnapshot().boardOpen) {
+      document.dispatchEvent(new CustomEvent(SURFACE_NAVIGATION_EVENT, {
+        detail: { surface: SURFACE_ID },
+      }))
+    }
+    controller.toggleBoard()
+  })
   return entry
 }
 
@@ -117,12 +128,28 @@ export function mountSidebarEntry(controller: BoardController): () => void {
   })
   entry.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
 
+  const closeForNativeNavigation = (event: Event): void => {
+    const target = event.target
+    if (!(target instanceof Element) || entry.contains(target)) return
+    if (target.closest('[data-pane="sidebar"], [class*="sidebarCol"]') !== null) {
+      controller.closeBoard()
+    }
+  }
+  const closeForOtherSurface = (event: Event): void => {
+    const surface = (event as CustomEvent<{ surface?: string }>).detail?.surface
+    if (surface !== undefined && surface !== SURFACE_ID) controller.closeBoard()
+  }
+  document.addEventListener('click', closeForNativeNavigation, true)
+  document.addEventListener(SURFACE_NAVIGATION_EVENT, closeForOtherSurface)
+
   tryPlace()
 
   return () => {
     waitObserver.disconnect()
     rootObserver.disconnect()
     unsubscribe()
+    document.removeEventListener('click', closeForNativeNavigation, true)
+    document.removeEventListener(SURFACE_NAVIGATION_EVENT, closeForOtherSurface)
     entry.remove()
   }
 }

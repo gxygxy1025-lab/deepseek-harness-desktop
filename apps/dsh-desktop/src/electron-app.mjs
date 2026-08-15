@@ -6,6 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { startQrConnect } from '@tencent-connect/qqbot-connector'
 
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
+import { resolveDesktopVersion } from './app-version.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
 import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
@@ -18,7 +19,7 @@ import { registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
-import { DshRuntimeController } from './runtime-controller.mjs'
+import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
 import { installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
@@ -71,6 +72,12 @@ export async function startElectronApp(metadata) {
   })
   const appIcon = nativeImage.createFromPath(appIconPath)
   if (appIcon.isEmpty()) throw new Error(`desktop app icon is missing or invalid: ${appIconPath}`)
+  const windowChromeIconDataUrl = appIcon.resize({ width: 40, height: 40, quality: 'best' }).toDataURL()
+  const desktopVersion = await resolveDesktopVersion({
+    isPackaged: app.isPackaged,
+    appVersion: app.getVersion(),
+    manifestPath: join(SOURCE_DIR, '..', 'package.json'),
+  })
 
   const userData = app.getPath('userData')
   const logsDirectory = join(userData, 'logs')
@@ -111,7 +118,7 @@ export async function startElectronApp(metadata) {
     executable: process.execPath,
     logStore,
     autoRestart: true,
-    startupTimeoutMs: 60_000,
+    startupTimeoutMs: DEFAULT_STARTUP_TIMEOUT_MS,
     pathEntries: [runtimeBin],
     environmentProvider: qqBotEnvironment,
   })
@@ -133,7 +140,7 @@ export async function startElectronApp(metadata) {
     show: false,
     title: metadata.productName,
     icon: appIcon,
-    backgroundColor: '#02080d',
+    backgroundColor: '#040814',
     ...windowChromeBrowserOptions(),
     webPreferences: {
       preload: PRELOAD_PATH,
@@ -147,8 +154,7 @@ export async function startElectronApp(metadata) {
   applyWindowIcon(mainWindow, appIcon)
   const removeMainWindowChrome = installWindowChrome({
     browserWindow: mainWindow,
-    title: 'DeepSeek Harness',
-    getContext: (url) => url.startsWith('http:') ? 'Web Surface' : 'Startup',
+    iconDataUrl: windowChromeIconDataUrl,
     onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
   })
   if (state.maximized) mainWindow.maximize()
@@ -176,7 +182,7 @@ export async function startElectronApp(metadata) {
     controller,
     getWindow: () => mainWindow,
     metadata,
-    version: app.getVersion(),
+    version: desktopVersion,
     platform: process.platform,
     ensureProfile,
     openLogs: () => shell.openPath(logsDirectory),
@@ -217,8 +223,7 @@ export async function startElectronApp(metadata) {
     applyWindowIcon(extensionWindow, appIcon)
     const removeExtensionWindowChrome = installWindowChrome({
       browserWindow: extensionWindow,
-      title: 'DeepSeek Harness',
-      getContext: () => 'Extension Dock',
+      iconDataUrl: windowChromeIconDataUrl,
       onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
     })
     installNavigationPolicy({
@@ -252,7 +257,10 @@ export async function startElectronApp(metadata) {
   })
   const loadStartup = async () => {
     activeOrigin = undefined
-    if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadFile(STARTUP_PATH)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const preview = process.env.DSH_DESKTOP_STARTUP_PREVIEW_STATE
+      await mainWindow.loadFile(STARTUP_PATH, preview ? { query: { preview } } : undefined)
+    }
   }
   controller.on('status', (status) => {
     if (!mainWindow || mainWindow.isDestroyed()) return

@@ -177,9 +177,6 @@ importers:
       typescript:
         specifier: ~5.7.2
         version: 5.7.3
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.7.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -252,9 +249,6 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@6.0.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -343,12 +337,51 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.1
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@7.2.0))(yaml@2.9.0)
+
+  packages/dsh-mode-switcher:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(963f21f11cddd09def26a2473cddd8c5)
+      '@deepseek-ai/dsh-client-connection':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(4d97f918f32bf0a0e5cc153682aa7b50)
+      '@deepseek-ai/dsh-client-locale':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(4adda433d7a01b789cafee5db0b6cc58)
+      '@deepseek-ai/dsh-client-runtime':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(5ee287bd07c00b3171c7ee342e9431a4)
+      '@deepseek-ai/dsh-client-ui-conversation':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(d11523e72d58deed766165c0b292f250)
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      lightningcss:
+        specifier: ^1.32.0
+        version: 1.32.0
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      tsdown:
+        specifier: ^0.22.2
+        version: 0.22.2(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
 
   packages/dsh-pet:
     dependencies:
@@ -422,9 +455,6 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@6.0.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -516,9 +546,6 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@6.0.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -713,6 +740,9 @@ importers:
       '@linxin666/dsh-client-ui-git-graph':
         specifier: workspace:*
         version: link:../dsh-git-graph
+      '@linxin666/dsh-client-ui-mode-switcher':
+        specifier: workspace:*
+        version: link:../dsh-mode-switcher
       '@linxin666/dsh-client-ui-task-board':
         specifier: workspace:*
         version: link:../dsh-task-board
@@ -797,9 +827,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -818,9 +845,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -839,9 +863,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -860,9 +881,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -881,9 +899,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -950,9 +965,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -974,9 +986,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -995,9 +1004,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -1016,9 +1022,6 @@ importers:
       tsdown:
         specifier: ^0.22.2
         version: 0.22.2(typescript@5.9.3)
-      vite-tsconfig-paths:
-        specifier: ^6.1.1
-        version: 6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
@@ -5320,9 +5323,6 @@ packages:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
     engines: {node: '>= 0.4'}
 
-  globrex@0.1.2:
-    resolution: {integrity: sha512-uHJgbwAMwNFf5mLst7IWLNg14x1CkeqglJb/K3doi4dw6q2IvAAmM/Y81kevy83wP+Sst+nutFTYOGg3d1lsxg==}
-
   google-auth-library@10.9.1:
     resolution: {integrity: sha512-i1ydyHrqcIxXkWh/uBmVkzCvIuq5yiK2ATndIe5XxKholrG/MTYP9xGYka4sQhrbIAgGjL2B6NOE7rFaiF3fXw==}
     engines: {node: '>=18'}
@@ -6699,17 +6699,6 @@ packages:
   ts-algebra@2.0.0:
     resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
 
-  tsconfck@3.1.6:
-    resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
-    engines: {node: ^18 || >=20}
-    deprecated: unmaintained
-    hasBin: true
-    peerDependencies:
-      typescript: ^5.0.0
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
   tsdown@0.22.2:
     resolution: {integrity: sha512-VX9gsyKXsTnBZjnIM4jsHl9aRv+GfgkE/k1hQslilaBfZMlaw3JuGR+6yhiU0QxWBtOCDnTjwOSoXzgB7Rr50g==}
     engines: {node: ^22.18.0 || >=24.0.0}
@@ -6858,11 +6847,6 @@ packages:
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
     hasBin: true
-
-  vite-tsconfig-paths@6.1.1:
-    resolution: {integrity: sha512-2cihq7zliibCCZ8P9cKJrQBkfgdvcFkOOc3Y02o3GWUDLgqjWsZudaoiuOwO/gzTzy17cS5F7ZPo4bsnS4DGkg==}
-    peerDependencies:
-      vite: '*'
 
   vite@7.3.6:
     resolution: {integrity: sha512-4XP60spRGjSZFf1qYH+dJIkK2znL3zQfl9KkOV9MkkRR/3Dls0dxaBsQPTloEc5BLXWPL9vsOxopxyKoMmDueg==}
@@ -12360,8 +12344,6 @@ snapshots:
       gopd: 1.2.0
     optional: true
 
-  globrex@0.1.2: {}
-
   google-auth-library@10.9.1(supports-color@7.2.0):
     dependencies:
       base64-js: 1.5.1
@@ -14028,18 +14010,6 @@ snapshots:
 
   ts-algebra@2.0.0: {}
 
-  tsconfck@3.1.6(typescript@5.7.3):
-    optionalDependencies:
-      typescript: 5.7.3
-
-  tsconfck@3.1.6(typescript@5.9.3):
-    optionalDependencies:
-      typescript: 5.9.3
-
-  tsconfck@3.1.6(typescript@6.0.3):
-    optionalDependencies:
-      typescript: 6.0.3
-
   tsdown@0.22.2(typescript@5.7.3):
     dependencies:
       ansis: 4.3.1
@@ -14237,46 +14207,6 @@ snapshots:
       - terser
       - tsx
       - yaml
-
-  vite-tsconfig-paths@6.1.1(supports-color@7.2.0)(typescript@5.7.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)):
-    dependencies:
-      debug: 4.4.3(supports-color@7.2.0)
-      globrex: 0.1.2
-      tsconfck: 3.1.6(typescript@5.7.3)
-      vite: 8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
-
-  vite-tsconfig-paths@6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)):
-    dependencies:
-      debug: 4.4.3(supports-color@7.2.0)
-      globrex: 0.1.2
-      tsconfck: 3.1.6(typescript@5.9.3)
-      vite: 8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
-
-  vite-tsconfig-paths@6.1.1(supports-color@7.2.0)(typescript@5.9.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)):
-    dependencies:
-      debug: 4.4.3(supports-color@7.2.0)
-      globrex: 0.1.2
-      tsconfck: 3.1.6(typescript@5.9.3)
-      vite: 8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
-
-  vite-tsconfig-paths@6.1.1(supports-color@7.2.0)(typescript@6.0.3)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)):
-    dependencies:
-      debug: 4.4.3(supports-color@7.2.0)
-      globrex: 0.1.2
-      tsconfck: 3.1.6(typescript@6.0.3)
-      vite: 8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
 
   vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0):
     dependencies:

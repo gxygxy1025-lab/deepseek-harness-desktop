@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 import {
+  AGGREGATED_BUNDLES,
   BUILTIN_BUNDLES,
   DESKTOP_PATCH_CONFIG,
   DESKTOP_SUPPORT_PACKAGES,
@@ -44,6 +45,33 @@ test('profile manifest preserves community bundles after managed bundles', () =>
   assert.deepEqual(manifest.dsh.profile.bundles, [...BUILTIN_BUNDLES, '@community/example'])
   assert.equal(manifest.dependencies['@community/example'], '1.2.3')
   assert.equal(manifest.name, 'dsh-profile-desktop')
+})
+
+test('profile manifest removes bundles already supplied by the web UI aggregate', () => {
+  const manifest = createDesktopProfileManifest({
+    dependencies: {
+      '@community/example': '1.2.3',
+      '@linxin666/dsh-client-ui-aionui-panel': '0.1.2',
+    },
+    dsh: {
+      profile: {
+        bundles: [
+          '@linxin666/dsh-client-ui-aionui-panel',
+          '@linxin666/dsh-client-ui-git-graph',
+          '@linxin666/dsh-client-ui-task-board',
+          '@linxin666/dsh-client-ui-skin-center',
+          '@linxin666/dsh-skins',
+          '@community/example',
+        ],
+      },
+    },
+  })
+
+  assert.deepEqual(manifest.dsh.profile.bundles, [...BUILTIN_BUNDLES, '@community/example'])
+  assert.equal(manifest.dependencies['@linxin666/dsh-client-ui-aionui-panel'], '0.1.2')
+  assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-client-ui-aionui-panel'), true)
+  assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-client-ui-git-graph'), true)
+  assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-client-ui-skin-center'), true)
 })
 
 test('desktop profile includes both bundled plugin stores', () => {
@@ -129,6 +157,7 @@ test('official DSH CLI composes the isolated desktop profile', async () => {
     )
     assert.equal(result.status, 0, result.stderr)
     assert.match(result.stdout, /ui-task-board/)
+    assert.match(result.stdout, /ui-mode-switcher/)
     assert.match(result.stdout, /ui-skin-center/)
     assert.match(result.stdout, /- id: pet/)
     assert.match(result.stdout, /- id: remote-web-ui/)

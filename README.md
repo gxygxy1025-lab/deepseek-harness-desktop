@@ -16,12 +16,13 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 [浏览产品介绍](https://ningbainb.github.io/deepseek-harness-desktop/) · [下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [更新日志](CHANGELOG.md)
 
-### 最新版：0.1.6
+### 最新版：0.1.7
 
-`desktop-v0.1.6` 已作为 Latest 稳定版发布：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.6) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.6/DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.6/SHA256SUMS.txt)
+`desktop-v0.1.7` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.7) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.7/DeepSeek-Harness-Desktop-Setup-0.1.7-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.7/SHA256SUMS.txt)
 
 | 版本 | 主要更新 |
 | --- | --- |
+| **0.1.7** | 全新深海启动界面与状态驱动进度；32px macOS 风格磨砂玻璃窗口栏；收紧大文件预览内存、Git 轮询和 SSH 传输边界，并提升首次安装后的冷启动容错与发布门禁。 |
 | **0.1.6** | 内置腾讯官方 QQ Bot 与扫码 Connector；在扩展坞完成二维码绑定、刷新、取消、重新绑定和解绑，QQ 私聊与群聊可直接接入桌面版 Harness。AppSecret 使用 Windows 凭据保护加密，只注入 DSH 子进程。 |
 | **0.1.5** | 原生标题栏跟随亮色/暗色主题；全屏弹窗避开标题栏安全区；修复安装版皮肤发现与切换，并内置 `dshmarket` 和 `dsh-plugin-hub`。 |
 | **0.1.4** | 桌宠迁移到全局 Shell Overlay，首页和设置页均可见；恢复五张 Web UI 插件配置卡；皮肤中心完整展示安装版随附的九套皮肤。 |

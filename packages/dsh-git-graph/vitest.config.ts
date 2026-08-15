@@ -1,14 +1,12 @@
-import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  plugins: [tsconfigPaths({
-    projects: [
-      './tsconfig.vitest.json',
-    ],
-  })],
   test: {
     include: ['tests/**/*.spec.{ts,tsx}'],
+    // Real git subprocesses can exceed Vitest's 5s default under a busy
+    // Windows workspace test run, even though the same assertions are fast
+    // in isolation.
+    testTimeout: 15_000,
     pool: 'forks',
     // @deepseek-ai SDK packages ship browser bundles (CSS imports included);
     // keep them vite-transformed instead of node-externalized.

@@ -104,16 +104,24 @@ export function registerPanelRoutes(ctx: Context, fs: FsService, git: GitService
     if (polling) return
     polling = true
     try {
-      await Promise.all([...subscribers].map(async (subscriber) => {
+      const byRoot = new Map<string, Subscriber[]>()
+      for (const subscriber of subscribers) {
+        const group = byRoot.get(subscriber.root)
+        if (group === undefined) byRoot.set(subscriber.root, [subscriber])
+        else group.push(subscriber)
+      }
+      await Promise.all([...byRoot].map(async ([root, group]) => {
         try {
-          const status = await git.status(subscriber.root)
+          const status = await git.status(root)
           if (status === null || typeof status === 'object' && 'code' in status) return
           const key = `${status.branch}|${JSON.stringify(status.staged)}|${JSON.stringify(status.unstaged)}|${JSON.stringify(status.untracked)}`
-          if (key === subscriber.lastGit) return
-          subscriber.lastGit = key
-          push(subscriber, { kind: 'git', status })
+          for (const subscriber of group) {
+            if (key === subscriber.lastGit) continue
+            subscriber.lastGit = key
+            push(subscriber, { kind: 'git', status })
+          }
         } catch (error: unknown) {
-          ctx.logger.warn(`dsh-aionui-panel: git poll failed for ${subscriber.root}: ${String(error)}`)
+          ctx.logger.warn(`dsh-aionui-panel: git poll failed for ${root}: ${String(error)}`)
         }
       }))
     } finally {

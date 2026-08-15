@@ -684,6 +684,24 @@ export interface PreviewStore extends StateHandle<PreviewState> {
   handleGitChange: (root: string) => void
 }
 
+/** Maximum number of clean preview payloads retained in renderer memory. */
+export const PREVIEW_CONTENT_CAP = 8
+
+/** Unload least-recently-used clean payloads while preserving tabs and edits. */
+function boundPreviewContent(tabs: PreviewTabState[], activeTabId: string | null): PreviewTabState[] {
+  const loaded = tabs.filter((tab) => tab.content !== null)
+  const excess = loaded.length - PREVIEW_CONTENT_CAP
+  if (excess <= 0) return tabs
+  const evictable = loaded
+    .filter((tab) => !tab.dirty && tab.id !== activeTabId)
+    .sort((a, b) => a.savedAt - b.savedAt)
+  const evicted = new Set(evictable.slice(0, excess).map((tab) => tab.id))
+  if (evicted.size === 0) return tabs
+  return tabs.map((tab) => evicted.has(tab.id)
+    ? { ...tab, content: null, image: undefined, truncated: false, error: null }
+    : tab)
+}
+
 /** Persisted tab meta (content is re-fetched on restore). */
 interface PersistedTab {
   id: string
@@ -770,9 +788,7 @@ export function createPreviewStore(api: PanelApi): PreviewStore {
       : await api.read(root, tab.path, asImage)
     handle.update((prev) => {
       if (prev.root !== root) return prev
-      return {
-        ...prev,
-        tabs: prev.tabs.map((item) => {
+      const tabs = prev.tabs.map((item) => {
           if (item.id !== id) return item
           if (!result.ok) {
             return { ...item, loading: false, error: result.error.message }
@@ -792,8 +808,8 @@ export function createPreviewStore(api: PanelApi): PreviewStore {
             truncated: loaded.truncated ?? false,
             updated: false,
           }
-        }),
-      }
+        })
+      return { ...prev, tabs: boundPreviewContent(tabs, id) }
     })
   }
 

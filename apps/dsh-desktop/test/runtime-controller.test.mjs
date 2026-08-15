@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream'
 import test from 'node:test'
 
 import {
+  DEFAULT_STARTUP_TIMEOUT_MS,
   DshRuntimeController,
   computeRestartDelay,
   parseDshReadyUrl,
@@ -41,6 +42,16 @@ test('restart schedule is bounded and exponential', () => {
   assert.equal(computeRestartDelay(1), 1_500)
   assert.equal(computeRestartDelay(2), 4_500)
   assert.equal(computeRestartDelay(3), undefined)
+})
+
+test('default startup budget tolerates first-run Windows scanning', () => {
+  assert.equal(DEFAULT_STARTUP_TIMEOUT_MS, 120_000)
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+  })
+  assert.equal(controller.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS)
 })
 
 test('HTTP readiness probe waits through a short bind race', async () => {

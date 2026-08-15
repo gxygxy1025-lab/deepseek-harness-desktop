@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ import { _electron as electron } from 'playwright'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
+const runtimeReadyTimeoutMs = packagedExecutable ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-directory-picker-e2e-'))
 const dshHome = resolve(temporary, 'dsh-home')
 let electronApp
@@ -30,7 +31,13 @@ try {
     },
   })
   const page = await electronApp.firstWindow()
-  await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: 60_000 })
+  try {
+    await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
+  } catch (error) {
+    const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8').catch(() => '')
+    console.error(`runtime did not become ready; recent log:\n${runtimeLog.slice(-4_000) || '(no runtime log)'}`)
+    throw error
+  }
   await page.waitForSelector('#dsh-desktop-window-chrome')
 
   const addWorkspace = page.getByRole('button', { name: /add workspace|添加工作区/u })

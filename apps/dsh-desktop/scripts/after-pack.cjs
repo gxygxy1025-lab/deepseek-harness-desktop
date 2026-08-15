@@ -19,6 +19,14 @@ const DEVELOPMENT_DIRECTORIES = new Set([
   'tests',
 ])
 
+const FIRST_PARTY_SOURCE_DIRECTORIES = new Set([
+  'artwork',
+  'docs',
+  'src',
+])
+
+const FIRST_PARTY_BUILD_FILES = /^(?:tsconfig(?:\.[^.]+)?\.json|tsdown\.config\.[cm]?[jt]s|vitest\.config\.[cm]?[jt]s)$/u
+
 function splitPackagePath(relativePath) {
   const parts = relativePath.split(/[\\/]/u)
   if (parts[0]?.startsWith('@')) {
@@ -34,6 +42,15 @@ function classifyPrunableFile(relativePath) {
 
   if (/\.d\.(?:ts|mts|cts)$/u.test(fileName)) return 'type-declaration'
   if (packageParts.some((part) => DEVELOPMENT_DIRECTORIES.has(part))) return 'development-material'
+
+  // Workspace packages arrive through pnpm links, so electron-builder sees
+  // files that npm's package `files` allowlist would omit. Runtime entry
+  // points live in lib/; preview images and manifests deliberately remain.
+  if (packageName.startsWith('@linxin666/')) {
+    if (FIRST_PARTY_SOURCE_DIRECTORIES.has(packageParts[0])) return 'first-party-source'
+    if (fileName.endsWith('.map')) return 'source-map'
+    if (FIRST_PARTY_BUILD_FILES.test(fileName)) return 'development-material'
+  }
 
   const sourceRoots = SOURCE_ROOTS.get(packageName) ?? []
   if (sourceRoots.includes(packageParts[0])) return 'published-source'
