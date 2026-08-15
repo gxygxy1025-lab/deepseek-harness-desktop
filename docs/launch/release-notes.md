@@ -10,7 +10,6 @@
 - 启动页改为简洁的“探索未至之境”界面，只保留当前状态和单条进度条。原有大圆球、轨道与阶段列表已移除，替换为完全本地绘制的原创蓝黑粒子鲸鱼。
 - 粒子鲸鱼只在启动页面运行，进入 DSH 主界面后随页面导航自动释放；系统开启“减少动态效果”时会显示静态版本。
 - 更新面板统一展示当前版本、目标版本、发行说明、下载进度、错误重试与重启安装状态，并继续在安装前安全停止内置 DSH 运行时。
-- 默认内置并保护官方 `@vectorize-io/hindsight-coding-agents` 0.3.4 插件，为 DSH 提供按仓库隔离的长期记忆、知识页、自动召回与后台保存能力。实际启用前仍需按官方说明选择 Hindsight Cloud、自建服务或本地 daemon；Cloud 模式需要 API Token。
 - 修复 Windows 升级时偶发的“应用仍在运行”或文件占用提示。桌面端退出时会结束完整 DSH 进程树；安装器还会在覆盖旧版本前，仅清理旧安装目录主程序和 `resources` 内的残留进程。
 
 ### 验证
@@ -39,7 +38,6 @@
 - Simplifies startup to “探索未至之境”, one status line, and one progress meter. The previous sphere, orbits, and phase list are replaced with an original locally rendered blue-black particle whale.
 - Runs the particle whale only on the startup document and releases it when navigation enters the DSH surface. Reduced-motion systems receive a static rendering.
 - Unifies current version, target version, release notes, download progress, retry, and restart-install states in the desktop update surface while preserving the safe runtime shutdown before installation.
-- Bundles and protects the official `@vectorize-io/hindsight-coding-agents` 0.3.4 plugin, adding repository-scoped long-term memory, knowledge pages, automatic recall, and background retention to DSH. Before memory can operate, users still choose Hindsight Cloud, a self-hosted server, or a local daemon as documented upstream; Cloud mode requires an API token.
 - Fixes intermittent “application is still running” and file-in-use errors during Windows upgrades. Desktop shutdown now terminates the complete DSH process tree, while installer preflight removes only stale processes whose executables belong to the previous app installation.
 
 ### Verification

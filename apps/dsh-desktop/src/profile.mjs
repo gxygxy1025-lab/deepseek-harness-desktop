@@ -22,7 +22,6 @@ export const BUILTIN_BUNDLES = Object.freeze([
   '@deepseek-ai/dsh-web-app',
   '@linxin666/dsh-web-ui-all',
   '@tencent-connect/dsh-qqbot',
-  '@vectorize-io/hindsight-coding-agents',
   'dshmarket',
   'dsh-codex-connect',
   'reasoning-slider',
@@ -69,6 +68,7 @@ export const BUILTIN_SKIN_PACKAGES = Object.freeze([
 // dshmarket's client-only hot mount) load them a second time.
 export const RETIRED_MANAGED_PACKAGES = Object.freeze([
   '@linxin666/dsh-web-ui-compat',
+  '@vectorize-io/hindsight-coding-agents',
   ...BUILTIN_SKIN_PACKAGES,
   'dsh-plugin-hub',
 ].toSorted())
@@ -106,7 +106,6 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-tool-describe-image',
   '@linxin666/dsh-web-ui-all',
   '@tencent-connect/dsh-qqbot',
-  '@vectorize-io/hindsight-coding-agents',
   'dsh-codex-connect',
   'dshmarket',
   'reasoning-slider',
