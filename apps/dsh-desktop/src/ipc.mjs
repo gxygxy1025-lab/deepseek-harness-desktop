@@ -1,4 +1,5 @@
 const ACTIONS = new Set(['retry', 'repair', 'open-logs', 'exit'])
+const HELP_ACTIONS = new Set(['community', 'feedback', 'project', 'updates'])
 const WINDOW_CHROME_THEMES = new Set(['light', 'dark'])
 
 export function normalizeWindowChromeTheme(value) {
@@ -11,6 +12,13 @@ export function normalizeWindowChromeTheme(value) {
 export function normalizeDesktopAction(value) {
   if (typeof value !== 'string' || !ACTIONS.has(value)) {
     throw new TypeError(`invalid desktop action: ${JSON.stringify(value)}`)
+  }
+  return value
+}
+
+export function normalizeHelpAction(value) {
+  if (typeof value !== 'string' || !HELP_ACTIONS.has(value)) {
+    throw new TypeError(`invalid Help action: ${JSON.stringify(value)}`)
   }
   return value
 }
@@ -35,9 +43,16 @@ export function registerDesktopIpc({
   ensureProfile,
   openLogs,
   exitApp,
+  handleHelpAction,
   setWindowChromeTheme,
 }) {
-  const channels = ['desktop:info', 'desktop:status', 'desktop:action', 'desktop:window-chrome-theme']
+  const channels = [
+    'desktop:info',
+    'desktop:status',
+    'desktop:action',
+    'desktop:help-action',
+    'desktop:window-chrome-theme',
+  ]
   for (const channel of channels) ipcMain.removeHandler(channel)
   ipcMain.handle('desktop:info', () => ({
     appId: metadata.appId,
@@ -61,6 +76,10 @@ export function registerDesktopIpc({
   ipcMain.handle('desktop:window-chrome-theme', (event, rawTheme) => {
     const theme = normalizeWindowChromeTheme(rawTheme)
     return setWindowChromeTheme?.(event.sender, theme)
+  })
+  ipcMain.handle('desktop:help-action', (_event, rawAction) => {
+    const action = normalizeHelpAction(rawAction)
+    return handleHelpAction(action)
   })
   const publishStatus = (status) => {
     const window = getWindow()

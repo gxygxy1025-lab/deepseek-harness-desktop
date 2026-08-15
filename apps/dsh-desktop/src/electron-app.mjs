@@ -8,7 +8,7 @@ import { startQrConnect } from '@tencent-connect/qqbot-connector'
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { resolveDesktopVersion } from './app-version.mjs'
 import { createCommunityQrImage } from './community.mjs'
-import { GITHUB_FEEDBACK_URL } from './community-links.mjs'
+import { GITHUB_FEEDBACK_URL, GITHUB_PROJECT_URL } from './community-links.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
 import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
@@ -158,6 +158,7 @@ export async function startElectronApp(metadata) {
   const removeMainWindowChrome = installWindowChrome({
     browserWindow: mainWindow,
     iconDataUrl: windowChromeIconDataUrl,
+    showHelpMenu: true,
     onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
   })
   if (state.maximized) mainWindow.maximize()
@@ -165,6 +166,7 @@ export async function startElectronApp(metadata) {
   let activeOrigin
   let extensionWindow
   let communityWindow
+  let updateController
 
   installNavigationPolicy({
     webContents: mainWindow.webContents,
@@ -191,6 +193,12 @@ export async function startElectronApp(metadata) {
     ensureProfile,
     openLogs: () => shell.openPath(logsDirectory),
     exitApp: () => app.quit(),
+    handleHelpAction: (action) => {
+      if (action === 'community') return createCommunityWindow()
+      if (action === 'feedback') return shell.openExternal(GITHUB_FEEDBACK_URL)
+      if (action === 'project') return shell.openExternal(GITHUB_PROJECT_URL)
+      return updateController?.check({ manual: true })
+    },
     setWindowChromeTheme: (sender, theme) => {
       const target = BrowserWindow.fromWebContents(sender)
       if (!target || target.isDestroyed()) return undefined
@@ -349,7 +357,6 @@ export async function startElectronApp(metadata) {
   let quitInProgress = false
   let runtimeStopped = false
   let shutdownPromise
-  let updateController
   const shutdownRuntime = () => {
     if (runtimeStopped) return Promise.resolve()
     if (shutdownPromise) return shutdownPromise
