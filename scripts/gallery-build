@@ -139,7 +139,10 @@ function renderBundlesJs(skins) {
     'window.SKIN_BUNDLES = {',
   ]
   for (const { meta, bundle } of skins) {
-    const text = fs.readFileSync(bundle, 'utf8')
+    // Git may materialize the tracked prebuilt client bundle as CRLF before a
+    // package prepare script rewrites it. Canonicalize the embedded string so
+    // gallery output is identical both before and after install on Windows.
+    const text = normalizeLineEndings(fs.readFileSync(bundle, 'utf8'))
     lines.push(`\t${JSON.stringify(meta.id)}: ${JSON.stringify(text)},`)
   }
   lines.push('};', '')
