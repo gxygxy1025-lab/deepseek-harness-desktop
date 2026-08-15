@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import test from 'node:test'
 
-import { collectWebsiteErrors } from './validate-website.mjs'
+import { collectDiscoveryErrors, collectWebsiteErrors } from './validate-website.mjs'
 
 const websitePath = resolve(import.meta.dirname, '..', 'website', 'index.html')
 
@@ -17,4 +17,26 @@ test('website validation rejects stale fallback installers', async () => {
   const errors = await collectWebsiteErrors(html, '0.1.8')
   assert.ok(errors.some(error => error.includes('stale installer version 0.1.7')))
   assert.ok(errors.some(error => error.includes('fallback label')))
+})
+
+test('website exposes canonical SEO and structured data markers', async () => {
+  const html = await readFile(websitePath, 'utf8')
+  const errors = await collectWebsiteErrors(html, '0.1.8')
+  assert.deepEqual(errors, [])
+})
+
+test('website discovery files identify the canonical release', () => {
+  const sitemap = '<url><loc>https://ningbainb.github.io/deepseek-harness-desktop/</loc><lastmod>2026-08-16</lastmod></url>'
+  const robots = 'User-agent: OAI-SearchBot\nAllow: /\nSitemap: https://ningbainb.github.io/deepseek-harness-desktop/sitemap.xml'
+  const llms = 'https://ningbainb.github.io/deepseek-harness-desktop/ https://github.com/ningbainb/deepseek-harness-desktop Setup-0.1.8-x64.exe'
+  const key = 'f99946a1f6864579a8d2f96040502784'
+  assert.deepEqual(collectDiscoveryErrors(sitemap, robots, llms, key, '0.1.8'), [])
+})
+
+test('website discovery validation rejects missing signals', () => {
+  const errors = collectDiscoveryErrors('<urlset></urlset>', '', '', 'wrong-key', '0.1.8')
+  assert.ok(errors.some(error => error.includes('canonical homepage')))
+  assert.ok(errors.some(error => error.includes('OAI-SearchBot')))
+  assert.ok(errors.some(error => error.includes('source repository')))
+  assert.ok(errors.some(error => error.includes('IndexNow key')))
 })
