@@ -17,12 +17,13 @@ import {
   QqBotCredentialStore,
   setQqBotProfileEnabled,
 } from './extensions/qqbot.mjs'
-import { registerDesktopIpc } from './ipc.mjs'
+import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
+import { installUpdateSurface } from './update-surface.mjs'
 import { installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
@@ -161,6 +162,10 @@ export async function startElectronApp(metadata) {
     showHelpMenu: true,
     onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
   })
+  const removeUpdateSurface = installUpdateSurface({
+    browserWindow: mainWindow,
+    onError: (error) => void logStore.append(`[update-surface] ${error.message}`),
+  })
   if (state.maximized) mainWindow.maximize()
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
   let activeOrigin
@@ -204,6 +209,7 @@ export async function startElectronApp(metadata) {
       if (!target || target.isDestroyed()) return undefined
       return setWindowChromeTheme(target, theme)
     },
+    getUpdateController: () => updateController,
   })
 
   const createExtensionWindow = async () => {
@@ -367,6 +373,8 @@ export async function startElectronApp(metadata) {
       .finally(() => {
         runtimeStopped = true
         updateController?.dispose()
+        updateController?.off('status', publishUpdateStatus)
+        removeUpdateSurface()
         removeMainWindowChrome()
         unregisterIpc()
         unregisterExtensionIpc()
@@ -388,7 +396,6 @@ export async function startElectronApp(metadata) {
   }
   updateController = new DesktopUpdateController({
     updater: autoUpdater,
-    dialog,
     getWindow: () => mainWindow,
     currentVersion: app.getVersion(),
     enabled: Boolean(autoUpdater),
@@ -398,6 +405,12 @@ export async function startElectronApp(metadata) {
       await shutdownRuntime()
     },
   })
+  const publishUpdateStatus = (status) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop:update-status', publicUpdateStatus(status))
+    }
+  }
+  updateController.on('status', publishUpdateStatus)
   const openLogs = () => shell.openPath(logsDirectory)
   installApplicationMenu({
     Menu,

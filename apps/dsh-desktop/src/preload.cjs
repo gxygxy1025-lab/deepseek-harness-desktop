@@ -6,6 +6,9 @@ const api = Object.freeze({
   action: (action) => ipcRenderer.invoke('desktop:action', action),
   helpAction: (action) => ipcRenderer.invoke('desktop:help-action', action),
   setWindowChromeTheme: (theme) => ipcRenderer.invoke('desktop:window-chrome-theme', theme),
+  getUpdateStatus: () => ipcRenderer.invoke('desktop:update-status'),
+  checkForUpdates: () => ipcRenderer.invoke('desktop:update-check'),
+  installUpdate: () => ipcRenderer.invoke('desktop:update-install'),
   listExtensions: () => ipcRenderer.invoke('extensions:list'),
   installPlugin: (spec) => ipcRenderer.invoke('extensions:plugin-install', spec),
   removePlugin: (name) => ipcRenderer.invoke('extensions:plugin-remove', name),
@@ -27,6 +30,12 @@ const api = Object.freeze({
     const listener = (_event, status) => callback(status)
     ipcRenderer.on('desktop:status', listener)
     return () => ipcRenderer.removeListener('desktop:status', listener)
+  },
+  onUpdateStatus(callback) {
+    if (typeof callback !== 'function') throw new TypeError('update status callback must be a function')
+    const listener = (_event, status) => callback(status)
+    ipcRenderer.on('desktop:update-status', listener)
+    return () => ipcRenderer.removeListener('desktop:update-status', listener)
   },
 })
 
