@@ -98,6 +98,15 @@ async function readManifest(profileDir) {
   return JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
 }
 
+async function readOptionalFile(path) {
+  try {
+    return await readFile(path, 'utf8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
 async function readInstalledManifest(profileDir, name) {
   try {
     return JSON.parse(await readFile(
@@ -127,21 +136,37 @@ function compatibilityError(message, code, compatibility) {
   return error
 }
 
-async function writeManifest(profileDir, manifest) {
-  const path = join(profileDir, 'package.json')
+async function writeTextFile(path, content) {
   const temporary = `${path}.tmp-${process.pid}-${Date.now()}`
-  await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
+  await writeFile(temporary, content, { flag: 'wx' })
   const backup = `${path}.bak-${process.pid}-${Date.now()}`
-  await rename(path, backup)
+  let movedExisting = false
   try {
+    try {
+      await rename(path, backup)
+      movedExisting = true
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
     await rename(temporary, path)
-    await rm(backup, { force: true })
+    if (movedExisting) await rm(backup, { force: true })
   } catch (error) {
     await rm(path, { force: true })
-    await rename(backup, path)
+    if (movedExisting) await rename(backup, path)
     await rm(temporary, { force: true })
     throw error
   }
+}
+
+async function writeManifest(profileDir, manifest) {
+  return writeTextFile(join(profileDir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+}
+
+async function captureProfileSnapshot(profileDir) {
+  return Object.freeze({
+    manifest: await readFile(join(profileDir, 'package.json'), 'utf8'),
+    lock: await readOptionalFile(join(profileDir, 'pnpm-lock.yaml')),
+  })
 }
 
 export function resolvePnpmCliPath(anchor = import.meta.url) {
@@ -273,6 +298,107 @@ export class PluginManager {
         manifest: candidate,
         compatibility,
       })
+    })
+  }
+
+  async #restoreProfileSnapshot(snapshot) {
+    const manifestPath = join(this.profileDir, 'package.json')
+    const lockPath = join(this.profileDir, 'pnpm-lock.yaml')
+    await writeTextFile(manifestPath, snapshot.manifest)
+    if (snapshot.lock === undefined) await rm(lockPath, { force: true })
+    else await writeTextFile(lockPath, snapshot.lock)
+    await this.runner({
+      pnpmCli: this.pnpmCli,
+      profileDir: this.profileDir,
+      executable: this.executable,
+      args: snapshot.lock === undefined
+        ? ['install', '--offline', '--lockfile=false']
+        : ['install', '--offline', '--frozen-lockfile'],
+    })
+    // pnpm should leave both inputs unchanged, but restore them once more so
+    // a future pnpm release cannot widen the rollback snapshot implicitly.
+    await writeTextFile(manifestPath, snapshot.manifest)
+    if (snapshot.lock === undefined) await rm(lockPath, { force: true })
+    else await writeTextFile(lockPath, snapshot.lock)
+  }
+
+  applyPrepared(prepared) {
+    if (prepared === null || typeof prepared !== 'object') throw new TypeError('prepared plugin candidate is required')
+    const parsed = validatePluginSpec(prepared.spec)
+    if (parsed.name !== prepared.name || semver.valid(prepared.version) === null) {
+      throw new TypeError('prepared plugin candidate identity is invalid')
+    }
+    if (prepared.spec !== `${prepared.name}@${prepared.version}`) {
+      throw new TypeError('prepared plugin candidate must use an exact version')
+    }
+    return this.#enqueue(async () => {
+      if (PROTECTED_PACKAGES.has(prepared.name)) throw new Error(`${prepared.name} is a built-in desktop plugin`)
+      const snapshot = await captureProfileSnapshot(this.profileDir)
+      const previous = await readInstalledManifest(this.profileDir, prepared.name)
+      try {
+        await this.runner({
+          pnpmCli: this.pnpmCli,
+          profileDir: this.profileDir,
+          executable: this.executable,
+          args: ['add', prepared.spec, '--save-exact', '--offline'],
+        })
+        const installed = await readInstalledManifest(this.profileDir, prepared.name)
+        if (installed?.name !== prepared.name || installed?.version !== prepared.version) {
+          throw new Error(`installed package identity does not match ${prepared.spec}`)
+        }
+        if (typeof installed.dsh?.bundle?.patch !== 'string') {
+          throw new Error(`${prepared.name} is not a DSH bundle package`)
+        }
+        if (this.hostCompatibility !== undefined) {
+          const compatibility = assessPluginCompatibility(installed, this.hostCompatibility)
+          if (compatibility.status === 'incompatible') {
+            throw new Error(`${prepared.spec} became incompatible after installation`)
+          }
+        }
+        const manifest = await readManifest(this.profileDir)
+        const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])
+        bundles.add(prepared.name)
+        manifest.dsh = { ...(manifest.dsh ?? {}), profile: { bundles: [...bundles] } }
+        await writeManifest(this.profileDir, manifest)
+        this.updateStates.delete(prepared.name)
+
+        let active = true
+        const rollback = () => this.#enqueue(async () => {
+          if (!active) return false
+          active = false
+          await this.#restoreProfileSnapshot(snapshot)
+          this.updateStates.delete(prepared.name)
+          return true
+        })
+        const transaction = {
+          result: Object.freeze({
+            name: prepared.name,
+            version: prepared.version,
+            previousVersion: typeof previous?.version === 'string' ? previous.version : undefined,
+            restartRequired: true,
+          }),
+          commit() {
+            if (!active) return false
+            active = false
+            return true
+          },
+          rollback,
+        }
+        return Object.freeze(transaction)
+      } catch (error) {
+        try {
+          await this.#restoreProfileSnapshot(snapshot)
+        } catch (rollbackError) {
+          throw new Error(
+            `plugin mutation failed and rollback failed: ${String(error?.message ?? error).slice(0, 1_000)}; ${String(rollbackError?.message ?? rollbackError).slice(0, 1_000)}`,
+            { cause: new AggregateError([error, rollbackError]) },
+          )
+        }
+        throw new Error(
+          `plugin mutation failed and was rolled back: ${String(error?.message ?? error).slice(0, 1_000)}`,
+          { cause: error },
+        )
+      }
     })
   }
 

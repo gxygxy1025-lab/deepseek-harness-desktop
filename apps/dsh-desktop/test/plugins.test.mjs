@@ -161,6 +161,113 @@ test('candidate preparation preloads exact compatible versions and guards unknow
   }
 })
 
+test('prepared updates apply exact offline versions and can restore the previous profile', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-transaction-'))
+  const packageName = '@community/example'
+  const packageRoot = join(profileDir, 'node_modules', ...packageName.split('/'))
+  const manifestPath = join(profileDir, 'package.json')
+  const lockPath = join(profileDir, 'pnpm-lock.yaml')
+  const oldManifest = {
+    name: 'dsh-profile-desktop',
+    private: true,
+    dependencies: { [packageName]: '1.2.3' },
+    dsh: { profile: { bundles: [...BUILTIN_BUNDLES, packageName] } },
+  }
+  const calls = []
+  try {
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(manifestPath, `${JSON.stringify(oldManifest, null, 2)}\n`)
+    await writeFile(lockPath, 'old-lock\n')
+    await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+      name: packageName,
+      version: '1.2.3',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }))
+    const runner = async ({ args }) => {
+      calls.push(args)
+      if (args[0] === 'add') {
+        const changed = JSON.parse(await readFile(manifestPath, 'utf8'))
+        changed.dependencies[packageName] = '2.0.0'
+        await writeFile(manifestPath, `${JSON.stringify(changed, null, 2)}\n`)
+        await writeFile(lockPath, 'new-lock\n')
+        await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+          name: packageName,
+          version: '2.0.0',
+          dsh: { bundle: { patch: './cordis.patch.yml' } },
+          peerDependencies: { '@deepseek-ai/cordis': '^4.0.1' },
+        }))
+      }
+    }
+    const manager = new PluginManager({ profileDir, runner, pnpmCli: 'pnpm.mjs', hostCompatibility })
+    const transaction = await manager.applyPrepared({
+      name: packageName,
+      version: '2.0.0',
+      spec: `${packageName}@2.0.0`,
+      manifest: {
+        name: packageName,
+        version: '2.0.0',
+        dsh: { bundle: { patch: './cordis.patch.yml' } },
+      },
+      compatibility: { status: 'compatible', reasons: [] },
+    })
+    assert.deepEqual(calls[0], ['add', `${packageName}@2.0.0`, '--save-exact', '--offline'])
+    assert.equal(transaction.result.previousVersion, '1.2.3')
+    assert.equal(transaction.result.version, '2.0.0')
+    assert.equal(JSON.parse(await readFile(manifestPath, 'utf8')).dependencies[packageName], '2.0.0')
+
+    assert.equal(await transaction.rollback(), true)
+    assert.deepEqual(JSON.parse(await readFile(manifestPath, 'utf8')), oldManifest)
+    assert.equal(await readFile(lockPath, 'utf8'), 'old-lock\n')
+    assert.deepEqual(calls[1], ['install', '--offline', '--frozen-lockfile'])
+    assert.equal(await transaction.rollback(), false)
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('failed prepared mutation rolls itself back before returning an error', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-invalid-transaction-'))
+  const packageName = '@community/example'
+  const packageRoot = join(profileDir, 'node_modules', ...packageName.split('/'))
+  const manifestPath = join(profileDir, 'package.json')
+  const oldManifest = {
+    name: 'dsh-profile-desktop',
+    private: true,
+    dependencies: {},
+    dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+  }
+  const calls = []
+  try {
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(manifestPath, `${JSON.stringify(oldManifest, null, 2)}\n`)
+    const runner = async ({ args }) => {
+      calls.push(args)
+      if (args[0] === 'add') {
+        await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+          name: packageName,
+          version: '9.9.9',
+          dsh: { bundle: { patch: './cordis.patch.yml' } },
+        }))
+      }
+    }
+    const manager = new PluginManager({ profileDir, runner, pnpmCli: 'pnpm.mjs', hostCompatibility })
+    await assert.rejects(manager.applyPrepared({
+      name: packageName,
+      version: '2.0.0',
+      spec: `${packageName}@2.0.0`,
+      manifest: { name: packageName, version: '2.0.0' },
+      compatibility: { status: 'compatible', reasons: [] },
+    }), /rolled back/u)
+    assert.deepEqual(JSON.parse(await readFile(manifestPath, 'utf8')), oldManifest)
+    assert.deepEqual(calls, [
+      ['add', `${packageName}@2.0.0`, '--save-exact', '--offline'],
+      ['install', '--offline', '--lockfile=false'],
+    ])
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
 test('plugin manager serializes installs and protects built-ins', async () => {
   const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugins-'))
   let active = 0
