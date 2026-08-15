@@ -25,6 +25,10 @@ const SKINS_DIR = path.join(ROOT, 'packages', 'skins')
 const OUT_DIR = path.join(ROOT, 'packages', 'skins', 'skin-center', 'src', 'client', 'generated')
 const OUT_FILE = path.join(OUT_DIR, 'skins.ts')
 
+function normalizeLineEndings(text) {
+  return text.replace(/\r\n/g, '\n')
+}
+
 /** skin.json files under packages/skins/, ordered by their `order` field. */
 function collectSkins() {
   const entries = []
@@ -115,7 +119,7 @@ function main() {
   const CHECK = process.argv.includes('--check')
   if (CHECK) {
     const current = fs.readFileSync(OUT_FILE, 'utf8')
-    if (current === out) {
+    if (normalizeLineEndings(current) === normalizeLineEndings(out)) {
       console.log(`skin-center-bundles: check OK (${skins.length} skins, generated file in sync)`)
       return
     }
