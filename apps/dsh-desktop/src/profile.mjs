@@ -25,6 +25,26 @@ export const BUILTIN_BUNDLES = Object.freeze([
   'dsh-plugin-hub',
 ])
 
+// Packages expanded by @linxin666/dsh-web-ui-all. Older desktop profiles
+// listed some of these as top-level bundles as well, which makes Cordis
+// register their patch ids twice. Keep the packages installed for the
+// aggregate's dependency graph, but migrate the duplicate bundle entries
+// away whenever the desktop profile is refreshed.
+export const AGGREGATED_BUNDLES = Object.freeze([
+  '@linxin666/dsh-client-ui-aionui-panel',
+  '@linxin666/dsh-client-ui-git-graph',
+  '@linxin666/dsh-client-ui-mode-switcher',
+  '@linxin666/dsh-client-ui-skin-center',
+  '@linxin666/dsh-client-ui-task-board',
+  '@linxin666/dsh-client-ui-web-ui-settings',
+  '@linxin666/dsh-live-stats',
+  '@linxin666/dsh-pet',
+  '@linxin666/dsh-remote-web-ui',
+  '@linxin666/dsh-skins',
+  '@linxin666/dsh-ssh',
+  '@linxin666/dsh-web-ui-compat',
+].toSorted())
+
 export const BUILTIN_SKIN_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-blue-fantasy',
   '@linxin666/dsh-client-ui-skin-dragon-heir',
@@ -48,6 +68,7 @@ export const WEB_UI_SETTINGS_NAMESPACES = Object.freeze([
 export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-aionui-panel',
   '@linxin666/dsh-client-ui-git-graph',
+  '@linxin666/dsh-client-ui-mode-switcher',
   '@linxin666/dsh-client-ui-skin-center',
   ...BUILTIN_SKIN_PACKAGES,
   '@linxin666/dsh-client-ui-task-board',
@@ -134,7 +155,8 @@ export function materializeFilesystemPath(path) {
 export function createDesktopProfileManifest(existing = {}) {
   const existingBundles = existing.dsh?.profile?.bundles
   const communityBundles = Array.isArray(existingBundles)
-    ? existingBundles.filter((name) => !BUILTIN_BUNDLES.includes(name))
+    ? existingBundles.filter((name) =>
+        !BUILTIN_BUNDLES.includes(name) && !AGGREGATED_BUNDLES.includes(name))
     : []
 
   return {

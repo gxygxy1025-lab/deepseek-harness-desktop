@@ -14,6 +14,7 @@
     "capture:qqbot": "node scripts/capture-startup.mjs --qqbot-qr",
     "test:window-chrome:e2e": "node scripts/verify-window-chrome.mjs",
     "test:directory-picker:e2e": "node scripts/verify-directory-picker.mjs",
+    "test:profile-migration:e2e": "node scripts/verify-profile-migration.mjs",
     "test": "node --test test/*.test.mjs",
     "pack:dir": "electron-builder --dir",
     "pack:verify": "node scripts/verify-package.mjs",

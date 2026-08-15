@@ -22,6 +22,11 @@
     - id: ui-git-graph
       name: '@linxin666/dsh-client-ui-git-graph'
 
+# from ../dsh-mode-switcher
+- insert:
+    - id: ui-mode-switcher
+      name: '@linxin666/dsh-client-ui-mode-switcher'
+
 # from ../dsh-pet
 - insert:
     - id: pet
