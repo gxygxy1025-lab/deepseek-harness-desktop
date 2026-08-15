@@ -42,6 +42,10 @@ export async function collectWebsiteErrors(html, expectedVersion) {
     ['Twitter summary card', /<meta\b[^>]*\bname=["']twitter:card["'][^>]*\bcontent=["']summary_large_image["']/i],
     ['structured data', /<script\b[^>]*\btype=["']application\/ld\+json["']/i],
     ['FAQ section', /\bid=["']faq["']/i],
+    ['latest features section', /\bid=["']latest-features["']/i],
+    ['GitHub Star CTA', /\bdata-star-cta\b/i],
+    ['GitHub Star count', /\bdata-star-count\b/i],
+    ['release download count', /\bdata-download-count\b/i],
   ]
 
   for (const [label, pattern] of requiredMarkers) {

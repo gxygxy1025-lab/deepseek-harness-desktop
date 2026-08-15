@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0a0a0a">
-    <meta name="description" content="DeepSeek Harness Desktop 是社区维护的开源 Windows 桌面客户端，完整保留 Harness Web 能力，提供插件扩展、主题、移动远程和自动更新。免费下载 Windows x64 安装包，无需另装 Node.js。">
+    <meta name="description" content="DeepSeek Harness Desktop 是社区维护的开源 Windows 桌面客户端，完整保留 Harness Web 能力，提供 ChatGPT OAuth、OpenAI Codex、推理强度、插件、11 款主题、移动远程和自动更新。免费下载 Windows x64 安装包，无需另装 Node.js。">
     <meta name="keywords" content="DeepSeek Harness Desktop,DeepSeek Harness 桌面版,DeepSeek Windows 客户端,开源 AI 编程助手,Harness 下载">
     <meta name="author" content="DeepSeek Harness Desktop Community">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
@@ -44,7 +44,7 @@
             "name": "DeepSeek Harness Desktop",
             "alternateName": "DeepSeek Harness 桌面版",
             "url": "https://ningbainb.github.io/deepseek-harness-desktop/",
-            "description": "完整保留 Harness Web 能力的开源 Windows 桌面客户端，提供插件扩展、主题、移动远程和自动更新。",
+            "description": "完整保留 Harness Web 能力的开源 Windows 桌面客户端，提供 ChatGPT OAuth、OpenAI Codex、推理强度、插件、11 款主题、移动远程和自动更新。",
             "applicationCategory": "DeveloperApplication",
             "applicationSubCategory": "AI coding assistant",
             "operatingSystem": "Windows 10, Windows 11",
@@ -63,8 +63,10 @@
             "featureList": [
               "完整 Harness Web Surface",
               "原生 Windows 桌面生命周期",
+              "ChatGPT OAuth 与 OpenAI Codex 模型",
+              "模型推理强度滑块",
               "插件与技能管理",
-              "主题系统",
+              "11 款主题",
               "移动远程访问",
               "自动更新"
             ],
@@ -143,6 +145,10 @@
         <span class="preview-chip">Desktop 社区版</span>
       </a>
       <nav class="top-actions" aria-label="页面导航">
+        <a class="star-badge" href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer" aria-label="在 GitHub 为项目点 Star" data-star-cta>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2.4 2.25 4.56 5.03.73-3.64 3.54.86 5-4.5-2.36-4.5 2.36.86-5L2.72 7.69l5.03-.73L10 2.4Z"/></svg>
+          <span data-star-count>46</span>
+        </a>
         <a href="#release">版本</a>
         <a href="#features">特色</a>
         <a href="#themes">主题</a>
@@ -166,7 +172,7 @@
           <div class="hero-copy reveal">
             <p class="overline">DeepSeek Harness Desktop 社区版</p>
             <h1>DeepSeek Harness<br>Desktop 开源版</h1>
-            <p class="hero-summary">把官方 Web Surface 完整装进 Windows 桌面，并加入插件扩展、自动更新、独立配置与原生应用生命周期。</p>
+            <p class="hero-summary">把官方 Web Surface 完整装进 Windows 桌面，并加入 ChatGPT OAuth、OpenAI Codex、推理强度、插件扩展与自动更新。</p>
             <p class="hero-summary">无需另外安装 Node.js。下载、启动，然后直接开始工作。</p>
             <div class="hero-buttons">
               <a class="btn btn-primary download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe">
@@ -177,12 +183,19 @@
                 <span class="qq-mark">Q</span>
                 加入 QQ 群
               </a>
-              <a class="btn btn-ghost" href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer">
+              <a class="btn btn-ghost btn-star" href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer" data-star-cta>
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.49c-2.24.49-2.71-1.08-2.71-1.08-.37-.93-.9-1.18-.9-1.18-.73-.5.06-.49.06-.49.81.06 1.23.83 1.23.83.72 1.23 1.89.88 2.35.67.07-.52.28-.88.51-1.08-1.79-.2-3.67-.9-3.67-3.99 0-.88.31-1.6.83-2.16-.08-.2-.36-1.02.08-2.13 0 0 .68-.22 2.2.82A7.67 7.67 0 0 1 10 4.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.93.08 2.13.52.56.83 1.28.83 2.16 0 3.1-1.89 3.78-3.69 3.98.29.25.55.74.55 1.5v2.22c0 .21.14.46.55.38A8 8 0 0 0 10 2Z"/></svg>
-                查看 GitHub
+                去 GitHub 点 Star
+                <span class="button-stat" data-star-count>46</span>
               </a>
               <a class="btn btn-ghost" href="#features">桌面特色</a>
             </div>
+            <p class="support-proof">
+              <span>开源免费</span>
+              <span><strong data-star-count>46</strong> Stars</span>
+              <span><strong data-download-count>52</strong> 次安装包下载</span>
+              <a href="https://github.com/ningbainb/deepseek-harness-desktop" target="_blank" rel="noreferrer" data-star-cta>如果项目有帮助，欢迎点 Star 支持持续更新</a>
+            </p>
           </div>
 
           <div class="download-terminal reveal reveal-delay">
@@ -235,6 +248,41 @@
         </div>
       </section>
 
+      <section class="latest-features" id="latest-features" aria-labelledby="latest-features-title">
+        <div class="container">
+          <div class="section-title reveal">
+            <span>v0.1.8 新增</span>
+            <h2 id="latest-features-title">登录、思考、扩展与迁移都更完整</h2>
+          </div>
+          <div class="latest-grid">
+            <article class="latest-card reveal">
+              <span class="latest-index">01</span>
+              <h3>ChatGPT OAuth 与 Codex</h3>
+              <p>设置页使用系统浏览器完成 ChatGPT OAuth，启用 OpenAI Codex 模型；既有 Provider 保持优先，凭据只保存在本机。</p>
+              <small>Codex Connect 0.1.0-alpha.4.5</small>
+            </article>
+            <article class="latest-card reveal">
+              <span class="latest-index">02</span>
+              <h3>模型推理强度滑块</h3>
+              <p>模型选择器中平滑切换实际支持的推理强度；切换模型后会自动回退到有效档位，避免无效配置。</p>
+              <small>reasoning-slider 0.0.2</small>
+            </article>
+            <article class="latest-card reveal">
+              <span class="latest-index">03</span>
+              <h3>帮助菜单直达社群</h3>
+              <p>顶部帮助菜单提供 QQ 群二维码、一键加群和 GitHub 建议入口，外部链接统一交给系统浏览器打开。</p>
+              <small>社区与反馈入口</small>
+            </article>
+            <article class="latest-card reveal">
+              <span class="latest-index">04</span>
+              <h3>单一市场与安全迁移</h3>
+              <p>默认只加载 dshmarket，并清理旧版重复市场和失效皮肤链接；空补丁会自动修复，同时保留非空用户配置。</p>
+              <small>dshmarket 1.3.0</small>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="features" id="features">
         <div class="container">
           <div class="section-title reveal"><span>桌面特色</span><h2>完整 Harness，原生体验</h2></div>
@@ -273,7 +321,7 @@
         <div class="container theme-content reveal">
           <span class="section-pill">主题系统</span>
           <h2>自定义你的 DeepSeek Harness</h2>
-          <p>九款主题完整适配核心界面和桌面插件。先试穿，再应用，浅色与深色状态保持一致。</p>
+          <p>11 款主题完整适配核心界面和桌面插件。先试穿，再应用，浅色与深色状态保持一致。</p>
           <div class="theme-switch" role="tablist" aria-label="主题预览">
             <button type="button" class="is-active" data-theme-image="assets/whale-song-dark.webp" role="tab">鲸吟</button>
             <button type="button" data-theme-image="assets/xp-light.webp" role="tab">Luna</button>
@@ -324,7 +372,7 @@
                 <span class="release-state">STABLE / 稳定通道</span>
                 <strong class="release-version">v0.1.8</strong>
               </div>
-              <p>每次发行都提供中文在前、English 在后的同页日志。应用会先展示完整更新内容，下载与重启安装均由你确认。</p>
+              <p>v0.1.8 带来 ChatGPT OAuth、OpenAI Codex、推理强度滑块、帮助菜单社群入口和更安全的插件与皮肤迁移。应用会先展示完整更新内容，下载与重启安装均由你确认。</p>
               <div class="release-facts">
                 <span><small>发布日期</small><time class="release-date" datetime="2026-08-15">2026-08-15</time></span>
                 <span><small>安装包</small><strong class="release-size">约 164 MB</strong></span>
