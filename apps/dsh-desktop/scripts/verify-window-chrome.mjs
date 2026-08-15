@@ -63,6 +63,13 @@ try {
   )
   assert.equal(state.paddingTop, '32px')
   assert.equal(state.chromeCount, 1)
+  assert.equal(await page.evaluate(() => {
+    const popup = window.open('about:blank', '_blank')
+    const allowed = popup !== null
+    if (popup) popup.opener = null
+    popup?.close()
+    return allowed
+  }), true)
   const helpButton = page.getByRole('button', { name: '帮助 / Help' })
   await helpButton.click()
   assert.equal(await helpButton.getAttribute('aria-expanded'), 'true')
