@@ -21,6 +21,7 @@ import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
+import { installRendererPermissions } from './renderer-permissions.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
 import { installUpdateSurface } from './update-surface.mjs'
@@ -178,8 +179,10 @@ export async function startElectronApp(metadata) {
     getRuntimeOrigin: () => activeOrigin,
     openExternal: (url) => shell.openExternal(url),
   })
-  mainWindow.webContents.session.setPermissionCheckHandler(() => false)
-  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
+  installRendererPermissions({
+    session: mainWindow.webContents.session,
+    getActiveOrigin: () => activeOrigin,
+  })
   mainWindow.webContents.session.on('will-download', async (_event, item) => {
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: join(app.getPath('downloads'), item.getFilename()),
