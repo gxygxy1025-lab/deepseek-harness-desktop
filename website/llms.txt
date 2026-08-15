@@ -1,6 +1,6 @@
 # DeepSeek Harness Desktop
 
-> DeepSeek Harness Desktop is a community-maintained, open-source Windows desktop distribution for DeepSeek Harness. It preserves the complete Harness Web Surface and adds native desktop lifecycle management, plugins, themes, automatic updates, and mobile remote access.
+> DeepSeek Harness Desktop is a community-maintained, open-source Windows desktop distribution for DeepSeek Harness. It preserves the complete Harness Web Surface and adds ChatGPT OAuth, OpenAI Codex models, model-aware reasoning effort, native desktop lifecycle management, plugins, 11 skins, automatic updates, and mobile remote access.
 
 ## Canonical website
 
@@ -22,6 +22,8 @@
 
 - Supported systems: Windows 10 and Windows 11, x64
 - Current release: v0.1.8
+- v0.1.8 bundles ChatGPT OAuth, OpenAI Codex models, a reasoning-effort slider, Help-menu community actions, one default plugin market, and safer profile migration
+- The bundled Skin Center includes 11 selectable skins
 - Node.js is bundled; end users do not need to install it separately
 - The project is a community edition and is not an official DeepSeek release
 - QQ user community: 1105158177

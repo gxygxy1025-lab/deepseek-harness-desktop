@@ -1,4 +1,5 @@
 const releaseApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop/releases/latest'
+const repositoryApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop'
 
 const siteThemeToggle = document.querySelector('[data-site-theme-toggle]')
 const siteThemeLabel = document.querySelector('[data-site-theme-label]')
@@ -30,6 +31,12 @@ siteThemeToggle?.addEventListener('click', () => {
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return null
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatCount(value) {
+  const count = Number(value)
+  if (!Number.isFinite(count) || count < 0) return null
+  return new Intl.NumberFormat('zh-CN').format(count)
 }
 
 function formatReleaseDate(value) {
@@ -80,6 +87,7 @@ async function hydrateLatestRelease() {
     setLinks('.checksum-link', checksum?.browser_download_url)
     setText('.release-version', version)
     setText('.release-size', formatBytes(installer.size))
+    setText('[data-download-count]', formatCount(installer.download_count))
 
     const published = formatReleaseDate(release.published_at)
     if (published) {
@@ -103,6 +111,17 @@ async function hydrateLatestRelease() {
     document.documentElement.dataset.releaseSource = 'fallback'
   } finally {
     card?.setAttribute('aria-busy', 'false')
+  }
+}
+
+async function hydrateRepositoryStats() {
+  try {
+    const response = await fetch(repositoryApi, { headers: { Accept: 'application/vnd.github+json' } })
+    if (!response.ok) throw new Error(`GitHub returned ${response.status}`)
+    const repository = await response.json()
+    setText('[data-star-count]', formatCount(repository.stargazers_count))
+  } catch {
+    // Static values keep the Star guidance useful when GitHub is unavailable or rate-limited.
   }
 }
 
@@ -187,13 +206,14 @@ document.querySelectorAll('[data-theme-image]').forEach(button => {
   })
 })
 
-const scheduleReleaseHydration = () => {
+const scheduleGitHubHydration = () => {
+  const hydrate = () => Promise.allSettled([hydrateLatestRelease(), hydrateRepositoryStats()])
   if ('requestIdleCallback' in window) {
-    window.requestIdleCallback(hydrateLatestRelease, { timeout: 1800 })
+    window.requestIdleCallback(hydrate, { timeout: 1800 })
   } else {
-    window.setTimeout(hydrateLatestRelease, 500)
+    window.setTimeout(hydrate, 500)
   }
 }
 
-if (document.readyState === 'complete') scheduleReleaseHydration()
-else window.addEventListener('load', scheduleReleaseHydration, { once: true })
+if (document.readyState === 'complete') scheduleGitHubHydration()
+else window.addEventListener('load', scheduleGitHubHydration, { once: true })

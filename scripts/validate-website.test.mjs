@@ -25,6 +25,15 @@ test('website exposes canonical SEO and structured data markers', async () => {
   assert.deepEqual(errors, [])
 })
 
+test('website validation rejects missing GitHub Star guidance', async () => {
+  const html = (await readFile(websitePath, 'utf8'))
+    .replaceAll('data-star-cta', 'data-removed-star-cta')
+    .replaceAll('data-star-count', 'data-removed-star-count')
+  const errors = await collectWebsiteErrors(html, '0.1.8')
+  assert.ok(errors.some(error => error.includes('GitHub Star CTA')))
+  assert.ok(errors.some(error => error.includes('GitHub Star count')))
+})
+
 test('website discovery files identify the canonical release', () => {
   const sitemap = '<url><loc>https://ningbainb.github.io/deepseek-harness-desktop/</loc><lastmod>2026-08-16</lastmod></url>'
   const robots = 'User-agent: OAI-SearchBot\nAllow: /\nSitemap: https://ningbainb.github.io/deepseek-harness-desktop/sitemap.xml'
