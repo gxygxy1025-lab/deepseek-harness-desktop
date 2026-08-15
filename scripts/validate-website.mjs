@@ -37,6 +37,7 @@ export async function collectWebsiteErrors(html, expectedVersion) {
     ['checksum link', /\bclass=["'][^"']*\bchecksum-link\b[^"']*["']/i],
     ['canonical URL', /<link\b[^>]*\brel=["']canonical["'][^>]*\bhref=["']https:\/\/ningbainb\.github\.io\/deepseek-harness-desktop\/["']/i],
     ['robots index directive', /<meta\b[^>]*\bname=["']robots["'][^>]*\bcontent=["'][^"']*\bindex\b/i],
+    ['Google site verification', /<meta\b[^>]*\bname=["']google-site-verification["'][^>]*\bcontent=["']QMzFv4LC5XXFJJf5L3_yoCaHIr2MVIxUm9S5qG9MiwE["']/i],
     ['Open Graph URL', /<meta\b[^>]*\bproperty=["']og:url["'][^>]*\bcontent=["']https:\/\/ningbainb\.github\.io\/deepseek-harness-desktop\/["']/i],
     ['Twitter summary card', /<meta\b[^>]*\bname=["']twitter:card["'][^>]*\bcontent=["']summary_large_image["']/i],
     ['structured data', /<script\b[^>]*\btype=["']application\/ld\+json["']/i],
