@@ -6,7 +6,7 @@ import test from 'node:test'
 
 import afterPack from '../scripts/after-pack.cjs'
 
-const { classifyPrunableFile, prunePackagedRuntime } = afterPack
+const { classifyPrunableFile, prunePackagedRuntime, restoreRequiredPackagedPeers } = afterPack
 
 test('release pruner classifies only non-runtime package files', () => {
   assert.equal(classifyPrunableFile('openai/src/client.ts'), 'published-source')
@@ -84,6 +84,28 @@ test('release pruner removes classified files and preserves runtime entries', as
       await readFile(join(root, '@linxin666', 'dsh-client-ui-skin-dragon-heir', 'preview', 'light.png'), 'utf8'),
       'preview',
     )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('release recovery restores pnpm peer snapshots omitted by electron-builder', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-peers-'))
+  try {
+    const restored = await restoreRequiredPackagedPeers(root)
+    assert.deepEqual(restored, [
+      '@deepseek-ai/dsh-attachment',
+      '@deepseek-ai/dsh-brand',
+      '@deepseek-ai/dsh-sandbox-policy',
+      '@deepseek-ai/dsh-settings',
+      '@deepseek-ai/dsh-timeout',
+      '@deepseek-ai/dsh-typert-protocol',
+    ])
+    for (const packageName of restored) {
+      const manifest = JSON.parse(await readFile(join(root, ...packageName.split('/'), 'package.json'), 'utf8'))
+      assert.equal(manifest.name, packageName)
+    }
+    assert.deepEqual(await restoreRequiredPackagedPeers(root), [])
   } finally {
     await rm(root, { recursive: true, force: true })
   }

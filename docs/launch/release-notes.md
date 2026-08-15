@@ -1,51 +1,55 @@
-# DeepSeek Harness Desktop 0.1.7
+# DeepSeek Harness Desktop 0.1.8
 
 ## 中文
 
 ### 本次亮点
 
-- 启动界面采用全新的深海探索视觉：状态驱动进度只在 DSH 真正就绪时抵达 100%，环境、运行时和界面三个阶段清晰可见，同时保留重试、修复、日志与退出恢复操作。
-- 顶部窗口栏压缩为 32 像素的 macOS 风格磨砂玻璃材质，使用 26 像素背景模糊、柔和高光和发丝分隔线，只显示正式软件图标，并继续保留原生 Windows 窗口按钮。
-- 修复旧桌面 profile 把全家桶子插件重复列入 bundles 导致的重复注册；升级时只迁移重复清单，不删除任何插件文件或社区扩展。
-- SSH、任务看板、工作区与会话菜单现在共享一致的页面切换状态；会话标题区新增模式切换器，空白会话原地切换，已有历史的会话会安全地在同一工作区打开新模式会话。
-- 文件预览、标签页内存、Git 状态轮询和 SSH 输出/目录传输均加入明确边界：超大文件不再完整读入内存，相同仓库不再重复轮询，UTF-8 输出限额按真实字节计算。
-- 首次安装后的运行时启动容忍窗口从 60 秒提升到 120 秒；安装版 E2E 失败会打印最近运行日志。Windows CI、官网静态下载回退、生成文件和安装载荷也加入更严格的一致性门禁。
+- 修复早期 0.1.8 构建的皮肤迁移可能把 `~/.dsh/cordis.patch.yml` 留成空文件、导致下次启动报“must be a top-level YAML array”并退出的问题。新版构建会把空补丁自动恢复为合法的 `[]`，且不会覆盖任何非空用户配置。
+- 顶部“帮助 / Help”菜单新增“加入社群”和“提建议”：社群弹窗同时提供 QQ 群二维码与一键跳转，GitHub 建议入口直接打开新建 Issue 页面，所有外链继续交由系统浏览器处理。
+- 桌面版只保留 `dshmarket` 作为默认插件市场，移除重复加载的 `dsh-plugin-hub`，避免两套市场同时改写同一个 desktop profile。
+- 启动迁移会清除旧版桌面托管的 Hub、兼容层、单独皮肤依赖和历史 managed 皮肤段。为避免保留一个指向旧安装目录的失效链接，受影响的升级会安全恢复一次官方外观；启动后重新选择 QQ98 等皮肤即可由新版皮肤中心建立唯一链接，不再因双重加载导致 `runtime exited with code 1`。
+- 内置 `dsh-codex-connect@0.1.0-alpha.4.5`，可在设置页使用 ChatGPT OAuth 登录并启用 OpenAI Codex 模型。它默认不替换当前模型、不接管全局搜索，也不启用远程图片工具；检测到已有 Codex provider 时会保留现有 provider，避免重复路由。
+- 内置 `reasoning-slider@0.0.2`，在模型选择器中平滑切换模型实际支持的推理强度，并在切换模型时自动回退到有效档位。
+- 全家桶、皮肤中心与内置皮肤继续使用 0.1.15 聚合结构；社区 bundle、会话、凭据和用户补丁在迁移中保持不变。
 
 ### 验证
 
-- 63 项桌面测试覆盖版本来源、运行时生命周期、120 秒冷启动预算、启动进度、窗口材质、profile 合成、凭据边界、插件与技能管理以及真实 DSH Host 启动。
-- 根级 `pnpm verify` 在受支持的 Node 24 环境完成 23 个工作区项目的类型检查、全部单元测试、脚本测试、双语发行说明、官网、聚合清单、图库和皮肤中心检查。
-- Electron 端到端检查验证真实 DSH Web Surface、磨砂窗口栏、亮暗主题、弹窗安全区、目录选择器和 profile 连续两次重启迁移；安装包校验覆盖 51 个关键运行时包、皮肤资源、桌宠资源与客户端 bundle。
+- 桌面 UI 回归覆盖帮助菜单动作、固定目标链接、沙箱化社群页、二维码渲染与常见窗口高度下的完整布局。
+- Profile 单元测试覆盖单市场清单、旧托管依赖清理、皮肤段单向迁移、连续启动幂等性和 Codex provider 冲突避让。
+- 真实 DSH Host 回归验证插件市场接口与页面、Codex 设置命名空间、思考强度滑块、全部内置皮肤资源以及 QQ98 应用流程。
+- 安装包门禁校验固定版本、完整运行时依赖、客户端 bundle、皮肤与桌宠资源，并执行根级类型检查、测试、官网和生成文件一致性检查。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-0.1.7-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
+下载 `DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek 或腾讯官方发行版。QQ Bot 插件和扫码 Connector 来自腾讯官方 npm 包。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目的 GitHub Release 页面下载并核对 SHA-256。升级会保留现有 DSH_HOME、桌面 profile、桌宠状态、皮肤配置和已加密的 QQ Bot 绑定凭据。
+这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。Codex Connect 使用 ChatGPT Codex 的非公开服务接口，资格、额度和协议可能变化；OAuth 凭据仅保存在本机 DSH home，登录接口限制为本机回环访问。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目的 GitHub Release 页面下载并核对 SHA-256。
 
 ## English
 
 ### Highlights
 
-- Rebuilt the startup experience around a restrained deep-ocean discovery field. Progress follows actual runtime state and reaches 100 percent only after DSH is ready; environment, runtime, and surface phases remain visible, with Retry, Repair, Logs, and Exit preserved for recovery.
-- Refined the top window chrome into a 32-pixel macOS-inspired frosted-glass surface with a 26-pixel backdrop blur, soft highlight, and hairline separator. It shows only the production app icon while preserving native Windows caption controls.
-- Migrates duplicate child bundle entries left by older desktop profiles when the all-in-one bundle already supplies them. The migration changes only the bundle roster and preserves plugin files and independent community extensions.
-- Synchronizes navigation between SSH, Task Board, workspaces, and conversation rows. A new session-header mode switcher changes blank sessions in place and safely opens a same-workspace session when existing history makes agent recomposition unsafe.
-- Added explicit resource boundaries across file previews, tab memory, Git polling, and SSH execution or transfer. Oversized files are no longer buffered in full, subscribers share one repository poll, slow polls cannot overlap, and UTF-8 output limits are based on real bytes.
-- Increased the first-install runtime startup allowance from 60 to 120 seconds and made packaged E2E failures include recent runtime logs. Windows CI now also enforces complete validation, generated-asset consistency, website fallback versions, and packaged-runtime pruning.
+- Fixes a skin migration bug in earlier 0.1.8 builds that could leave `~/.dsh/cordis.patch.yml` empty, causing the next launch to reject it because the YAML root was not an array. This updated build repairs blank patches to a valid `[]` without overwriting any non-empty user configuration.
+- Adds `Join QQ Group` and `Suggest an Idea` to the top Help menu. The community window offers both a QR code and one-click QQ join, while feedback opens the GitHub new-issue page; every external destination remains delegated to the system browser.
+- Keeps `dshmarket` as the only default plugin marketplace and removes the concurrently loaded `dsh-plugin-hub`, so two stores no longer rewrite the same desktop profile.
+- Startup migration removes the Hub, compatibility layer, standalone skin dependencies, and historical managed skin sections left by older desktop builds. Affected upgrades safely return to the official look once instead of retaining a stale link into the previous installation; selecting QQ98 or another skin after startup creates the single current link and avoids duplicate-load crashes.
+- Bundles `dsh-codex-connect@0.1.0-alpha.4.5` for ChatGPT OAuth and OpenAI Codex models in Settings. It does not replace the current model, take over global search, or enable the remote image tool by default; an existing Codex provider remains authoritative to prevent duplicate routes.
+- Bundles `reasoning-slider@0.0.2` for smooth model-supported reasoning-effort changes, with automatic fallback when switching to a model that does not support the current level.
+- Keeps the all-in-one UI, Skin Center, and built-in skins on the 0.1.15 aggregate layout while preserving community bundles, sessions, credentials, and user-owned patch rows during migration.
 
 ### Verification
 
-- 63 desktop tests cover version sourcing, runtime lifecycle, the 120-second cold-start budget, launch progress, window material, profile composition, credential boundaries, plugin and skill management, and the real DSH Host.
-- Root-level `pnpm verify` under the supported Node 24 runtime completes typechecking for 23 workspace projects, every unit and script test, bilingual release-note validation, website checks, aggregate manifests, gallery output, and Skin Center generation.
-- Electron end-to-end checks cover the real DSH Web Surface, frosted window chrome, light and dark modes, modal safe areas, the directory picker, and two consecutive profile-migration restarts. Packaged verification audits 51 critical runtime packages, skin assets, pet assets, and client bundles.
+- Desktop UI regression covers Help-menu actions, fixed destinations, the sandboxed community page, QR rendering, and a complete no-scroll layout at the normal window height.
+- Profile tests cover the single-store roster, retired managed dependency cleanup, one-way skin-section migration, restart idempotency, and Codex provider conflict avoidance.
+- Real DSH Host regression checks cover marketplace routes and UI, the Codex settings namespace, reasoning slider, every built-in skin asset, and the QQ98 apply flow.
+- Packaging gates audit pinned versions, the complete runtime dependency set, client bundles, skins, and pet assets, then run repository typechecking, tests, website validation, and generated-file consistency checks.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-0.1.7-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
+Download `DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
 
 ### Notice
 
-This is a community build and not an official DeepSeek or Tencent distribution. The QQ Bot plugin and QR Connector are official Tencent npm packages. The installer is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's GitHub Release page and verify the SHA-256 checksum. Upgrading preserves the existing DSH home, desktop profile, pet state, skin configuration, and encrypted QQ Bot binding credentials.
+This is a community build and not an official DeepSeek, OpenAI, or Tencent distribution. Codex Connect uses non-public ChatGPT Codex service endpoints whose eligibility, quotas, and protocol may change; OAuth credentials stay in the local DSH home and login routes accept loopback access only. The installer is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's GitHub Release page and verify the SHA-256 checksum.

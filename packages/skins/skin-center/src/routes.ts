@@ -22,7 +22,7 @@ import { readFileSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join as joinPath } from 'node:path'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { currentSkin, loadRegistry, useSkin } from './skin-switch.ts'
+import { currentSkin, useSkin, SKINS_DIR, listSkinDirCandidates, resolvePaths } from './skin-switch.ts'
 
 /** Browser-facing base path of the skin-center API. */
 export const SKIN_CENTER_API_PREFIX = '/api/skin-center'
@@ -165,6 +165,40 @@ export interface SkinCenterRoutesDeps {
 }
 
 /**
+ * Map skin id -> directory under the skins root, scanned from each
+ * skin.json. The id is validated against this map (never used as a raw
+ * path) so the bundle route cannot be walked off the skins tree. The root
+ * resolves per install layout (monorepo packages/skins/, npm
+ * node_modules/@linxin666/) and candidates include the bundled dsh-skins
+ * carrier (npm layout) — see skin-switch resolveSkinsDir /
+ * listSkinDirCandidates.
+ * @returns skin id -> directory name.
+ */
+/** Memoized id -> dir map; invalidated when the skins root (or the bundled
+ * carrier dir) changes on disk, so a skin added mid-session still appears
+ * without restarting. */
+let directoriesCache: { key: string; map: Map<string, string> } | null = null
+
+function skinDirectories(): Map<string, string> {
+  const rootStat = statSync(SKINS_DIR, { throwIfNoEntry: false })
+  const carrierStat = statSync(joinPath(SKINS_DIR, 'dsh-skins', 'skins'), { throwIfNoEntry: false })
+  const key = `${rootStat?.mtimeMs ?? -1}|${carrierStat?.mtimeMs ?? -1}`
+  if (directoriesCache !== null && directoriesCache.key === key) return directoriesCache.map
+  const out = new Map<string, string>()
+  for (const dir of listSkinDirCandidates(SKINS_DIR)) {
+    let meta: { id?: unknown }
+    try {
+      meta = JSON.parse(readFileSync(joinPath(dir, 'skin.json'), 'utf8'))
+    } catch {
+      continue
+    }
+    if (typeof meta.id === 'string' && /^[a-z0-9-]+$/.test(meta.id)) out.set(meta.id, dir)
+  }
+  directoriesCache = { key, map: out }
+  return out
+}
+
+/**
  * The on-demand bundle route: serve packages/skins/<id>/lib/client.js as a
  * same-origin script. Try-on loads it through a script tag (the kernel's
  * own bundle-loading mechanism), so the body registers the skin factory on
@@ -191,12 +225,15 @@ function bundleRoute(): WebRoute {
         return
       }
       try {
-        const entry = loadRegistry()[id]
-        if (entry === undefined) {
+        // skinDirectories maps id -> ABSOLUTE candidate dir (see
+        // listSkinDirCandidates): direct skin dirs or bundled
+        // dsh-skins/skins/<id> carriers.
+        const dir = skinDirectories().get(id)
+        if (dir === undefined) {
           json(res, 404, { ok: false, error: 'skin-not-found' })
           return
         }
-        const bundle = joinPath(entry.dir, 'lib', 'client.js')
+        const bundle = joinPath(dir, 'lib', 'client.js')
         if (!statSync(bundle, { throwIfNoEntry: false })) {
           json(res, 404, { ok: false, error: 'skin-bundle-missing' })
           return
@@ -216,7 +253,26 @@ function bundleRoute(): WebRoute {
  */
 export function makeSkinCenterRoutes(deps: SkinCenterRoutesDeps = {}): WebRoute[] {
   const run = deps.run ?? runDshSkin
-  const current = (): Promise<string> => run(['current']).then(out => out.trim() || 'none')
+  // /state is polled every 250ms while an apply confirmation waits for the
+  // config watcher. Cache the CLI answer briefly (750ms) keyed by the profile
+  // patch path, so about half of the polling rounds never re-scan the patch
+  // tree / registry; /apply invalidates the cache right after the write.
+  const currentCacheTtlMs = 750
+  let currentCache: { key: string; value: string; at: number } | null = null
+  const current = (): Promise<string> => {
+    const paths = resolvePaths()
+    const key = `${paths.patchPath}|${paths.profileManifestPath}`
+    const now = Date.now()
+    if (currentCache !== null && currentCache.key === key && now - currentCache.at < currentCacheTtlMs) {
+      return Promise.resolve(currentCache.value)
+    }
+    return run(['current']).then(out => {
+      const value = out.trim() || 'none'
+      currentCache = { key, value, at: Date.now() }
+      return value
+    })
+  }
+  const invalidateCurrent = (): void => { currentCache = null }
   return [
     getRoute(`${SKIN_CENTER_API_PREFIX}/state`, async () => ({
       ok: true,
@@ -234,6 +290,8 @@ export function makeSkinCenterRoutes(deps: SkinCenterRoutesDeps = {}): WebRoute[
       }
       const target = official ? 'official' : skin as string
       const out = await run(['use', target])
+      // The patch just changed: any cached active answer is stale.
+      invalidateCurrent()
       return {
         ok: true,
         active: await current(),

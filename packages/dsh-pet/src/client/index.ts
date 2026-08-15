@@ -1,15 +1,16 @@
 /**
- * dsh-pet browser half — registers the whale-girl into the shell's global
- * overlay layer and
- * drives it from the host's same-origin `/api/pet/*` JSON endpoints: poll the
- * host snapshot (~800 ms), forward interactions, persist drag positions. The
- * overlay entry mounts the floating pet via portal; when the pet is hidden the
- * entry becomes the summon button. The root-scoped overlay remains mounted on
- * the new-conversation screen and across session navigation.
+ * dsh-pet browser half — mounts the whale-girl as a global floating surface
+ * and drives it from the host's same-origin `/api/pet/*` JSON endpoints: poll
+ * the host snapshot (~2 s), forward interactions, persist drag positions.
+ * The pet is host-global (no session dimension), so it mounts directly onto
+ * `document.body` via a single React root rather than a session-scoped slot —
+ * on the new-conversation screen no session exists, and a dock-mounted pet
+ * would vanish there (issue #48). When the pet is hidden the entry becomes a
+ * fixed-position summon button.
  * @module @linxin666/dsh-pet/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SettingsScope, SettingsScopeSpec } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the settings-surface Context merge (ctx.settingsScope).
@@ -19,10 +20,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PetDisplayConfig } from '../persist.ts'
 import type { PetInteractResult, PetStateView } from '../service.ts'
 import type { PetInteraction } from '../affinity.ts'
+import { createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 import { createPetStore, type PetStoreInstance } from './pet-store.ts'
 import { PetDockEntry, type PetInjected } from './PetDockEntry.tsx'
 import { PetSettingsCard, PetSettingsCardController, type PetSettings } from './PetSettingsCard.tsx'
-import { NS, en, zh } from './locales.ts'
+import { NS, en, zh, t } from './locales.ts'
 
 /** The host pet API as the browser sees it (same-origin JSON endpoints). */
 interface PetHttpApi {
@@ -58,7 +61,7 @@ const petApi: PetHttpApi = {
 }
 
 /** Poll interval for the host snapshot. */
-const POLL_MS = 800
+const POLL_MS = 2000
 
 /** Settings namespace the pet settings card edits (the Host plugin registers it). */
 const PET_SETTINGS_NS = 'pet'
@@ -89,16 +92,29 @@ export interface SettingsPluginItemOwnerProps {
   children?: never
 }
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /**
+     * Optional rc.6 compatibility binder provided by dsh-web-ui-settings;
+     * absent when that group plugin is not installed, so callers fall back to
+     * the official settings scope.
+     */
+    webUiSettings?: { bind<S>(spec: SettingsScopeSpec<S>): SettingsScope<S> }
+  }
+}
+
+
 /**
- * Client plugin body: register dictionaries, mount the dock entry and poll
- * loop while the plugin is enabled, and seat the settings card in the Web UI
- * plugin group.
+ * Client plugin body: register dictionaries, mount the global pet entry and
+ * poll loop while the plugin is enabled, and seat the settings card in the
+ * Web UI plugin group.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'pet: dictionaries')
 
-  const settingsScope = ctx.settingsScope.bind<PetSettings>({ namespace: PET_SETTINGS_NS })
+  const binder = ctx.get('webUiSettings') ?? ctx.settingsScope
+  const settingsScope = binder.bind<PetSettings>({ namespace: PET_SETTINGS_NS })
   const enabled = (): boolean => {
     const snapshot = settingsScope.getSnapshot()
     return snapshot.status === 'ready'
@@ -117,8 +133,8 @@ export function apply(ctx: ClientContext): void {
     inject: () => petSettings.inject(),
   }, PetSettingsCard))
 
-  // The dock entry, its store, and the poll loop live while the plugin is
-  // enabled; toggling the setting off hides the pet and stops polling.
+  // The global pet entry, its store, and the poll loop live while the plugin
+  // is enabled; toggling the setting off hides the pet and stops polling.
   let disposeUi: (() => void) | undefined
   const syncUi = (): void => {
     if (enabled() && disposeUi === undefined) {
@@ -145,7 +161,7 @@ export function apply(ctx: ClientContext): void {
         // change while the page is hidden, so a background interval would
         // only burn RPCs (browser throttling is an unreliable backstop).
         // Coming back to the tab refreshes the pet immediately instead of
-        // waiting out the next 800 ms cycle.
+        // waiting out the next 2 s cycle.
         let timer: number | undefined
         const stop = (): void => {
           if (timer !== undefined) {
@@ -232,19 +248,22 @@ export function apply(ctx: ClientContext): void {
         },
       })
 
-      // The shell overlay is root-scoped and rendered above every column, so
-      // the pet exists on cold start, the blank-session hero, and active seats.
-      const disposeDock = ctx.slots.inject('shell.overlay', () =>
-        ctx.slots.register({
-          name: 'shell.overlay',
-          id: 'pet',
-          order: 110,
-          inject: injected,
-          locale: NS,
-        }, PetDockEntry))
+      // The pet is host-global (its state/display/interactions have no session
+      // dimension), and the official rc.6 shell declares no root-scoped slot
+      // for a global floating surface — the dock is session-scoped, so a pet
+      // mounted there would vanish on the new-conversation screen (issue #48).
+      // The entry therefore mounts straight onto document.body via a single
+      // React root for the page lifetime: WhalePet portals itself to body when
+      // visible, and the hidden-state summon button is fixed-positioned.
+      const container = document.createElement('div')
+      container.dataset.dshPetRoot = ''
+      document.body.appendChild(container)
+      const petRoot = createRoot(container)
+      petRoot.render(createElement(PetDockEntry, { ...injected(), t }))
 
       disposeUi = () => {
-        disposeDock()
+        petRoot.unmount()
+        container.remove()
         disposePoll()
         disposeUi = undefined
       }

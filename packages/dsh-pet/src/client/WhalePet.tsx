@@ -71,6 +71,7 @@ export function WhalePet(props: WhalePetProps): ReactPortal {
   const [nameDraft, setNameDraft] = useState('')
   const [dragPos, setDragPos] = useState<{ right: number; bottom: number } | null>(null)
   const dragRef = useRef<{ startX: number; startY: number; right: number; bottom: number } | null>(null)
+  const hideTimerRef = useRef<number | null>(null)
   const frameRef = useRef<{ track: PetAnimation | null; index: number; elapsed: number }>({
     track: null,
     index: 0,
@@ -193,6 +194,13 @@ export function WhalePet(props: WhalePetProps): ReactPortal {
   // `draggedRef` records whether the pointer actually moved, so the browser's
   // trailing click (fired after pointerup) does not pet the whale.
   const draggedRef = useRef(false)
+  const clearHideTimer = (): void => {
+    if (hideTimerRef.current !== null) {
+      window.clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = null
+    }
+  }
+
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
     e.preventDefault()
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
@@ -220,21 +228,29 @@ export function WhalePet(props: WhalePetProps): ReactPortal {
   const pos = dragPos ?? { right: display.right, bottom: display.bottom }
   const spriteWidth = Math.round(FRAME_WIDTH * spriteScale)
   const spriteHeight = Math.round(FRAME_HEIGHT * spriteScale)
+  const statusBubble = feedback === null && !hovered ? snapshot?.bubble : undefined
 
   const float = (
     <div
       ref={floatRef}
       className={styles.float}
       style={{ right: pos.right, bottom: pos.bottom, zIndex: 2147483000 }}
-      onPointerEnter={() => setHovered(true)}
+      onPointerEnter={() => {
+        clearHideTimer()
+        setHovered(true)
+      }}
       onPointerLeave={(e) => {
         // The panel and bubble render OUTSIDE the container's box (absolute,
         // above the sprite), so moving onto them fires pointerleave on the
         // container. Treat a target still inside the container's DOM (the
-        // overflowed panel) as "still hovering".
+        // overflowed panel) as "still hovering"; otherwise give the pointer a
+        // short grace period to reach the panel across the gap above it. The
+        // bridge (`.panel::after`) keeps the pointer inside the hit area, and
+        // the grace period covers a slow mouse crossing the remaining sliver.
         const next = e.relatedTarget
         if (next instanceof Node && floatRef.current?.contains(next)) return
-        setHovered(false)
+        clearHideTimer()
+        hideTimerRef.current = window.setTimeout(() => setHovered(false), 300)
       }}
     >
       <div
@@ -266,8 +282,21 @@ export function WhalePet(props: WhalePetProps): ReactPortal {
           {feedback.text}
         </div>
       )}
+      {statusBubble !== undefined && (
+        <div className={`${styles.bubble} ${styles.bubbleStatus}`} role="status" aria-live="polite">
+          {statusBubble}
+        </div>
+      )}
       {hovered && dragRef.current === null && (
-        <div className={styles.panel}>
+        <div
+          className={styles.panel}
+          onPointerEnter={() => {
+            // Reaching the panel (or its bridge) must cancel any hide timer
+            // the container's pointerleave may have armed while the pointer
+            // crossed the sliver between the sprite and the panel.
+            clearHideTimer()
+          }}
+        >
           {renaming ? (
             <div className={styles.renameRow}>
               <input
@@ -278,6 +307,11 @@ export function WhalePet(props: WhalePetProps): ReactPortal {
                 autoFocus
                 onChange={(e) => setNameDraft(e.target.value)}
                 onKeyDown={(e) => {
+                  // While an IME composition is active (e.g. selecting a
+                  // Chinese candidate), Enter/Escape keydowns belong to the
+                  // input method: ignore them so candidate selection can
+                  // neither submit the draft nor close the rename box.
+                  if (e.nativeEvent.isComposing) return
                   if (e.key === 'Enter') {
                     const trimmed = nameDraft.trim()
                     if (trimmed !== '') {

@@ -72,16 +72,21 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
   const button = newSessionButton(root)
   if (button === undefined) return false
   if (entry.parentElement !== root) {
-    // Current shells nest the button inside the logo row: insert after that
-    // row. Legacy shells keep the button as a direct child: insert after it.
+    // Position relative to the family block (entries injected by sibling
+    // plugins), never relative to transient logoRow geometry: every family
+    // plugin that self-heals during a re-render then lands in the same
+    // relative order, so the entries cannot swap positions regardless of
+    // observer callback order or of shell wrapper changes. There is no
+    // append-to-end fallback: appending at the end would randomly reorder
+    // the block after a shell re-render.
     const row = button.closest('[class*="logoRow"]')
-    if (row !== null && row.parentElement === root) {
-      root.insertBefore(entry, row.nextElementSibling)
-    } else if (button.parentElement === root) {
-      root.insertBefore(entry, button.nextElementSibling)
-    } else {
-      root.appendChild(entry)
-    }
+    const base = (row !== null && row.parentElement === root) ? row : button
+    const family = Array.from(root.children).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement && el.matches('[data-dsh-taskboard-entry], [data-dsh-ssh-entry]'),
+    )
+    // task board sits before the whole family block.
+    const anchor = family.length > 0 ? family[0] : base.nextElementSibling
+    root.insertBefore(entry, anchor)
   }
   return true
 }
@@ -93,19 +98,49 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
  * @returns disposer removing the entry and its observers.
  */
 export function mountSidebarEntry(controller: BoardController): () => void {
+  // DOM-level idempotency: whatever path mounted an entry row before this
+  // call (a duplicated apply, an HMR re-injection, a stale module still
+  // alive), never mount a second one. The existing row keeps working; a full
+  // page reload is the ultimate reset.
+  if (typeof document !== 'undefined' && document.querySelector('[data-dsh-taskboard-entry]') !== null) {
+    return () => {}
+  }
   const entry = createEntry(controller)
   let root: HTMLElement | undefined
   let placed = false
 
   const tryPlace = (): void => {
-    if (placed) return
+    if (root !== undefined && !root.isConnected) {
+      // The shell rebuilt the sidebar pane (whole-tree teardown); the root
+      // observer is gone with the old tree, so detach it and re-query from
+      // scratch. The new pane is later noticed by the body-level watcher.
+      rootObserver.disconnect()
+      root = undefined
+      placed = false
+    }
+    if (placed) {
+      // Cheap short-circuit: entry still lives in a mountable subtree.
+      if (document.body.contains(entry)) return
+      // Entry was torn down together with the old tree; reset and re-place.
+      rootObserver.disconnect()
+      root = undefined
+      placed = false
+    }
     root ??= sidebarRoot()
     if (root === undefined) return
     placed = placeEntry(root, entry)
-    if (placed) rootObserver.observe(root, { childList: true, subtree: true })
+    if (placed) {
+      rootObserver.observe(root, { childList: true, subtree: true })
+    }
   }
 
-  // The shell renders after boot settlement; watch for its arrival.
+  // Body-level watcher retained as the "whole rebuild" fallback: when the shell
+  // tears down the whole sidebar pane, the root observer is gone with it and
+  // only this body observation can notice the new pane mounting. It is no
+  // longer disconnected after placement; the placed-and-still-mounted case
+  // short-circuits through the cheap document.body.contains(entry) check, so
+  // unrelated app mutations (e.g. chat streaming) cost one contains check
+  // instead of churning the full re-query.
   const waitObserver = new MutationObserver(() => { tryPlace() })
   waitObserver.observe(document.body, { childList: true, subtree: true })
 
@@ -122,11 +157,15 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     }
   })
 
-  // Reflect the board's open state on the row (active highlight).
-  const unsubscribe = controller.subscribe(() => {
-    entry.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
-  })
-  entry.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
+  // Reflect the board's open state on the row (active highlight). Note: assigning
+  // undefined to dataset.active materializes data-active="undefined" and keeps the
+  // row permanently highlighted — delete the attribute instead.
+  const syncActive = () => {
+    if (controller.getSnapshot().boardOpen) entry.dataset.active = 'true'
+    else delete entry.dataset.active
+  }
+  const unsubscribe = controller.subscribe(syncActive)
+  syncActive()
 
   const closeForNativeNavigation = (event: Event): void => {
     const target = event.target

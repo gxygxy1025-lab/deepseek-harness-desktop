@@ -32,7 +32,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 | --- | --- |
 | ![桌面启动界面](docs/screenshots/desktop-startup.png) | ![插件与技能扩展坞](docs/screenshots/desktop-extension-dock.png) |
 
-- 保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物与全部皮肤；
+- 内置 dsh-web-ui 0.1.15 套件，保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物，并新增图像描述与量身 Agent；
 - 内置腾讯官方 QQ Bot，可在扩展坞扫码绑定 QQ 私聊与群聊，无需编辑 YAML 或打开后台终端；
 - 独立 `desktop` profile，不覆盖既有 DSH 配置，运行时仅监听回环地址；
 - 内置崩溃恢复、日志脱敏与轮转、窗口状态恢复、严格导航与权限策略；
@@ -48,7 +48,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 ### QQ 机器人扫码接入（桌面版 0.1.6）
 
-桌面版内置腾讯官方 `@tencent-connect/dsh-qqbot` 0.2.0 和 `@tencent-connect/qqbot-connector` 1.2.0。在扩展坞打开 QQ Bot 卡片即可获取自动刷新的二维码，使用手机 QQ 扫码后，QQ 私聊与群聊便可连接到本机 Harness；同时支持取消、重新绑定和彻底解绑。
+桌面版内置腾讯官方 `@tencent-connect/dsh-qqbot` 0.3.0 和 `@tencent-connect/qqbot-connector` 1.2.0。在扩展坞打开 QQ Bot 卡片即可获取自动刷新的二维码，使用手机 QQ 扫码后，QQ 私聊与群聊便可连接到本机 Harness；同时支持取消、重新绑定和彻底解绑。
 
 未绑定时插件保持禁用，不会让隐藏的后台进程等待终端扫码，也不会拖慢 Web UI 启动。绑定成功后桌面端会自动启用插件并重启 DSH。AppSecret 由 Electron `safeStorage` 结合 Windows 系统凭据保护加密保存，不会发送到渲染页面、写入日志或明文进入 `cordis.patch.yml`；运行时只通过子进程环境注入。
 
@@ -76,7 +76,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 - **预览**：多标签预览 markdown、HTML、代码、diff、CSV、PDF、Office、图片与文本等格式，支持源码 / 预览切换、分屏编辑与保存；
 - **变更（SCM）**：真实 git 变更面板，支持 stage / unstage / discard；
 - 面板宽度可拖拽调整，双击把手复位默认宽度，折叠状态与宽度按项目持久化；
-- 9 款皮肤全部适配右侧面板，换肤后面板随之融入主题。
+- 11 款皮肤全部适配右侧面板，换肤后面板随之融入主题。
 
 ![右侧面板](docs/screenshots/19-right-panel.png)
 
@@ -122,11 +122,11 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 ### 插件市场与扩展坞
 
-桌面 profile 内置 `dshmarket` 1.0.3 与 `dsh-plugin-hub` 0.1.0。市场安装目标固定为隔离的 `desktop` profile，支持社区 DSH bundle 的发现、安装、事务回滚和保留升级；项目技能、DSH 技能与 Agents 技能也可在扩展坞中发现并经过安全检查后导入。
+桌面 profile 内置 `dshmarket` 1.3.0 与 `dsh-plugin-hub` 0.1.1。市场安装目标固定为隔离的 `desktop` profile，支持社区 DSH bundle 的发现、安装、事务回滚和保留升级；运行时重启由桌面宿主统一管理，避免市场自行启动第二个 DSH 进程。项目技能、DSH 技能与 Agents 技能也可在扩展坞中发现并经过安全检查后导入。
 
 ## 皮肤
 
-皮肤中心提供 9 款可选皮肤，均支持先试穿再应用：试穿即时生效、退出完全还原，确认满意后一键应用。
+皮肤中心提供 11 款可选皮肤（含 Harbor 与 QQ2006），均支持先试穿再应用：试穿即时生效、退出完全还原，确认满意后一键应用。
 
 ![皮肤中心](docs/screenshots/03-settings-skin-center.png)
 

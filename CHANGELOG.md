@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+中文：
+
+- 将内置 dsh-web-ui 插件套件同步到 0.1.15，新增图像描述、量身 Agent、Harbor 与 QQ2006 皮肤，并吸收各插件的性能、设置和稳定性改进。
+- 将腾讯 QQ Bot 升级到 0.3.0、扩展坞升级到 0.1.1、插件市场升级到 1.3.0；市场重启仍由 Electron 桌面宿主统一管理。
+- 补齐 Windows 兼容：SFTP 路径规范化、更新超时测试、POSIX 权限测试隔离、共享路径测试和生成器路径识别。
+
+English:
+
+- Synced the bundled dsh-web-ui plugin suite to 0.1.15, adding Describe Image, the Liangshen agent, Harbor, and QQ2006 while incorporating the suite's performance, settings, and reliability improvements.
+- Upgraded Tencent QQ Bot to 0.3.0, Extension Dock to 0.1.1, and the plugin market to 1.3.0; Electron remains the sole runtime-restart supervisor.
+- Completed Windows adaptation for SFTP path normalization, update-timeout tests, POSIX permission-test isolation, shared path tests, and generator path detection.
+
 ## 0.1.7 - 2026-08-15
 
 中文：

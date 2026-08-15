@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { normalizeDesktopAction, normalizeWindowChromeTheme, publicRuntimeStatus } from '../src/ipc.mjs'
+import {
+  normalizeDesktopAction,
+  normalizeHelpAction,
+  normalizeWindowChromeTheme,
+  publicRuntimeStatus,
+} from '../src/ipc.mjs'
 
 test('desktop action validation exposes only fixed recovery operations', () => {
   for (const action of ['retry', 'repair', 'open-logs', 'exit']) {
@@ -17,6 +22,15 @@ test('window chrome IPC accepts only supported themes', () => {
   assert.equal(normalizeWindowChromeTheme('dark'), 'dark')
   for (const theme of ['', 'system', 42]) {
     assert.throws(() => normalizeWindowChromeTheme(theme), /window chrome theme/)
+  }
+})
+
+test('window chrome Help IPC accepts only fixed application actions', () => {
+  for (const action of ['community', 'feedback', 'project', 'updates']) {
+    assert.equal(normalizeHelpAction(action), action)
+  }
+  for (const action of ['open-url', 'https://example.com', '', 42]) {
+    assert.throws(() => normalizeHelpAction(action), /Help action/)
   }
 })
 

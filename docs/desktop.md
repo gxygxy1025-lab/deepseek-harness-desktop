@@ -4,7 +4,7 @@
 
 The desktop application is a thin lifecycle and security layer around the official DSH host. Electron starts `@deepseek-ai/dsh` with `--profile desktop --port 0`, waits for the official loopback URL line, probes HTTP readiness, and then loads that URL into the main window. The Web application, protocols, data paths, tools, and plugin system remain DSH implementations.
 
-The DSH home remains `DSH_HOME` or `~/.dsh`. The desktop app runs the managed `~/.dsh/profiles/desktop` profile, which composes `@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, `@linxin666/dsh-web-ui-all`, `@tencent-connect/dsh-qqbot`, `dshmarket`, and `dsh-plugin-hub` while preserving community bundles already added to that profile. Packaged plugin directories are linked into the profile's `node_modules`; this is runtime package resolution, not a second configuration store. Existing default profiles are not changed.
+The DSH home remains `DSH_HOME` or `~/.dsh`. The desktop app runs the managed `~/.dsh/profiles/desktop` profile, which composes `@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`, `@linxin666/dsh-web-ui-all`, `@tencent-connect/dsh-qqbot`, `dshmarket`, `dsh-codex-connect`, and `reasoning-slider` while preserving community bundles already added to that profile. Packaged plugin directories are linked into the profile's `node_modules`; this is runtime package resolution, not a second configuration store. Existing default profiles are not changed.
 
 ## Included desktop capabilities
 
@@ -16,6 +16,7 @@ The DSH home remains `DSH_HOME` or `~/.dsh`. The desktop app runs the managed `~
 | Plugins | Registry package syntax only, protected built-ins, serialized pnpm changes, DSH bundle validation, rollback |
 | Skills | Project/DSH/Agents root discovery, official precedence, shadow reporting, safe folder import |
 | Window | Single instance, persisted visible geometry, native menu, download destination prompt |
+| Community | Help-menu QQ group QR and one-click join, direct GitHub issue feedback |
 | Updates | Stable GitHub Releases, release notes, user-confirmed download/install, taskbar progress |
 | Security | Sandbox, context isolation, no Node integration, loopback navigation allowlist, denied permissions |
 

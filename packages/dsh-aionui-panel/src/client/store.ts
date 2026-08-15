@@ -14,7 +14,7 @@ import type { FileRead, FsEntry, GitStatusView, PreviewContentType, SearchHit } 
 import type { PanelApi } from './api.ts'
 import { detectContentType, isTextType, tabIdOf } from './fileType.ts'
 import {
-  evictPreviewScopes, readJson, readStoredNumber, writeJson, writeStoredNumber,
+  createDebounced, evictPreviewScopes, readJson, readStoredNumber, writeJson, writeStoredNumber,
 } from './persist.ts'
 
 // ─── state primitive ────────────────────────────────────────────────────────
@@ -244,24 +244,23 @@ export function createExplorerStore(api: PanelApi): ExplorerStore {
     version: 0,
   })
 
-  let persistTimer: ReturnType<typeof setTimeout> | undefined
-  let searchTimer: ReturnType<typeof setTimeout> | undefined
+  const persistDebounced = createDebounced()
+  const searchDebounced = createDebounced()
   let fsVersion = 0
   let persistRoot = ''
   let persistExpanded: string[] = []
   let persistSelected: string | null = null
-  const flushPersist = (): void => {
-    if (persistTimer !== undefined) clearTimeout(persistTimer)
-    persistTimer = undefined
+  // The debounced write (schedulePersist queues this; flushNow runs it now).
+  const persistWrite = (): void => {
     if (persistRoot !== '') writeJson(`${KEY_EXPLORER_UI}${persistRoot}`, { expanded: persistExpanded, selected: persistSelected })
   }
+  const flushPersist = (): void => { persistDebounced.flush() }
   const schedulePersist = (root: string, expanded: string[], selected: string | null): void => {
     if (root === '') return
-    if (persistTimer !== undefined) clearTimeout(persistTimer)
     persistRoot = root
     persistExpanded = expanded
     persistSelected = selected
-    persistTimer = setTimeout(flushPersist, 150)
+    persistDebounced.schedule(persistWrite)
   }
 
   /** Load one dir's listing into the cache (no-op when already present). */
@@ -372,11 +371,10 @@ export function createExplorerStore(api: PanelApi): ExplorerStore {
             : { ...prev.search, query: trimmed, status: 'searching' },
         }
       })
-      if (searchTimer !== undefined) clearTimeout(searchTimer)
+      searchDebounced.dispose()
       if (trimmed === '') return
       const root = handle.getSnapshot().root
-      searchTimer = setTimeout(() => {
-        searchTimer = undefined
+      searchDebounced.schedule(() => {
         void api.search(root, trimmed).then((result) => {
           handle.update((prev) => {
             if (prev.root !== root || prev.search.query !== trimmed) return prev
@@ -388,11 +386,10 @@ export function createExplorerStore(api: PanelApi): ExplorerStore {
             }
           })
         })
-      }, 150)
+      })
     },
     cancelSearch() {
-      if (searchTimer !== undefined) clearTimeout(searchTimer)
-      searchTimer = undefined
+      searchDebounced.dispose()
       handle.update((prev) => (prev.search.query === '' ? prev : { ...prev, search: { ...EMPTY_SEARCH } }))
     },
     async handleFsChange() {
@@ -441,6 +438,8 @@ export interface ScmState {
   root: string
   /** null: not a git repository (or still loading). */
   status: GitStatusView | null
+  /** True when the host reported git is not installed (SSE gitUnavailable). */
+  gitMissing: boolean
   loading: boolean
   /** Paths with an action in flight. */
   busy: string[]
@@ -490,6 +489,7 @@ export function createScmStore(api: PanelApi): ScmStore {
   const handle = createState<ScmState>({
     root: '',
     status: null,
+    gitMissing: false,
     loading: false,
     busy: [],
     failed: [],
@@ -499,12 +499,10 @@ export function createScmStore(api: PanelApi): ScmStore {
     selected: null,
   })
 
-  let persistTimer: ReturnType<typeof setTimeout> | undefined
+  const persistDebounced = createDebounced()
   let persistState: ScmState | null = null
   let loadSeq = 0
-  const flushPersist = (): void => {
-    if (persistTimer !== undefined) clearTimeout(persistTimer)
-    persistTimer = undefined
+  const persistWrite = (): void => {
     if (persistState !== null && persistState.root !== '') {
       writeJson(`${KEY_SCM_UI}${persistState.root}`, {
         viewMode: persistState.viewMode,
@@ -514,11 +512,11 @@ export function createScmStore(api: PanelApi): ScmStore {
       })
     }
   }
+  const flushPersist = (): void => { persistDebounced.flush() }
   const schedulePersist = (state: ScmState): void => {
     if (state.root === '') return
-    if (persistTimer !== undefined) clearTimeout(persistTimer)
     persistState = state
-    persistTimer = setTimeout(flushPersist, 150)
+    persistDebounced.schedule(persistWrite)
   }
 
   /** Fetch the status and land it (guarded against root switches + out-of-order). */
@@ -533,6 +531,8 @@ export function createScmStore(api: PanelApi): ScmStore {
       return {
         ...prev,
         status: result.ok ? result.value : prev.status,
+        // A real repo view clears the missing-git banner; null keeps it.
+        gitMissing: result.ok && result.value !== null ? false : prev.gitMissing,
         loading: false,
         busy: keepBusy,
       }
@@ -548,6 +548,7 @@ export function createScmStore(api: PanelApi): ScmStore {
           ...prev,
           root,
           status: null,
+          gitMissing: false,
           loading: true,
           busy: [],
           failed: [],
@@ -750,10 +751,8 @@ export function createPreviewStore(api: PanelApi): PreviewStore {
     version: 0,
   })
 
-  let persistTimer: ReturnType<typeof setTimeout> | undefined
-  const flushPersist = (): void => {
-    if (persistTimer !== undefined) clearTimeout(persistTimer)
-    persistTimer = undefined
+  const persistDebounced = createDebounced()
+  const persistWrite = (): void => {
     const current = handle.getSnapshot()
     if (current.root === '') return
     const meta: PersistedTab[] = current.tabs.map((tab) => ({
@@ -768,10 +767,10 @@ export function createPreviewStore(api: PanelApi): PreviewStore {
     writeJson(`preview-ui:${current.root}`, { savedAt: Date.now(), tabs: meta })
     evictPreviewScopes(current.root)
   }
+  const flushPersist = (): void => { persistDebounced.flush() }
   const schedulePersist = (state: PreviewState): void => {
     if (state.root === '') return
-    if (persistTimer !== undefined) clearTimeout(persistTimer)
-    persistTimer = setTimeout(flushPersist, 150)
+    persistDebounced.schedule(persistWrite)
   }
 
   /** Load content for one tab (text or image data URL, or git diff). */

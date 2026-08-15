@@ -5,8 +5,8 @@
  * the ABSOLUTE path (regression: comparing repo-relative paths against the
  * resolved absolute list silently failed every discard).
  */
-import { describe, expect, it, vi } from 'vitest'
-import { GitService, type GitRunner } from '../src/host/git-service.ts'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { GitService, subprocessRunner, type GitRunner } from '../src/host/git-service.ts'
 import type { WorkspaceGate } from '../src/host/gate.ts'
 
 const ROOT = '/w'
@@ -158,5 +158,204 @@ describe('GitService.diff', () => {
     const service = new GitService(runner, gate, vi.fn(async () => ({ ok: true as const })))
     const result = await service.diff(ROOT, '../outside.txt', false)
     expect('content' in result).toBe(false)
+  })
+})
+
+describe('GitService repository detection cache', () => {
+  it('probes rev-parse once per workspace and never spawns status for non-repos', async () => {
+    const calls: string[][] = []
+    const runner: GitRunner = {
+      async run(argv, cwd) {
+        calls.push([...argv, `@${cwd}`])
+        if (argv[0] === '--version') return { exitCode: 0, stdout: 'git version 2.39.0\n', stderr: '' }
+        if (argv[0] === 'rev-parse' && argv[1] === '--show-toplevel') {
+          return { exitCode: 128, stdout: '', stderr: 'not a git repository' }
+        }
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    }
+    const service = new GitService(runner, gate, vi.fn(async () => ({ ok: true as const })))
+
+    expect(await service.isRepository(ROOT)).toBe(false)
+    expect(await service.isRepository(ROOT)).toBe(false)
+    expect(await service.status(ROOT)).toBeNull()
+    expect(await service.status(ROOT)).toBeNull()
+
+    expect(calls.filter((call) => call[0] === 'rev-parse' && call[1] === '--show-toplevel')).toHaveLength(1)
+    expect(calls.some((call) => call[0] === 'status')).toBe(false)
+  })
+
+  it('caches the repo top-level so repeated status calls skip rev-parse', async () => {
+    const calls: string[][] = []
+    const runner: GitRunner = {
+      async run(argv, cwd) {
+        calls.push([...argv, `@${cwd}`])
+        if (argv[0] === '--version') return { exitCode: 0, stdout: 'git version 2.39.0\n', stderr: '' }
+        if (argv[0] === 'rev-parse' && argv[1] === '--show-toplevel') {
+          return { exitCode: 0, stdout: `${REPO}\n`, stderr: '' }
+        }
+        if (argv[0] === 'rev-parse' && argv[1] === '--abbrev-ref') {
+          return { exitCode: 0, stdout: 'main\n', stderr: '' }
+        }
+        if (argv[0] === 'status') return { exitCode: 0, stdout: '', stderr: '' }
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    }
+    const service = new GitService(runner, gate, vi.fn(async () => ({ ok: true as const })))
+
+    expect(await service.isRepository(ROOT)).toBe(true)
+    const first = await service.status(ROOT)
+    const second = await service.status(ROOT)
+    expect(first).toMatchObject({ root: ROOT, branch: 'main' })
+    expect(second).toMatchObject({ root: ROOT, branch: 'main' })
+
+    expect(calls.filter((call) => call[0] === 'rev-parse' && call[1] === '--show-toplevel')).toHaveLength(1)
+    expect(calls.filter((call) => call[0] === 'status')).toHaveLength(2)
+  })
+})
+
+describe('GitService repository cache TTL and self-heal', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('re-detects a repository after the negative verdict expires (git init later)', async () => {
+    const calls: string[][] = []
+    let isRepo = false
+    const runner: GitRunner = {
+      async run(argv) {
+        calls.push([...argv])
+        if (argv[0] === 'rev-parse' && argv[1] === '--show-toplevel') {
+          return isRepo
+            ? { exitCode: 0, stdout: `${REPO}\n`, stderr: '' }
+            : { exitCode: 128, stdout: '', stderr: 'not a git repository' }
+        }
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    }
+    const service = new GitService(runner, gate, vi.fn(async () => ({ ok: true as const })))
+
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(false)
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(false)
+    isRepo = true
+    // The negative verdict is still fresh, so git init is not seen yet.
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(false)
+
+    // Negative TTL is 30s; once it expires the next probe finds the repo.
+    await vi.advanceTimersByTimeAsync(30_001)
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(true)
+
+    expect(calls.filter((call) => call[0] === 'rev-parse' && call[1] === '--show-toplevel')).toHaveLength(2)
+  })
+
+  it('never caches a 127 rev-parse failure and retries on the next call', async () => {
+    const calls: string[][] = []
+    const runner: GitRunner = {
+      async run(argv) {
+        calls.push([...argv])
+        if (argv[0] === 'rev-parse' && argv[1] === '--show-toplevel') {
+          return { exitCode: 127, stdout: '', stderr: 'spawn ENOENT' }
+        }
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    }
+    const service = new GitService(runner, gate, vi.fn(async () => ({ ok: true as const })))
+
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(false)
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(false)
+    expect(await service.statusCanonical(ROOT)).toBeNull()
+
+    expect(calls.filter((call) => call[0] === 'rev-parse' && call[1] === '--show-toplevel')).toHaveLength(3)
+    expect(calls.some((call) => call[0] === 'status')).toBe(false)
+  })
+
+  it('re-probes rev-parse after the positive verdict expires', async () => {
+    const calls: string[][] = []
+    const runner: GitRunner = {
+      async run(argv) {
+        calls.push([...argv])
+        if (argv[0] === 'rev-parse' && argv[1] === '--show-toplevel') {
+          return { exitCode: 0, stdout: `${REPO}\n`, stderr: '' }
+        }
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    }
+    const service = new GitService(runner, gate, vi.fn(async () => ({ ok: true as const })))
+
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(true)
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(true)
+
+    // Positive TTL is 60s; after expiry the next call re-runs rev-parse.
+    await vi.advanceTimersByTimeAsync(60_001)
+    expect(await service.isRepositoryCanonical(ROOT)).toBe(true)
+
+    expect(calls.filter((call) => call[0] === 'rev-parse' && call[1] === '--show-toplevel')).toHaveLength(2)
+  })
+})
+
+describe('subprocessRunner spawn degradation', () => {
+  const collected = {
+    stdout: { readFrom: (offset: number) => ({ text: 'ok' }) },
+    stderr: { readFrom: (offset: number) => ({ text: '' }) },
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('degrades to a failed run when spawn throws synchronously', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ctx = {
+      subprocess: {
+        spawn: vi.fn(() => {
+          throw new Error('spawn ENOENT')
+        }),
+      },
+    }
+    const runner = subprocessRunner(ctx as never)
+
+    const result = await runner.run(['status'], '/w')
+
+    expect(result.exitCode).toBe(127)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('spawn failed')
+    expect(errorSpy).toHaveBeenCalled()
+  })
+
+  it('returns the spawned outcome with collected output', async () => {
+    const ctx = {
+      subprocess: {
+        spawn: vi.fn(() => ({
+          done: Promise.resolve({ exitCode: 0 }),
+          collected,
+        })),
+      },
+    }
+    const runner = subprocessRunner(ctx as never)
+
+    const result = await runner.run(['status'], '/w')
+
+    expect(result).toEqual({ exitCode: 0, stdout: 'ok', stderr: '' })
+    expect(ctx.subprocess.spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ argv: ['git', 'status'], cwd: '/w' }),
+    )
+  })
+
+  it('degrades to a failed run when the done promise rejects', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ctx = {
+      subprocess: {
+        spawn: vi.fn(() => ({
+          done: Promise.reject(new Error('killed')),
+          collected,
+        })),
+      },
+    }
+    const runner = subprocessRunner(ctx as never)
+
+    const result = await runner.run(['status'], '/w')
+
+    expect(result.exitCode).toBe(127)
+    expect(result.stderr).toContain('run failed')
+    expect(errorSpy).toHaveBeenCalled()
   })
 })

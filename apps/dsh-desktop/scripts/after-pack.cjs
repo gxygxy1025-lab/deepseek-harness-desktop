@@ -1,5 +1,17 @@
-const { readdir, rm, stat, writeFile } = require('node:fs/promises')
-const { join, relative } = require('node:path')
+const { cp, mkdir, readdir, rm, stat, writeFile } = require('node:fs/promises')
+const { dirname, join, relative } = require('node:path')
+
+// electron-builder cannot always disambiguate pnpm packages that have several
+// peer-dependency snapshots. These are required by the DSH boot graph, so copy
+// the app's explicitly pinned instance only when the collector omitted it.
+const REQUIRED_PACKAGED_PEERS = Object.freeze([
+  '@deepseek-ai/dsh-attachment',
+  '@deepseek-ai/dsh-brand',
+  '@deepseek-ai/dsh-sandbox-policy',
+  '@deepseek-ai/dsh-settings',
+  '@deepseek-ai/dsh-timeout',
+  '@deepseek-ai/dsh-typert-protocol',
+])
 
 const SOURCE_ROOTS = new Map([
   ['@anthropic-ai/sdk', ['src']],
@@ -107,6 +119,24 @@ async function prunePackagedRuntime(nodeModulesRoot) {
   return report
 }
 
+async function restoreRequiredPackagedPeers(nodeModulesRoot) {
+  const restored = []
+  for (const packageName of REQUIRED_PACKAGED_PEERS) {
+    const target = join(nodeModulesRoot, ...packageName.split('/'))
+    try {
+      await stat(target)
+      continue
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+    const source = dirname(require.resolve(`${packageName}/package.json`))
+    await mkdir(dirname(target), { recursive: true })
+    await cp(source, target, { recursive: true, force: false, errorOnExist: true })
+    restored.push(packageName)
+  }
+  return restored
+}
+
 async function afterPack(context) {
   if (context.electronPlatformName !== 'win32') return
   const nodeModulesRoot = join(
@@ -115,7 +145,9 @@ async function afterPack(context) {
     'app.asar.unpacked',
     'node_modules',
   )
+  const restoredPeers = await restoreRequiredPackagedPeers(nodeModulesRoot)
   const report = await prunePackagedRuntime(nodeModulesRoot)
+  report.restoredPeers = restoredPeers
   const outputPath = join(context.outDir, 'runtime-prune-report.json')
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`)
   process.stdout.write(
@@ -126,3 +158,4 @@ async function afterPack(context) {
 module.exports = afterPack
 module.exports.classifyPrunableFile = classifyPrunableFile
 module.exports.prunePackagedRuntime = prunePackagedRuntime
+module.exports.restoreRequiredPackagedPeers = restoreRequiredPackagedPeers
