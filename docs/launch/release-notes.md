@@ -1,9 +1,10 @@
-# DeepSeek Harness Desktop 0.1.8
+# DeepSeek Harness Desktop 0.1.9
 
 ## 中文
 
 ### 本次亮点
 
+- 修复 0.1.8 皮肤迁移可能把 `~/.dsh/cordis.patch.yml` 留成空文件、导致下次启动报“must be a top-level YAML array”并退出的问题。新版会把空补丁自动恢复为合法的 `[]`，且不会覆盖任何非空用户配置。
 - 顶部“帮助 / Help”菜单新增“加入社群”和“提建议”：社群弹窗同时提供 QQ 群二维码与一键跳转，GitHub 建议入口直接打开新建 Issue 页面，所有外链继续交由系统浏览器处理。
 - 桌面版只保留 `dshmarket` 作为默认插件市场，移除重复加载的 `dsh-plugin-hub`，避免两套市场同时改写同一个 desktop profile。
 - 启动迁移会清除旧版桌面托管的 Hub、兼容层、单独皮肤依赖和历史 managed 皮肤段。为避免保留一个指向旧安装目录的失效链接，受影响的升级会安全恢复一次官方外观；启动后重新选择 QQ98 等皮肤即可由新版皮肤中心建立唯一链接，不再因双重加载导致 `runtime exited with code 1`。
@@ -20,7 +21,7 @@
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
+下载 `DeepSeek-Harness-Desktop-Setup-0.1.9-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用内更新只会在用户确认后下载，安装与重启也会再次请求确认。
 
 ### 说明
 
@@ -30,6 +31,7 @@
 
 ### Highlights
 
+- Fixes a 0.1.8 skin migration bug that could leave `~/.dsh/cordis.patch.yml` empty, causing the next launch to reject it because the YAML root was not an array. The desktop now repairs blank patches to a valid `[]` without overwriting any non-empty user configuration.
 - Adds `Join QQ Group` and `Suggest an Idea` to the top Help menu. The community window offers both a QR code and one-click QQ join, while feedback opens the GitHub new-issue page; every external destination remains delegated to the system browser.
 - Keeps `dshmarket` as the only default plugin marketplace and removes the concurrently loaded `dsh-plugin-hub`, so two stores no longer rewrite the same desktop profile.
 - Startup migration removes the Hub, compatibility layer, standalone skin dependencies, and historical managed skin sections left by older desktop builds. Affected upgrades safely return to the official look once instead of retaining a stale link into the previous installation; selecting QQ98 or another skin after startup creates the single current link and avoids duplicate-load crashes.
@@ -46,7 +48,7 @@
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
+Download `DeepSeek-Harness-Desktop-Setup-0.1.9-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The built-in updater downloads only after user confirmation and asks again before installation and restart.
 
 ### Notice
 

@@ -85,7 +85,14 @@ try {
   await launchOnce()
   const restarted = JSON.parse(await readFile(manifestPath, 'utf8'))
   assert.deepEqual(restarted.dsh.profile.bundles, BUILTIN_BUNDLES)
-  console.log('verified aggregate migration and two consecutive packaged restarts')
+
+  // Desktop 0.1.8 could leave this file empty after the legacy skin section
+  // was the only content. Verify the packaged app repairs that exact upgrade
+  // state even when the earlier migration is no longer detectable.
+  await writeFile(homePatchPath, '')
+  await launchOnce()
+  assert.equal(await readFile(homePatchPath, 'utf8'), '[]\n')
+  console.log('verified aggregate migration, restart idempotency, and packaged blank-patch recovery')
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

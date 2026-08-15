@@ -413,17 +413,25 @@ export async function ensureDesktopProfile({
     if (error?.code === 'ENOENT') return ''
     throw error
   })
+  const homePatchPath = join(dshHome, 'cordis.patch.yml')
+  let homePatch = await readFile(homePatchPath, 'utf8').catch((error) => {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  })
   const legacySkinSection = extractManagedSkinSection(existingPatch)
   if (legacySkinSection !== undefined || legacyManagedRuntime) {
-    const homePatchPath = join(dshHome, 'cordis.patch.yml')
-    const homePatch = await readFile(homePatchPath, 'utf8').catch((error) => {
-      if (error?.code === 'ENOENT') return ''
-      throw error
-    })
-    const resetHomePatch = stripManagedSkinSection(homePatch).trim()
-    if (homePatch !== '' && resetHomePatch !== homePatch.trim()) {
-      changed = (await writeIfChanged(homePatchPath, resetHomePatch ? `${resetHomePatch}\n` : '')) || changed
+    const resetHomePatch = stripManagedSkinSection(homePatch ?? '').trim()
+    if (homePatch !== undefined && resetHomePatch !== homePatch.trim()) {
+      homePatch = resetHomePatch ? `${resetHomePatch}\n` : ROOT_CONFIG
+      changed = (await writeIfChanged(homePatchPath, homePatch)) || changed
     }
+  }
+  // DSH parses an existing patch file as YAML and requires a top-level array.
+  // An empty file parses as null, so repair blank files left by desktop 0.1.8
+  // even after its one-time legacy migration has already completed.
+  if (homePatch !== undefined && homePatch.trim() === '') {
+    homePatch = ROOT_CONFIG
+    changed = (await writeIfChanged(homePatchPath, homePatch)) || changed
   }
   const qqBotEnabled = readQqBotPatchEnabled(existingPatch) ?? false
   const managedPatch = mergeQqBotPatch(mergeDesktopPatch(existingPatch), qqBotEnabled)

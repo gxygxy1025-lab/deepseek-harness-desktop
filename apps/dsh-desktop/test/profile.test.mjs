@@ -224,6 +224,30 @@ test('profile bootstrap safely resets legacy skin sections before retiring their
   }
 })
 
+test('profile bootstrap keeps the DSH-home patch a valid YAML array after skin migration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-empty-home-patch-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  const skinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- insert:\n    - id: ui-skin-qq98\n# --- end dsh-skin managed ---'
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'cordis.patch.yml'), `${skinSection}\n`)
+    await writeFile(join(dshHome, 'cordis.patch.yml'), `${skinSection}\n`)
+    await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
+
+    // Desktop 0.1.8 may already have completed the migration and left a
+    // zero-byte file, so the repair must not depend on detecting legacy rows.
+    await writeFile(join(dshHome, 'cordis.patch.yml'), '')
+    await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
+    const stable = await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
+    assert.equal(stable.changed, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('runtime resolver finds every bundled and desktop support package', () => {
   const resolved = resolveRuntimePackages()
   assert.deepEqual([...resolved.keys()], [...resolved.keys()].toSorted())

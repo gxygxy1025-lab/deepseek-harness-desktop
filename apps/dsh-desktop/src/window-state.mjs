@@ -55,6 +55,7 @@ export async function loadWindowState(path, displays) {
 export function attachWindowStatePersistence(window, path) {
   let timer
   const save = async () => {
+    if (window.isDestroyed?.() === true) return
     const bounds = window.getNormalBounds()
     await writeFile(path, `${JSON.stringify({ ...bounds, maximized: window.isMaximized() }, null, 2)}\n`)
   }
