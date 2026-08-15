@@ -13,6 +13,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
+      - name: Preserve repository line endings
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
