@@ -121,3 +121,65 @@ test('plugin install prepares before downtime and rolls back a failed runtime st
   ])
   unregister()
 })
+
+test('plugin update checks stay online and exact updates use the guarded transaction', async () => {
+  const ipcMain = new FakeIpcMain()
+  const events = []
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  const plugins = [{ name: '@community/example', updateAvailable: true, latestVersion: '2.0.0' }]
+  const pluginManager = {
+    checkUpdates: async () => { events.push('check'); return plugins },
+    prepare: async (spec, options) => {
+      events.push(['prepare', spec, options])
+      return { name: '@community/example', version: '2.0.0', spec: '@community/example@2.0.0' }
+    },
+    applyPrepared: async () => ({
+      result: { name: '@community/example', version: '2.0.0', restartRequired: true },
+      commit: () => events.push('commit'),
+      rollback: async () => { events.push('rollback') },
+    }),
+  }
+  const controller = {
+    stop: async () => { events.push('stop') },
+    start: async () => { events.push('start') },
+  }
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager,
+    controller,
+    ensureProfile: async () => { events.push('ensure') },
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  assert.equal(await ipcMain.handlers.get('extensions:plugin-check')(), plugins)
+  assert.deepEqual(events, ['check'])
+  assert.deepEqual(
+    await ipcMain.handlers.get('extensions:plugin-update')(undefined, {
+      name: '@community/example',
+      allowUnknown: true,
+    }),
+    { name: '@community/example', version: '2.0.0', restartRequired: true },
+  )
+  assert.deepEqual(events, [
+    'check',
+    ['prepare', '@community/example@latest', { allowUnknown: true }],
+    'stop',
+    'ensure',
+    'start',
+    'commit',
+  ])
+  assert.throws(
+    () => ipcMain.handlers.get('extensions:plugin-update')(undefined, { name: '@community/example' }),
+    /invalid plugin update request/u,
+  )
+  unregister()
+})

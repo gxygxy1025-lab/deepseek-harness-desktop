@@ -112,6 +112,22 @@ dsh plugin --profile web add link:<dsh-web-ui>/packages/dsh-web-ui-all
 ## 插件规范要点
 
 - **package.json 的 `dsh.bundle.patch` 声明**：指向包内 `cordis.patch.yml`，这是官方 bundle 清单，`dsh plugin` 依赖它识别与挂载插件。
+- **桌面版兼容声明**：社区插件应通过 semver 明确声明已验证的 Desktop、DSH 与 Node.js 范围，并把实际使用的 `@deepseek-ai/*` 包列入 `peerDependencies`。缺少适配证据的版本会标记为“未声明适配”并要求用户确认；已知冲突的版本会被桌面端拦截。示例：
+
+```json
+{
+  "engines": { "node": ">=22.19.0" },
+  "peerDependencies": { "@deepseek-ai/dsh": "^0.1.0-rc.6" },
+  "dsh": {
+    "bundle": { "patch": "cordis.patch.yml" },
+    "compatibility": {
+      "desktop": ">=0.1.9 <0.2.0",
+      "runtime": "^0.1.0-rc.6"
+    }
+  }
+}
+```
+
 - **cordis.patch.yml insert 行格式**（包名用家族 scope `@linxin666`，与 npm 发布名一致）：
 
 ```yaml

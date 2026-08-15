@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   assessPluginCompatibility,
   createHostCompatibility,
+  createHostCompatibilityProvider,
 } from '../src/extensions/plugin-compatibility.mjs'
 
 const host = createHostCompatibility({
@@ -122,4 +123,29 @@ test('host snapshots reject invalid versions and freeze public package versions'
   }), /desktop version/u)
   assert.equal(Object.isFrozen(host), true)
   assert.equal(Object.isFrozen(host.packages), true)
+})
+
+test('host providers resolve only candidate peers and cache actual package versions', () => {
+  const calls = []
+  const provider = createHostCompatibilityProvider({
+    desktopVersion: '0.1.9',
+    nodeVersion: '24.11.1',
+    runtimeVersion: '0.1.0-rc.6',
+    resolvePackageVersion: (name) => {
+      calls.push(name)
+      return name === '@deepseek-ai/cordis' ? '4.0.1' : undefined
+    },
+  })
+  const manifest = bundle({
+    peerDependencies: {
+      '@deepseek-ai/cordis': '^4.0.1',
+      '@deepseek-ai/missing': '^0.1.0',
+    },
+  })
+  const first = provider(manifest)
+  const second = provider(manifest)
+  assert.equal(first.packages['@deepseek-ai/cordis'], '4.0.1')
+  assert.equal(first.packages['@deepseek-ai/missing'], undefined)
+  assert.deepEqual(calls, ['@deepseek-ai/cordis', '@deepseek-ai/missing'])
+  assert.notEqual(first, second)
 })

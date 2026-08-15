@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+
 import semver from 'semver'
 
 const { satisfies, valid, validRange } = semver
 const RANGE_OPTIONS = Object.freeze({ includePrerelease: true })
 const MAX_PUBLIC_VALUE_LENGTH = 256
+const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u
 
 function publicValue(value) {
   return String(value).slice(0, MAX_PUBLIC_VALUE_LENGTH)
@@ -33,6 +38,79 @@ export function createHostCompatibility({
     runtimeVersion: exactVersion(runtimeVersion, 'runtime'),
     packages: Object.freeze(normalizedPackages),
   })
+}
+
+function manifestVersionAt(path, expectedName) {
+  try {
+    const manifest = JSON.parse(readFileSync(path, 'utf8'))
+    return manifest?.name === expectedName && typeof manifest.version === 'string' && valid(manifest.version) !== null
+      ? manifest.version
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function resolvePackageVersion(name, { profileDir, anchors = [import.meta.url] } = {}) {
+  if (typeof name !== 'string' || !PACKAGE_NAME_PATTERN.test(name)) throw new TypeError('invalid host package name')
+  if (typeof profileDir === 'string' && profileDir.length > 0) {
+    const direct = manifestVersionAt(join(profileDir, 'node_modules', ...name.split('/'), 'package.json'), name)
+    if (direct !== undefined) return direct
+  }
+  const resolutionAnchors = [
+    ...(typeof profileDir === 'string' && profileDir.length > 0 ? [join(profileDir, 'package.json')] : []),
+    ...anchors,
+  ]
+  for (const anchor of resolutionAnchors) {
+    const require = createRequire(anchor)
+    try {
+      const version = manifestVersionAt(require.resolve(`${name}/package.json`), name)
+      if (version !== undefined) return version
+    } catch {
+      // Package exports may hide package.json; resolve the entry and walk up.
+    }
+    try {
+      let cursor = dirname(require.resolve(name))
+      for (let depth = 0; depth < 16; depth += 1) {
+        const version = manifestVersionAt(join(cursor, 'package.json'), name)
+        if (version !== undefined) return version
+        const parent = dirname(cursor)
+        if (parent === cursor) break
+        cursor = parent
+      }
+    } catch {
+      // Try the next anchor.
+    }
+  }
+  return undefined
+}
+
+export function createHostCompatibilityProvider({
+  desktopVersion,
+  nodeVersion,
+  runtimeVersion,
+  resolvePackageVersion: resolveVersion,
+}) {
+  const base = createHostCompatibility({ desktopVersion, nodeVersion, runtimeVersion, packages: {} })
+  if (typeof resolveVersion !== 'function') throw new TypeError('host package version resolver is required')
+  const cache = new Map()
+  return (manifest) => {
+    const packages = {}
+    const peers = manifest?.peerDependencies
+    if (peers && typeof peers === 'object' && !Array.isArray(peers)) {
+      for (const name of Object.keys(peers).toSorted()) {
+        if (!cache.has(name)) cache.set(name, resolveVersion(name))
+        const version = cache.get(name)
+        if (version !== undefined) packages[name] = version
+      }
+    }
+    return createHostCompatibility({
+      desktopVersion: base.desktopVersion,
+      nodeVersion: base.nodeVersion,
+      runtimeVersion: base.runtimeVersion,
+      packages,
+    })
+  }
 }
 
 function addRangeAssessment({ reasons, subject, required, actual, mismatchCode }) {

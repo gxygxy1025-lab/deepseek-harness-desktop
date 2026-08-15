@@ -65,6 +65,7 @@ export function validatePluginSpec(value) {
 export function createPluginInventory(manifest, {
   installedManifests = new Map(),
   hostCompatibility,
+  compatibilityByName = new Map(),
   updateStates = new Map(),
 } = {}) {
   const dependencies = manifest?.dependencies ?? {}
@@ -75,9 +76,10 @@ export function createPluginInventory(manifest, {
       const installed = installedManifests.get(name)
       const compatibility = builtIn
         ? MANAGED_COMPATIBILITY
-        : hostCompatibility === undefined
-          ? UNKNOWN_COMPATIBILITY
-          : assessPluginCompatibility(installed, hostCompatibility)
+        : compatibilityByName.get(name)
+          ?? (hostCompatibility === undefined || typeof hostCompatibility === 'function'
+            ? UNKNOWN_COMPATIBILITY
+            : assessPluginCompatibility(installed, hostCompatibility))
       return {
         name,
         requested,
@@ -151,9 +153,11 @@ async function writeTextFile(path, content) {
     await rename(temporary, path)
     if (movedExisting) await rm(backup, { force: true })
   } catch (error) {
-    await rm(path, { force: true })
-    if (movedExisting) await rename(backup, path)
     await rm(temporary, { force: true })
+    if (movedExisting) {
+      await rm(path, { force: true })
+      await rename(backup, path)
+    }
     throw error
   }
 }
@@ -229,11 +233,23 @@ export class PluginManager {
     const profileManifest = manifest ?? await readManifest(this.profileDir)
     const names = Object.keys(profileManifest.dependencies ?? {})
     const installedManifests = await readInstalledManifests(this.profileDir, names)
+    const compatibilityByName = new Map(await Promise.all(names
+      .filter((name) => !PROTECTED_PACKAGES.has(name))
+      .map(async (name) => [name, await this.#assess(installedManifests.get(name))])))
     return createPluginInventory(profileManifest, {
       installedManifests,
       hostCompatibility: this.hostCompatibility,
+      compatibilityByName,
       updateStates: this.updateStates,
     })
+  }
+
+  async #assess(manifest) {
+    if (this.hostCompatibility === undefined) return UNKNOWN_COMPATIBILITY
+    const host = typeof this.hostCompatibility === 'function'
+      ? await this.hostCompatibility(manifest)
+      : this.hostCompatibility
+    return assessPluginCompatibility(manifest, host)
   }
 
   checkUpdates() {
@@ -244,20 +260,23 @@ export class PluginManager {
         .toSorted()
       const installedManifests = await readInstalledManifests(this.profileDir, names)
       const results = await this.registry.check(names)
-      this.updateStates = new Map(results.map(({ name, manifest: candidate, error }) => {
-        if (error || candidate === undefined) return [name, { updateError: 'unavailable' }]
+      const updateEntries = []
+      for (const { name, manifest: candidate, error } of results) {
+        if (error || candidate === undefined) {
+          updateEntries.push([name, { updateError: 'unavailable' }])
+          continue
+        }
         const installedVersion = installedManifests.get(name)?.version
-        const updateCompatibility = this.hostCompatibility === undefined
-          ? UNKNOWN_COMPATIBILITY
-          : assessPluginCompatibility(candidate, this.hostCompatibility)
-        return [name, {
+        const updateCompatibility = await this.#assess(candidate)
+        updateEntries.push([name, {
           latestVersion: candidate.version,
           updateAvailable: typeof installedVersion === 'string'
             && semver.valid(installedVersion) !== null
             && semver.gt(candidate.version, installedVersion),
           updateCompatibility,
-        }]
-      }))
+        }])
+      }
+      this.updateStates = new Map(updateEntries)
       return this.#inventoryNow(manifest)
     })
   }
@@ -267,9 +286,7 @@ export class PluginManager {
     return this.#enqueue(async () => {
       if (PROTECTED_PACKAGES.has(parsed.name)) throw new Error(`${parsed.name} is a built-in desktop plugin`)
       const candidate = await this.registry.fetchManifest(parsed.name, requestedVersion(parsed))
-      const compatibility = this.hostCompatibility === undefined
-        ? UNKNOWN_COMPATIBILITY
-        : assessPluginCompatibility(candidate, this.hostCompatibility)
+      const compatibility = await this.#assess(candidate)
       if (compatibility.status === 'incompatible') {
         throw compatibilityError(
           `${parsed.name}@${candidate.version} is incompatible with this desktop runtime`,
@@ -349,11 +366,9 @@ export class PluginManager {
         if (typeof installed.dsh?.bundle?.patch !== 'string') {
           throw new Error(`${prepared.name} is not a DSH bundle package`)
         }
-        if (this.hostCompatibility !== undefined) {
-          const compatibility = assessPluginCompatibility(installed, this.hostCompatibility)
-          if (compatibility.status === 'incompatible') {
-            throw new Error(`${prepared.spec} became incompatible after installation`)
-          }
+        const compatibility = await this.#assess(installed)
+        if (compatibility.status === 'incompatible') {
+          throw new Error(`${prepared.spec} became incompatible after installation`)
         }
         const manifest = await readManifest(this.profileDir)
         const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])
@@ -399,6 +414,29 @@ export class PluginManager {
           { cause: error },
         )
       }
+    })
+  }
+
+  reconcileCompatibility() {
+    return this.#enqueue(async () => {
+      const manifest = await readManifest(this.profileDir)
+      const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])
+      const communityNames = Object.keys(manifest.dependencies ?? {})
+        .filter((name) => !PROTECTED_PACKAGES.has(name))
+        .toSorted()
+      const installedManifests = await readInstalledManifests(this.profileDir, communityNames)
+      const disabled = []
+      for (const name of communityNames) {
+        if (!bundles.has(name)) continue
+        const compatibility = await this.#assess(installedManifests.get(name))
+        if (compatibility.status !== 'incompatible') continue
+        bundles.delete(name)
+        disabled.push(Object.freeze({ name, reasons: compatibility.reasons }))
+      }
+      if (disabled.length === 0) return Object.freeze({ changed: false, disabled: Object.freeze([]) })
+      manifest.dsh = { ...(manifest.dsh ?? {}), profile: { bundles: [...bundles] } }
+      await writeManifest(this.profileDir, manifest)
+      return Object.freeze({ changed: true, disabled: Object.freeze(disabled) })
     })
   }
 

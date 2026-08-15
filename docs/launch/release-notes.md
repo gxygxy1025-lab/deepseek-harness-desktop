@@ -11,6 +11,9 @@
 - 粒子鲸鱼只在启动页面运行，进入 DSH 主界面后随页面导航自动释放；系统开启“减少动态效果”时会显示静态版本。
 - 更新面板统一展示当前版本、目标版本、发行说明、下载进度、错误重试与重启安装状态，并继续在安装前安全停止内置 DSH 运行时。
 - 修复 Windows 升级时偶发的“应用仍在运行”或文件占用提示。桌面端退出时会结束完整 DSH 进程树；安装器还会在覆盖旧版本前，仅清理旧安装目录主程序和 `resources` 内的残留进程。
+- 扩展坞现在展示每个插件的实际版本与适配状态，只在打开扩展坞时检查社区插件更新。兼容版本可一键升级，已知不兼容版本会说明原因并拦截，未声明适配的版本需用户明确确认。
+- 社区插件升级会先在后台预取包，再短暂停止 DSH 完成离线精确版本切换；安装校验或重启失败时自动恢复旧清单、锁文件和运行时。内置插件继续只随经过验证的 Desktop 版本更新。
+- 桌面 profile 复用运行包解析结果并并行检查独立链接；同机基准中，未变化配置的中位耗时由约 54.9 ms 降至 13.2 ms，新配置由约 64.9 ms 降至 22.3 ms。
 
 ### 验证
 
@@ -19,6 +22,7 @@
 - 剪贴板权限测试覆盖本地运行时源校验、端口隔离以及其他权限的默认拒绝行为。
 - 启动页使用 1440×900 桌面窗口完成视觉回归，验证粒子鲸鱼、毛玻璃进度条和紧凑布局。
 - 安装器测试验证清理逻辑按旧安装路径限定范围，不会按通用进程名结束其他软件；运行时测试验证 Windows 使用 `taskkill /T /F` 回收完整子进程树。
+- 插件回归覆盖三态 semver 适配、固定 npm 源、四路并发限制、精确离线安装、启动隔离和失败回滚；可复现 profile 基准不访问网络。
 
 ### 下载与校验
 
@@ -39,6 +43,9 @@
 - Runs the particle whale only on the startup document and releases it when navigation enters the DSH surface. Reduced-motion systems receive a static rendering.
 - Unifies current version, target version, release notes, download progress, retry, and restart-install states in the desktop update surface while preserving the safe runtime shutdown before installation.
 - Fixes intermittent “application is still running” and file-in-use errors during Windows upgrades. Desktop shutdown now terminates the complete DSH process tree, while installer preflight removes only stale processes whose executables belong to the previous app installation.
+- Extension Dock now shows actual plugin versions and compatibility states and checks community updates only when opened. Compatible releases can update directly, known-incompatible releases are blocked with an explanation, and undeclared compatibility requires explicit confirmation.
+- Community updates prefetch packages while DSH is available, then perform an exact offline switch during brief downtime. Failed validation or restart restores the old manifest, lockfile, and runtime. Built-ins continue to update only with a tested Desktop release.
+- Desktop profile preparation now reuses runtime resolution and checks independent links concurrently. On the reference machine, median unchanged-profile time fell from about 54.9 ms to 13.2 ms and fresh-profile time from about 64.9 ms to 22.3 ms.
 
 ### Verification
 
@@ -47,6 +54,7 @@
 - Clipboard permission tests cover active loopback-origin matching, port isolation, and deny-by-default behavior for every other permission.
 - The startup page was visually checked at 1440×900 for the particle whale, glass progress surface, and compact layout.
 - Installer tests verify that stale-process cleanup is restricted to the previous installation paths rather than generic process names; runtime tests verify complete Windows child-tree termination with `taskkill /T /F`.
+- Plugin regression covers three-state semver assessment, the fixed npm origin, four-request concurrency, exact offline installation, startup quarantine, and failed-update rollback; the reproducible profile benchmark performs no network access.
 
 ### Download and verification
 

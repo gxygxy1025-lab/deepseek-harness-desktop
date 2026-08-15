@@ -5,7 +5,9 @@ import { defaultSkillRoots, discoverSkills, importSkill } from './extensions/ski
 
 const CHANNELS = [
   'extensions:list',
+  'extensions:plugin-check',
   'extensions:plugin-install',
+  'extensions:plugin-update',
   'extensions:plugin-remove',
   'extensions:skill-import',
   'extensions:skill-open',
@@ -112,7 +114,19 @@ export function registerExtensionIpc({
   }
 
   ipcMain.handle('extensions:list', scan)
+  ipcMain.handle('extensions:plugin-check', () => pluginManager.checkUpdates())
   ipcMain.handle('extensions:plugin-install', (_event, request) => installPlugin(request))
+  ipcMain.handle('extensions:plugin-update', (_event, request) => {
+    if (
+      request === null
+      || typeof request !== 'object'
+      || typeof request.name !== 'string'
+      || typeof request.allowUnknown !== 'boolean'
+    ) {
+      throw new TypeError('invalid plugin update request')
+    }
+    return installPlugin({ spec: `${request.name}@latest`, allowUnknown: request.allowUnknown })
+  })
   ipcMain.handle('extensions:plugin-remove', (_event, name) => mutatePlugin(() => pluginManager.remove(name)))
   ipcMain.handle('extensions:skill-import', async () => {
     const result = await dialog.showOpenDialog(getWindow(), {

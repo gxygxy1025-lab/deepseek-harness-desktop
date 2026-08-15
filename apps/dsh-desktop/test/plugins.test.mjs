@@ -268,6 +268,50 @@ test('failed prepared mutation rolls itself back before returning an error', asy
   }
 })
 
+test('startup reconciliation disables explicit incompatibilities and preserves unknown plugins', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-reconcile-'))
+  const incompatible = '@community/incompatible'
+  const unknown = '@community/unknown'
+  try {
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: { [incompatible]: '2.0.0', [unknown]: '1.0.0' },
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES, incompatible, unknown] } },
+    }))
+    for (const [name, packageManifest] of [
+      [incompatible, {
+        name: incompatible,
+        version: '2.0.0',
+        dsh: {
+          bundle: { patch: './cordis.patch.yml' },
+          compatibility: { desktop: '>=0.2.0' },
+        },
+      }],
+      [unknown, {
+        name: unknown,
+        version: '1.0.0',
+        dsh: { bundle: { patch: './cordis.patch.yml' } },
+      }],
+    ]) {
+      const packageRoot = join(profileDir, 'node_modules', ...name.split('/'))
+      await mkdir(packageRoot, { recursive: true })
+      await writeFile(join(packageRoot, 'package.json'), JSON.stringify(packageManifest))
+    }
+    const manager = new PluginManager({ profileDir, pnpmCli: 'pnpm.mjs', hostCompatibility })
+    const result = await manager.reconcileCompatibility()
+    assert.equal(result.changed, true)
+    assert.deepEqual(result.disabled.map((item) => item.name), [incompatible])
+    const manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.equal(manifest.dependencies[incompatible], '2.0.0')
+    assert.equal(manifest.dsh.profile.bundles.includes(incompatible), false)
+    assert.equal(manifest.dsh.profile.bundles.includes(unknown), true)
+    assert.equal((await manager.reconcileCompatibility()).changed, false)
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
 test('plugin manager serializes installs and protects built-ins', async () => {
   const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugins-'))
   let active = 0

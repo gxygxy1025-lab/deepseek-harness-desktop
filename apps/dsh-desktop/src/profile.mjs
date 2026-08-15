@@ -443,21 +443,29 @@ export async function ensureDesktopProfile({
   const packagesToRetire = codexConnectEnabled
     ? RETIRED_MANAGED_PACKAGES
     : [...RETIRED_MANAGED_PACKAGES, 'dsh-codex-connect']
-  for (const packageName of packagesToRetire) {
-    changed = (await retireManagedPackage({
+  const retired = await Promise.all(packagesToRetire.map((packageName) =>
+    retireManagedPackage({
       packageName,
       profileDir,
       previous: previousRecords[packageName],
-    })) || changed
-  }
+    }),
+  ))
+  changed = retired.some(Boolean) || changed
+  const linked = await Promise.all(
+    [...activePackageRoots]
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(async ([packageName, sourceDir]) => ({
+        packageName,
+        result: await linkManagedPackage({
+          packageName,
+          profileDir,
+          sourceDir,
+          previous: previousRecords[packageName],
+        }),
+      })),
+  )
   const nextRecords = {}
-  for (const [packageName, sourceDir] of [...activePackageRoots].toSorted(([left], [right]) => left.localeCompare(right))) {
-    const result = await linkManagedPackage({
-      packageName,
-      profileDir,
-      sourceDir,
-      previous: previousRecords[packageName],
-    })
+  for (const { packageName, result } of linked) {
     nextRecords[packageName] = result.record
     changed = result.changed || changed
   }

@@ -11,6 +11,10 @@ import { createCommunityQrImage } from './community.mjs'
 import { GITHUB_FEEDBACK_URL, GITHUB_PROJECT_URL } from './community-links.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
+import {
+  createHostCompatibilityProvider,
+  resolvePackageVersion,
+} from './extensions/plugin-compatibility.mjs'
 import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
 import {
   QqBotBindingService,
@@ -20,7 +24,7 @@ import {
 import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
-import { ensureDesktopProfile, resolveDshCliPath } from './profile.mjs'
+import { ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
@@ -89,13 +93,14 @@ export async function startElectronApp(metadata) {
   await mkdir(logsDirectory, { recursive: true })
   const logStore = new BoundedLogStore({ directory: logsDirectory })
   const dshHome = runtimeHome()
+  const runtimePackages = resolveRuntimePackages()
   let qqBotCredentials
   const ensureProfile = async () => {
-    const result = await ensureDesktopProfile({ dshHome })
+    const result = await ensureDesktopProfile({ dshHome, packageRoots: runtimePackages })
     await setQqBotProfileEnabled({ profileDir: result.profileDir, enabled: Boolean(qqBotCredentials) })
     return result
   }
-  const profile = await ensureDesktopProfile({ dshHome })
+  const profile = await ensureDesktopProfile({ dshHome, packageRoots: runtimePackages })
   const qqBotCredentialStore = new QqBotCredentialStore({
     path: join(userData, 'qqbot-credentials.json'),
     safeStorage,
@@ -115,6 +120,25 @@ export async function startElectronApp(metadata) {
     executable: process.execPath,
     pnpmCli: resolvePnpmCliPath(),
   })
+  const runtimeVersion = resolvePackageVersion('@deepseek-ai/dsh', {
+    profileDir: profile.profileDir,
+    anchors: [import.meta.url],
+  })
+  if (runtimeVersion === undefined) throw new Error('the installed DSH runtime version is unavailable')
+  const hostCompatibility = createHostCompatibilityProvider({
+    desktopVersion,
+    nodeVersion: process.versions.node,
+    runtimeVersion,
+    resolvePackageVersion: (name) => resolvePackageVersion(name, {
+      profileDir: profile.profileDir,
+      anchors: [import.meta.url],
+    }),
+  })
+  const pluginManager = new PluginManager({ profileDir: profile.profileDir, hostCompatibility })
+  const compatibilityReconciliation = await pluginManager.reconcileCompatibility()
+  for (const plugin of compatibilityReconciliation.disabled) {
+    await logStore.append(`[plugins] disabled incompatible community bundle: ${plugin.name}`)
+  }
 
   const controller = new DshRuntimeController({
     cliPath: resolveDshCliPath(),
@@ -310,7 +334,6 @@ export async function startElectronApp(metadata) {
     return communityWindow
   }
 
-  const pluginManager = new PluginManager({ profileDir: profile.profileDir })
   const unregisterExtensionIpc = registerExtensionIpc({
     ipcMain,
     dialog,
