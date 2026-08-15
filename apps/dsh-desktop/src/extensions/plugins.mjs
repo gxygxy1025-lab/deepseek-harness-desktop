@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 
 import {
+  AGGREGATED_BUNDLES,
   BUILTIN_BUNDLES,
   BUILTIN_RUNTIME_PACKAGES,
   DESKTOP_SUPPORT_PACKAGES,
@@ -62,7 +63,7 @@ export function createPluginInventory(manifest) {
       requested,
       builtIn: PROTECTED_PACKAGES.has(name),
       enabled: bundles.has(name)
-        || BUILTIN_RUNTIME_PACKAGES.includes(name)
+        || AGGREGATED_BUNDLES.includes(name)
         || DESKTOP_SUPPORT_PACKAGES.includes(name),
     }))
     .toSorted((left, right) => Number(right.builtIn) - Number(left.builtIn) || left.name.localeCompare(right.name))

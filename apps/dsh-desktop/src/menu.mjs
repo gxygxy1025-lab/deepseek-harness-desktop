@@ -1,5 +1,7 @@
-export function installApplicationMenu({ Menu, app, shell, controller, openExtensions, openLogs, checkForUpdates }) {
-  const template = [
+import { GITHUB_PROJECT_URL } from './community-links.mjs'
+
+export function createApplicationMenuTemplate({ app, shell, controller, openCommunity, openFeedback, openExtensions, openLogs, checkForUpdates }) {
+  return [
     {
       label: '应用 / App',
       submenu: [
@@ -33,10 +35,18 @@ export function installApplicationMenu({ Menu, app, shell, controller, openExten
       submenu: [
         { label: '检查更新 / Check for Updates', click: () => void checkForUpdates({ manual: true }) },
         { type: 'separator' },
-        { label: 'GitHub 项目', click: () => void shell.openExternal('https://github.com/ningbainb/deepseek-harness-desktop') },
+        { label: '加入社群 / Join QQ Group', click: openCommunity },
+        { label: '提建议 / Suggest an Idea', click: openFeedback },
+        { label: 'GitHub 项目', click: () => void shell.openExternal(GITHUB_PROJECT_URL) },
+        { type: 'separator' },
         { label: `版本 / Version ${app.getVersion()}`, enabled: false },
       ],
     },
   ]
+}
+
+export function installApplicationMenu(options) {
+  const { Menu } = options
+  const template = createApplicationMenuTemplate(options)
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }

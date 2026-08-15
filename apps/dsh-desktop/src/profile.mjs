@@ -5,13 +5,14 @@ import {
   lstat,
   mkdir,
   readFile,
+  readlink,
   realpath,
   rename,
   rm,
   symlink,
   writeFile,
 } from 'node:fs/promises'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { mergeQqBotPatch, readQqBotPatchEnabled } from './extensions/qqbot.mjs'
@@ -22,7 +23,8 @@ export const BUILTIN_BUNDLES = Object.freeze([
   '@linxin666/dsh-web-ui-all',
   '@tencent-connect/dsh-qqbot',
   'dshmarket',
-  'dsh-plugin-hub',
+  'dsh-codex-connect',
+  'reasoning-slider',
 ])
 
 // Packages expanded by @linxin666/dsh-web-ui-all. Older desktop profiles
@@ -60,7 +62,26 @@ export const BUILTIN_SKIN_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-xp',
 ].toSorted())
 
+// These packages were linked directly by older desktop releases. They are
+// either supplied by the aggregate now or replaced by the single supported
+// marketplace. Leaving them in dependencies lets DSH's bundle reconciler (or
+// dshmarket's client-only hot mount) load them a second time.
+export const RETIRED_MANAGED_PACKAGES = Object.freeze([
+  '@linxin666/dsh-web-ui-compat',
+  ...BUILTIN_SKIN_PACKAGES,
+  'dsh-plugin-hub',
+].toSorted())
+
+// Only one package may own the openai-codex adapter. Fresh profiles use Codex
+// Connect, while upgraded profiles keep an already-installed provider instead
+// of failing startup with duplicate route ownership.
+export const CODEX_PROVIDER_CONFLICTS = Object.freeze([
+  'dsh-codex',
+  'dsh-codex-auth',
+].toSorted())
+
 export const WEB_UI_SETTINGS_NAMESPACES = Object.freeze([
+  'llm-openai-codex',
   'live-stats',
   'pet',
   'remote-web-ui',
@@ -84,8 +105,9 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-tool-describe-image',
   '@linxin666/dsh-web-ui-all',
   '@tencent-connect/dsh-qqbot',
+  'dsh-codex-connect',
   'dshmarket',
-  'dsh-plugin-hub',
+  'reasoning-slider',
 ].toSorted())
 
 export const DESKTOP_SUPPORT_PACKAGES = Object.freeze([
@@ -104,21 +126,26 @@ export const DSH_BOOT_RUNTIME_PACKAGES = Object.freeze([
   '@deepseek-ai/cordis-plugin-group',
   '@deepseek-ai/dsh',
   '@deepseek-ai/dsh-anonymous-user-id',
+  '@deepseek-ai/dsh-attachment',
   '@deepseek-ai/dsh-atomic-write',
   '@deepseek-ai/dsh-bash-local',
+  '@deepseek-ai/dsh-brand',
   '@deepseek-ai/dsh-code-runtime',
   '@deepseek-ai/dsh-compaction',
   '@deepseek-ai/dsh-fs',
   '@deepseek-ai/dsh-output-retention',
   '@deepseek-ai/dsh-sandbox',
+  '@deepseek-ai/dsh-sandbox-policy',
   '@deepseek-ai/dsh-scope',
   '@deepseek-ai/dsh-session-telemetry',
   '@deepseek-ai/dsh-session-title-llm',
   '@deepseek-ai/dsh-shell',
   '@deepseek-ai/dsh-spill',
+  '@deepseek-ai/dsh-settings',
   '@deepseek-ai/dsh-subagent-in-process-driver',
   '@deepseek-ai/dsh-subprocess',
   '@deepseek-ai/dsh-timeout',
+  '@deepseek-ai/dsh-typert-protocol',
   '@deepseek-ai/dsh-workflow',
 ].toSorted())
 
@@ -126,6 +153,8 @@ const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]
 const ROOT_CONFIG = '[]\n'
 export const DESKTOP_PATCH_START = '# --- dsh-desktop managed (auto-generated; do not edit) ---'
 export const DESKTOP_PATCH_END = '# --- end dsh-desktop managed ---'
+export const SKIN_PATCH_START = '# --- dsh-skin managed (auto-generated; do not edit) ---'
+export const SKIN_PATCH_END = '# --- end dsh-skin managed ---'
 const LEGACY_DESKTOP_PATCH_CONFIG = `- id: directory-picker
   name: '@deepseek-ai/dsh-host-directory-picker-auto'
   disabled: true
@@ -158,25 +187,63 @@ export function materializeFilesystemPath(path) {
 
 export function createDesktopProfileManifest(existing = {}) {
   const existingBundles = existing.dsh?.profile?.bundles
+  const existingDependencies = existing.dependencies ?? {}
+  const hasExistingCodexProvider = CODEX_PROVIDER_CONFLICTS.some((name) =>
+    existingDependencies[name] !== undefined
+      || (Array.isArray(existingBundles) && existingBundles.includes(name)))
+  const managedBundles = hasExistingCodexProvider
+    ? BUILTIN_BUNDLES.filter((name) => name !== 'dsh-codex-connect')
+    : [...BUILTIN_BUNDLES]
   const communityBundles = Array.isArray(existingBundles)
     ? existingBundles.filter((name) =>
-        !BUILTIN_BUNDLES.includes(name) && !AGGREGATED_BUNDLES.includes(name))
+        !BUILTIN_BUNDLES.includes(name)
+        && !AGGREGATED_BUNDLES.includes(name)
+        && !RETIRED_MANAGED_PACKAGES.includes(name))
     : []
+  const dependencies = Object.fromEntries(
+    Object.entries(existingDependencies)
+      .filter(([name]) =>
+        !RETIRED_MANAGED_PACKAGES.includes(name)
+        && !(hasExistingCodexProvider && name === 'dsh-codex-connect')),
+  )
 
   return {
     name: 'dsh-profile-desktop',
     private: true,
-    dependencies: { ...(existing.dependencies ?? {}) },
+    dependencies,
     dsh: {
       profile: {
-        bundles: [...BUILTIN_BUNDLES, ...communityBundles],
+        bundles: [...managedBundles, ...communityBundles],
       },
     },
   }
 }
 
+function managedSection(text, startMarker, endMarker) {
+  const source = String(text)
+  const start = source.indexOf(startMarker)
+  if (start === -1) return undefined
+  const end = source.indexOf(endMarker, start)
+  if (end === -1) throw new Error(`${startMarker} section is unterminated`)
+  return source.slice(start, end + endMarker.length)
+}
+
+export function extractManagedSkinSection(existing = '') {
+  return managedSection(existing, SKIN_PATCH_START, SKIN_PATCH_END)
+}
+
+export function stripManagedSkinSection(existing = '') {
+  const source = String(existing)
+  const section = extractManagedSkinSection(source)
+  if (section === undefined) return source
+  return `${source.slice(0, source.indexOf(section))}${source.slice(source.indexOf(section) + section.length)}`
+}
+
 export function mergeDesktopPatch(existing = '') {
-  let userPatch = String(existing)
+  // Old desktop builds placed the skin selector's managed section in the
+  // profile patch, while current skin-center owns the DSH-home patch. Keeping
+  // both layers makes Cordis register the same skin id twice.
+  let userPatch = stripManagedSkinSection(existing)
   const start = userPatch.indexOf(DESKTOP_PATCH_START)
   if (start !== -1) {
     const end = userPatch.indexOf(DESKTOP_PATCH_END, start)
@@ -272,6 +339,42 @@ async function linkManagedPackage({ packageName, profileDir, sourceDir, previous
   }
 }
 
+async function retireManagedPackage({ packageName, profileDir, previous }) {
+  if (previous === undefined) return false
+  const target = join(profileDir, 'node_modules', ...packagePathSegments(packageName))
+  let metadata
+  try {
+    metadata = await lstat(target)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+
+  if (previous.mode === 'link' && metadata.isSymbolicLink()) {
+    let owned = false
+    try {
+      owned = (await realpath(target)) === (await realpath(previous.source))
+    } catch {
+      try {
+        owned = resolve(dirname(target), await readlink(target)) === resolve(previous.source)
+      } catch {
+        owned = false
+      }
+    }
+    if (!owned) return false
+    await rm(target, { recursive: true, force: true })
+    return true
+  }
+
+  if (previous.mode === 'copy' && metadata.isDirectory()) {
+    const installed = await readJsonIfPresent(join(target, 'package.json'))
+    if (installed?.name !== packageName || previous.source === undefined) return false
+    await rm(target, { recursive: true, force: true })
+    return true
+  }
+  return false
+}
+
 export async function ensureDesktopProfile({
   dshHome,
   packageRoots = resolveRuntimePackages(),
@@ -283,10 +386,19 @@ export async function ensureDesktopProfile({
   const profileDir = join(dshHome, 'profiles', profileName)
   await mkdir(profileDir, { recursive: true })
   const manifestPath = join(profileDir, 'package.json')
+  const recordPath = join(profileDir, '.dsh-desktop-links.json')
+  const previousRecords = (await readJsonIfPresent(recordPath)) ?? {}
   const existing = await readJsonIfPresent(manifestPath)
+  const existingBundles = existing?.dsh?.profile?.bundles ?? []
+  const legacyManagedRuntime = RETIRED_MANAGED_PACKAGES.some((name) =>
+    existing?.dependencies?.[name] !== undefined
+      || (Array.isArray(existingBundles) && existingBundles.includes(name)))
   const manifest = createDesktopProfileManifest(existing)
+  const activePackageRoots = new Map(packageRoots)
+  const codexConnectEnabled = manifest.dsh.profile.bundles.includes('dsh-codex-connect')
+  if (!codexConnectEnabled) activePackageRoots.delete('dsh-codex-connect')
 
-  for (const [packageName, sourceDir] of packageRoots) {
+  for (const [packageName, sourceDir] of activePackageRoots) {
     manifest.dependencies[packageName] = `link:${sourceDir.replaceAll('\\', '/')}`
   }
   const sortedDependencies = Object.fromEntries(
@@ -301,16 +413,36 @@ export async function ensureDesktopProfile({
     if (error?.code === 'ENOENT') return ''
     throw error
   })
+  const legacySkinSection = extractManagedSkinSection(existingPatch)
+  if (legacySkinSection !== undefined || legacyManagedRuntime) {
+    const homePatchPath = join(dshHome, 'cordis.patch.yml')
+    const homePatch = await readFile(homePatchPath, 'utf8').catch((error) => {
+      if (error?.code === 'ENOENT') return ''
+      throw error
+    })
+    const resetHomePatch = stripManagedSkinSection(homePatch).trim()
+    if (homePatch !== '' && resetHomePatch !== homePatch.trim()) {
+      changed = (await writeIfChanged(homePatchPath, resetHomePatch ? `${resetHomePatch}\n` : '')) || changed
+    }
+  }
   const qqBotEnabled = readQqBotPatchEnabled(existingPatch) ?? false
   const managedPatch = mergeQqBotPatch(mergeDesktopPatch(existingPatch), qqBotEnabled)
   changed = (await writeIfChanged(patchPath, managedPatch)) || changed
   changed = (await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), WORKSPACE_CONFIG)) || changed
   changed = (await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)) || changed
 
-  const recordPath = join(profileDir, '.dsh-desktop-links.json')
-  const previousRecords = (await readJsonIfPresent(recordPath)) ?? {}
+  const packagesToRetire = codexConnectEnabled
+    ? RETIRED_MANAGED_PACKAGES
+    : [...RETIRED_MANAGED_PACKAGES, 'dsh-codex-connect']
+  for (const packageName of packagesToRetire) {
+    changed = (await retireManagedPackage({
+      packageName,
+      profileDir,
+      previous: previousRecords[packageName],
+    })) || changed
+  }
   const nextRecords = {}
-  for (const [packageName, sourceDir] of [...packageRoots].toSorted(([left], [right]) => left.localeCompare(right))) {
+  for (const [packageName, sourceDir] of [...activePackageRoots].toSorted(([left], [right]) => left.localeCompare(right))) {
     const result = await linkManagedPackage({
       packageName,
       profileDir,

@@ -7,6 +7,8 @@ import { startQrConnect } from '@tencent-connect/qqbot-connector'
 
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { resolveDesktopVersion } from './app-version.mjs'
+import { createCommunityQrImage } from './community.mjs'
+import { GITHUB_FEEDBACK_URL } from './community-links.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
 import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
@@ -28,6 +30,7 @@ const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
 const PRELOAD_PATH = join(SOURCE_DIR, 'preload.cjs')
 const STARTUP_PATH = join(SOURCE_DIR, 'ui', 'startup.html')
 const EXTENSIONS_PATH = join(SOURCE_DIR, 'ui', 'extensions.html')
+const COMMUNITY_PATH = join(SOURCE_DIR, 'ui', 'community.html')
 
 function runtimeHome() {
   return process.env.DSH_HOME || join(homedir(), '.dsh')
@@ -161,6 +164,7 @@ export async function startElectronApp(metadata) {
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
   let activeOrigin
   let extensionWindow
+  let communityWindow
 
   installNavigationPolicy({
     webContents: mainWindow.webContents,
@@ -241,6 +245,54 @@ export async function startElectronApp(metadata) {
     return extensionWindow
   }
 
+  const createCommunityWindow = async () => {
+    if (communityWindow && !communityWindow.isDestroyed()) {
+      communityWindow.show()
+      communityWindow.focus()
+      return communityWindow
+    }
+    const qrImage = await createCommunityQrImage()
+    communityWindow = new BrowserWindow({
+      width: 580,
+      height: 740,
+      minWidth: 500,
+      minHeight: 680,
+      show: false,
+      parent: mainWindow,
+      title: '加入社群',
+      icon: appIcon,
+      backgroundColor: '#050b13',
+      ...windowChromeBrowserOptions(),
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        spellcheck: false,
+      },
+    })
+    applyWindowIcon(communityWindow, appIcon)
+    const removeCommunityWindowChrome = installWindowChrome({
+      browserWindow: communityWindow,
+      iconDataUrl: windowChromeIconDataUrl,
+      onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
+    })
+    installNavigationPolicy({
+      webContents: communityWindow.webContents,
+      getRuntimeOrigin: () => undefined,
+      openExternal: (url) => shell.openExternal(url),
+    })
+    communityWindow.webContents.session.setPermissionCheckHandler(() => false)
+    communityWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+    communityWindow.once('ready-to-show', () => communityWindow?.show())
+    communityWindow.on('closed', () => {
+      removeCommunityWindowChrome()
+      communityWindow = undefined
+    })
+    await communityWindow.loadFile(COMMUNITY_PATH, { query: { qr: qrImage } })
+    return communityWindow
+  }
+
   const pluginManager = new PluginManager({ profileDir: profile.profileDir })
   const unregisterExtensionIpc = registerExtensionIpc({
     ipcMain,
@@ -284,6 +336,7 @@ export async function startElectronApp(metadata) {
   mainWindow.on('closed', () => { mainWindow = undefined })
   await loadStartup()
   if (process.env.DSH_DESKTOP_OPEN_EXTENSIONS === '1') await createExtensionWindow()
+  if (process.env.DSH_DESKTOP_OPEN_COMMUNITY === '1') await createCommunityWindow()
   if (process.env.DSH_DESKTOP_HOLD_STARTUP !== '1') void controller.start().catch(() => {})
 
   app.on('second-instance', () => {
@@ -345,6 +398,8 @@ export async function startElectronApp(metadata) {
     shell,
     controller,
     openExtensions: () => void createExtensionWindow(),
+    openCommunity: () => void createCommunityWindow().catch((error) => logStore.append(`[community] ${error.message}`)),
+    openFeedback: () => void shell.openExternal(GITHUB_FEEDBACK_URL),
     openLogs,
     checkForUpdates: (options) => updateController.check(options),
   })
