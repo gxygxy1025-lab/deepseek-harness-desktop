@@ -14,7 +14,7 @@ QQ 群：**1105158177** · **[点击一键加入 QQ 群](https://qm.qq.com/q/veh
 
 DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不是重写页面，而是用安全的 Electron 窗口启动官方 `@deepseek-ai/dsh` 本地主机，再原样加载本仓库的全部插件与皮肤。
 
-[浏览产品介绍](https://ningbainb.github.io/deepseek-harness-desktop/) · [下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [更新日志](CHANGELOG.md)
+[浏览产品介绍](https://ningbainb.github.io/deepseek-harness-desktop/) · [下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [发布与交接工作流](docs/launch/desktop-release-workflow.md) · [更新日志](CHANGELOG.md)
 
 ### 最新版：0.1.7
 

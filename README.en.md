@@ -14,7 +14,7 @@ Group number: **1105158177** · **[Join the QQ group](https://qm.qq.com/q/vehlNj
 
 DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. It does not rewrite the interface: a hardened Electron window launches the official `@deepseek-ai/dsh` host locally and loads every plugin and skin from this repository unchanged.
 
-[Explore the product site](https://ningbainb.github.io/deepseek-harness-desktop/) · [Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Changelog](CHANGELOG.md)
+[Explore the product site](https://ningbainb.github.io/deepseek-harness-desktop/) · [Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Maintainer release workflow](docs/launch/desktop-release-workflow.md) · [Changelog](CHANGELOG.md)
 
 ### Latest release: 0.1.7
 
