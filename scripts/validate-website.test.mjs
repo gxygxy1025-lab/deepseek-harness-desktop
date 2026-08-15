@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 
 import { collectDiscoveryErrors, collectWebsiteErrors } from './validate-website.mjs'
+import { sumInstallerDownloads } from '../website/release-stats.mjs'
 
 const websitePath = resolve(import.meta.dirname, '..', 'website', 'index.html')
 
@@ -32,6 +33,27 @@ test('website validation rejects missing GitHub Star guidance', async () => {
   const errors = await collectWebsiteErrors(html, '0.1.8')
   assert.ok(errors.some(error => error.includes('GitHub Star CTA')))
   assert.ok(errors.some(error => error.includes('GitHub Star count')))
+})
+
+test('sumInstallerDownloads totals only Windows x64 installer assets', () => {
+  const releases = [
+    {
+      assets: [
+        { name: 'DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe', download_count: 65 },
+        { name: 'SHA256SUMS.txt', download_count: 10 },
+      ],
+    },
+    {
+      assets: [
+        { name: 'DeepSeek-Harness-Desktop-Setup-0.1.7-x64.exe', download_count: 297 },
+        { name: 'DeepSeek-Harness-Desktop-Setup-0.1.7-arm64.exe', download_count: 99 },
+        { name: 'DeepSeek-Harness-Desktop-Setup-0.1.6-x64.exe', download_count: -1 },
+      ],
+    },
+  ]
+
+  assert.equal(sumInstallerDownloads(releases), 362)
+  assert.equal(sumInstallerDownloads(null), null)
 })
 
 test('website discovery files identify the canonical release', () => {

@@ -1,4 +1,7 @@
+import { sumInstallerDownloads } from './release-stats.mjs'
+
 const releaseApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop/releases/latest'
+const releasesApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop/releases?per_page=100'
 const repositoryApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop'
 
 const siteThemeToggle = document.querySelector('[data-site-theme-toggle]')
@@ -87,7 +90,6 @@ async function hydrateLatestRelease() {
     setLinks('.checksum-link', checksum?.browser_download_url)
     setText('.release-version', version)
     setText('.release-size', formatBytes(installer.size))
-    setText('[data-download-count]', formatCount(installer.download_count))
 
     const published = formatReleaseDate(release.published_at)
     if (published) {
@@ -111,6 +113,17 @@ async function hydrateLatestRelease() {
     document.documentElement.dataset.releaseSource = 'fallback'
   } finally {
     card?.setAttribute('aria-busy', 'false')
+  }
+}
+
+async function hydrateInstallerDownloads() {
+  try {
+    const response = await fetch(releasesApi, { headers: { Accept: 'application/vnd.github+json' } })
+    if (!response.ok) throw new Error(`GitHub returned ${response.status}`)
+    const releases = await response.json()
+    setText('[data-download-count]', formatCount(sumInstallerDownloads(releases)))
+  } catch {
+    // The static cumulative count remains visible when GitHub is unavailable or rate-limited.
   }
 }
 
@@ -207,7 +220,11 @@ document.querySelectorAll('[data-theme-image]').forEach(button => {
 })
 
 const scheduleGitHubHydration = () => {
-  const hydrate = () => Promise.allSettled([hydrateLatestRelease(), hydrateRepositoryStats()])
+  const hydrate = () => Promise.allSettled([
+    hydrateLatestRelease(),
+    hydrateInstallerDownloads(),
+    hydrateRepositoryStats(),
+  ])
   if ('requestIdleCallback' in window) {
     window.requestIdleCallback(hydrate, { timeout: 1800 })
   } else {
