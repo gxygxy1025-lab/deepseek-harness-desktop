@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0a0a0a">
-    <meta name="description" content="DeepSeek Harness Desktop 是社区维护的开源 Windows 桌面客户端，完整保留 Harness Web 能力，提供 ChatGPT OAuth、OpenAI Codex、推理强度、插件、11 款主题、移动远程和自动更新。免费下载 Windows x64 安装包，无需另装 Node.js。">
+    <meta name="description" content="DeepSeek Harness Desktop 2.0 是社区维护的开源 Windows 桌面客户端，新增 Skills 技能库、排队消息续传、模型 API 自动恢复、SSH 实时监控、思考区吸顶与粒子鲸鱼启动页。免费下载 Windows x64 安装包，无需另装 Node.js。">
     <meta name="keywords" content="DeepSeek Harness Desktop,DeepSeek Harness 桌面版,DeepSeek Windows 客户端,开源 AI 编程助手,Harness 下载">
     <meta name="author" content="DeepSeek Harness Desktop Community">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
@@ -14,7 +14,7 @@
     <link rel="canonical" href="https://ningbainb.github.io/deepseek-harness-desktop/">
     <link rel="sitemap" type="application/xml" href="https://ningbainb.github.io/deepseek-harness-desktop/sitemap.xml">
     <meta property="og:title" content="DeepSeek Harness Desktop 开源 Windows 桌面版">
-    <meta property="og:description" content="完整 Harness，原生桌面。免费下载 Windows x64 安装包，无需另装 Node.js。">
+    <meta property="og:description" content="2.0 新增技能库、消息续传、模型 API 恢复、SSH 实时监控与全新粒子鲸鱼启动页。">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://ningbainb.github.io/deepseek-harness-desktop/">
     <meta property="og:site_name" content="DeepSeek Harness Desktop">
@@ -23,7 +23,7 @@
     <meta property="og:image:alt" content="DeepSeek Harness Desktop 开源 Windows 桌面客户端界面">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="DeepSeek Harness Desktop 开源 Windows 桌面版">
-    <meta name="twitter:description" content="完整 Harness，原生桌面。免费下载 Windows x64 安装包。">
+    <meta name="twitter:description" content="2.0 新增技能库、消息续传、模型 API 恢复、SSH 实时监控与全新粒子鲸鱼启动页。">
     <meta name="twitter:image" content="https://ningbainb.github.io/deepseek-harness-desktop/assets/hero-main.png">
     <title>DeepSeek Harness Desktop 开源桌面版 - Windows 一键下载</title>
     <script type="application/ld+json">
@@ -44,7 +44,7 @@
             "name": "DeepSeek Harness Desktop",
             "alternateName": "DeepSeek Harness 桌面版",
             "url": "https://ningbainb.github.io/deepseek-harness-desktop/",
-            "description": "完整保留 Harness Web 能力的开源 Windows 桌面客户端，提供 ChatGPT OAuth、OpenAI Codex、推理强度、插件、11 款主题、移动远程和自动更新。",
+            "description": "完整保留 Harness Web 能力的开源 Windows 桌面客户端，2.0 新增 Skills 技能库、排队消息续传、模型 API 自动恢复、SSH 实时监控、思考区吸顶与粒子鲸鱼启动页。",
             "applicationCategory": "DeveloperApplication",
             "applicationSubCategory": "AI coding assistant",
             "operatingSystem": "Windows 10, Windows 11",
@@ -68,7 +68,12 @@
               "插件与技能管理",
               "11 款主题",
               "移动远程访问",
-              "自动更新"
+              "自动更新",
+              "对话栏 Skills 技能库",
+              "取消后的排队消息续传",
+              "模型 API 有界自动恢复",
+              "SSH 实时监控与安全操作",
+              "长思考吸顶折叠"
             ],
             "offers": {
               "@type": "Offer",
@@ -171,8 +176,8 @@
         <div class="container hero-inner">
           <div class="hero-copy reveal">
             <p class="overline">DeepSeek Harness Desktop 社区版</p>
-            <h1>DeepSeek Harness<br>Desktop 开源版</h1>
-            <p class="hero-summary">把官方 Web Surface 完整装进 Windows 桌面，并加入 ChatGPT OAuth、OpenAI Codex、推理强度、插件扩展与自动更新。</p>
+            <h1>DeepSeek Harness<br>Desktop 2.0</h1>
+            <p class="hero-summary">完整 Harness 进入桌面：Skills 技能库、可靠消息续传、模型 API 自动恢复、SSH 实时监控与全新粒子鲸鱼启动页。</p>
             <p class="hero-summary">无需另外安装 Node.js。下载、启动，然后直接开始工作。</p>
             <div class="hero-buttons">
               <a class="btn btn-primary download-link" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.0.0-x64.exe">
@@ -251,33 +256,57 @@
       <section class="latest-features" id="latest-features" aria-labelledby="latest-features-title">
         <div class="container">
           <div class="section-title reveal">
-            <span>v0.1.8 新增</span>
-            <h2 id="latest-features-title">登录、思考、扩展与迁移都更完整</h2>
+            <span>v2.0 核心升级</span>
+            <h2 id="latest-features-title">对话更可靠，技能与运维更顺手</h2>
           </div>
           <div class="latest-grid">
             <article class="latest-card reveal">
               <span class="latest-index">01</span>
-              <h3>ChatGPT OAuth 与 Codex</h3>
-              <p>设置页使用系统浏览器完成 ChatGPT OAuth，启用 OpenAI Codex 模型；既有 Provider 保持优先，凭据只保存在本机。</p>
-              <small>Codex Connect 0.1.0-alpha.4.5</small>
+              <h3>排队消息可靠续传</h3>
+              <p>智能体工作时发送的消息继续按顺序排队；即使取消当前执行，队列也会自动恢复，不丢失、不重复、不乱序。</p>
+              <small>CONVERSATION CONTINUITY</small>
             </article>
             <article class="latest-card reveal">
               <span class="latest-index">02</span>
-              <h3>模型推理强度滑块</h3>
-              <p>模型选择器中平滑切换实际支持的推理强度；切换模型后会自动回退到有效档位，避免无效配置。</p>
-              <small>reasoning-slider 0.0.2</small>
+              <h3>输入框新增技能库</h3>
+              <p>在输入框左下角直接搜索本机已安装 Skills，支持最近使用、分类、键盘导航与一键插入。</p>
+              <small>SKILLS AT YOUR FINGERTIPS</small>
             </article>
             <article class="latest-card reveal">
               <span class="latest-index">03</span>
-              <h3>帮助菜单直达社群</h3>
-              <p>顶部帮助菜单提供 QQ 群二维码、一键加群和 GitHub 建议入口，外部链接统一交给系统浏览器打开。</p>
-              <small>社区与反馈入口</small>
+              <h3>模型 API 自动恢复</h3>
+              <p>面对限流、超时、断网与服务端错误，桌面版执行有界退避重试；恢复后继续当前请求，手动操作仍可立即终止。</p>
+              <small>BOUNDED API RECOVERY</small>
             </article>
             <article class="latest-card reveal">
               <span class="latest-index">04</span>
-              <h3>单一市场与安全迁移</h3>
-              <p>默认只加载 dshmarket，并清理旧版重复市场和失效皮肤链接；空补丁会自动修复，同时保留非空用户配置。</p>
-              <small>dshmarket 1.3.0</small>
+              <h3>SSH 实时监控与操作</h3>
+              <p>实时查看 CPU、内存、磁盘、负载、进程与失败服务；经过确认后可终止进程或重启 systemd 服务。</p>
+              <small>LIVE SSH OPERATIONS</small>
+            </article>
+            <article class="latest-card reveal">
+              <span class="latest-index">05</span>
+              <h3>长思考随时折叠</h3>
+              <p>展开长思考后，折叠控制会吸附在会话顶部，不必再滚回思考起点才能关闭。</p>
+              <small>STICKY REASONING CONTROL</small>
+            </article>
+            <article class="latest-card reveal">
+              <span class="latest-index">06</span>
+              <h3>运行时完整性预检</h3>
+              <p>启动前检查关键运行文件；安装不完整时停止无意义重启循环，并给出明确的重新安装提示。</p>
+              <small>RUNTIME INTEGRITY</small>
+            </article>
+            <article class="latest-card reveal">
+              <span class="latest-index">07</span>
+              <h3>更新与安装更可靠</h3>
+              <p>发现新版后转入后台下载，完成后再确认重启安装；退出时完整回收 DSH 子进程，减少文件占用提示。</p>
+              <small>BACKGROUND UPDATE</small>
+            </article>
+            <article class="latest-card reveal">
+              <span class="latest-index">08</span>
+              <h3>Harness 原生视觉统一</h3>
+              <p>标题栏、扩展坞和启动页统一为更克制的系统风格；粒子鲸鱼拥有缓慢游动、摆尾和呼吸节奏。</p>
+              <small>NATIVE VISUAL SYSTEM</small>
             </article>
           </div>
         </div>
@@ -285,33 +314,33 @@
 
       <section class="features" id="features">
         <div class="container">
-          <div class="section-title reveal"><span>桌面特色</span><h2>完整 Harness，原生体验</h2></div>
+          <div class="section-title reveal"><span>2.0 界面实览</span><h2>新能力已经进入日常工作流</h2></div>
 
           <article class="feature-row reveal">
             <div class="feature-copy">
-              <div class="feature-title"><span class="play-icon">1</span><h3>打开即用，不改官方源码</h3></div>
-              <p>Electron 安全启动官方 DSH 本地主机，再加载桌面 profile。原版 Web 界面、插件协议和数据结构保持不变。</p>
-              <ul><li>内置官方 DSH 与 pnpm</li><li>仅监听本地回环地址</li><li>独立配置，不覆盖现有环境</li></ul>
+              <div class="feature-title"><span class="play-icon">1</span><h3>技能就在输入框旁</h3></div>
+              <p>单击技能库即可搜索本机 Skills，查看来源与描述，并通过鼠标或键盘插入当前对话。</p>
+              <ul><li>实时搜索与最近使用</li><li>方向键、Enter 与 Esc 完整支持</li><li>切换会话时自动收起</li></ul>
             </div>
-            <figure class="product-shot"><img src="assets/desktop-startup.webp" width="1200" height="750" loading="lazy" decoding="async" alt="DeepSeek Harness Desktop 启动界面"></figure>
+            <figure class="product-shot"><img src="assets/hero-main.webp" width="1280" height="800" loading="lazy" decoding="async" alt="DeepSeek Harness Desktop 2.0 主界面的 Skills 技能库菜单"></figure>
           </article>
 
           <article class="feature-row feature-row-reverse reveal">
             <div class="feature-copy">
-              <div class="feature-title"><span class="play-icon">2</span><h3>插件与技能统一管理</h3></div>
-              <p>扩展坞发现已安装插件、社区 bundle 与本地技能。安装前确认来源，支持回滚，内置能力始终受到保护。</p>
-              <ul><li>插件与技能发现</li><li>安装、更新与回滚</li><li>桌面内置能力保护</li></ul>
+              <div class="feature-title"><span class="play-icon">2</span><h3>粒子鲸鱼陪你进入 Harness</h3></div>
+              <p>启动界面只保留产品名、加载状态和进度条。粒子鲸鱼在右侧缓慢游动，并自动适配低动态偏好。</p>
+              <ul><li>实时加载阶段与进度</li><li>游动、摆尾与呼吸节奏</li><li>低成本渲染与隐藏页暂停</li></ul>
             </div>
-            <figure class="product-shot"><img src="assets/desktop-extension-dock.webp" width="1200" height="750" loading="lazy" decoding="async" alt="DeepSeek Harness Desktop 扩展坞"></figure>
+            <figure class="product-shot"><img src="assets/desktop-startup.webp" width="1440" height="900" loading="lazy" decoding="async" alt="DeepSeek Harness Desktop 2.0 粒子鲸鱼启动界面"></figure>
           </article>
 
           <article class="feature-row reveal">
             <div class="feature-copy">
-              <div class="feature-title"><span class="play-icon">3</span><h3>从会话到执行系统</h3></div>
-              <p>任务看板将工作拆成待规划、待办、进行中、已完成和失败五种状态。支持交给真实会话执行与 cron 定时调度。</p>
-              <ul><li>任务状态自动回写</li><li>执行过程可追溯</li><li>Git 图谱与文件预览</li></ul>
+              <div class="feature-title"><span class="play-icon">3</span><h3>插件与技能统一管理</h3></div>
+              <p>扩展坞集中展示内置插件、社区 bundle、本地技能与群友作品入口，默认能力受到保护，第三方扩展保持关闭。</p>
+              <ul><li>插件与技能发现</li><li>兼容性检查、更新与回滚</li><li>社区扩展来源与边界可见</li></ul>
             </div>
-            <figure class="product-shot"><img src="assets/task-board.webp" width="1200" height="596" loading="lazy" decoding="async" alt="DeepSeek Harness 任务看板"></figure>
+            <figure class="product-shot"><img src="assets/desktop-extension-dock.webp" width="1440" height="900" loading="lazy" decoding="async" alt="DeepSeek Harness Desktop 2.0 插件与技能扩展坞"></figure>
           </article>
         </div>
       </section>

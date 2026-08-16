@@ -33,7 +33,24 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 | **0.1.4** | Moves the pet to the global Shell Overlay so it appears on home and settings screens, restores all five Web UI plugin settings cards, and lists all nine packaged skins in Skin Center. |
 | **0.1.3** | Adds stable GitHub Release checks, bilingual update notes, user-confirmed downloads, taskbar progress, and a second confirmation before installation. |
 
-| Lossless original surface | Desktop Extension Dock |
+### 2.0 Core Features
+
+- **Reliable queued-message continuation**: messages sent while an agent is working remain in FIFO order; cancelling the active turn re-arms the queue without loss, duplication, or reordering.
+- **Conversation Skills library**: search installed skills beside the input box, inspect their source and description, navigate with the keyboard, insert with Enter, and close with Esc.
+- **Automatic model API recovery**: bounded backoff retries recover from rate limits, timeouts, network loss, and retryable server errors while manual cancellation remains immediate.
+- **Live SSH monitoring and safe operations**: refresh CPU, memory, disk, load, process, and failed-service data every three seconds, then confirm before terminating a process or restarting a systemd service.
+- **Collapsible long reasoning**: the disclosure control stays pinned at the top of the conversation while a long reasoning block is open.
+- **Runtime integrity preflight**: critical packaged files are checked before launch; an incomplete installation stops cleanly with a repair message instead of entering a restart loop.
+- **More reliable updates and installation**: new releases download in the background, installation waits for confirmation, and Desktop fully reaps the DSH child process before exit to reduce false file-in-use reports.
+- **Native Harness visual system**: the title bar, Extension Dock, and startup surface share one restrained system style, with a particle whale that swims, breathes, and moves its tail.
+
+#### 2.0 System Interface
+
+![DeepSeek Harness Desktop 2.0 main interface and Skills library](docs/screenshots/13-hero-main.png)
+
+#### 2.0 Desktop Surfaces
+
+| Particle-whale startup | Plugin and skill Extension Dock |
 | --- | --- |
 | ![Desktop startup](docs/screenshots/desktop-startup.png) | ![Plugin and skill Extension Dock](docs/screenshots/desktop-extension-dock.png) |
 
@@ -42,13 +59,11 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 - Bundles ChatGPT OAuth, OpenAI Codex models, and a reasoning-effort slider; sign-in uses the system browser and credentials stay local;
 - Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
 - Adds crash recovery, sanitized rotating logs, window-state restore, strict navigation, and denied-by-default permissions;
-- Checks stable GitHub Releases, shows bilingual release notes, and asks before downloading or restarting to install;
+- Checks stable GitHub Releases, downloads discovered updates in the background, shows bilingual release notes, and asks before restarting to install;
 - Adds a dock for transactional community DSH bundle management, built-in plugin stores, and safe discovery/import of project, DSH, and Agents skills;
 - Bundles official DSH, pnpm, and native dependencies, so users do not need a separate Node.js installation.
 
 The desktop app already includes the task board, Git graph, right panel, mobile remote control, remote connection, whale-girl pet, live token statistics, Codex Connect, the reasoning-effort slider, plugin market, and Skin Center. Install the EXE and start working — no separate DSH or Node.js setup and no plugin commands are required.
-
-![DSH Web UI main screen](docs/screenshots/13-hero-main.png)
 
 ## Feature Plugins
 
