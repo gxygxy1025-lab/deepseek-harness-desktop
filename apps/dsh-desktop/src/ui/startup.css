@@ -7,7 +7,6 @@
   --signal: #72d8ed;
   --signal-rgb: 114, 216, 237;
   --alert: #ffb66d;
-  --display: "STZhongsong", "Songti SC", "SimSun", serif;
   --sans: "Aptos", "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
   --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-family: var(--sans);
@@ -96,83 +95,45 @@ body::after {
   align-items: center;
   gap: 11px;
   width: max-content;
-  color: rgba(229, 242, 247, 0.88);
-  font: 620 11px/1 var(--sans);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: rgba(240, 247, 250, 0.9);
+  font: 600 13px/1 var(--sans);
+  letter-spacing: -0.01em;
   animation: reveal-down 700ms 80ms both cubic-bezier(0.2, 0.75, 0.2, 1);
-}
-
-.brand-mark {
-  position: relative;
-  width: 21px;
-  height: 21px;
-  border: 1px solid rgba(var(--signal-rgb), 0.54);
-  border-radius: 50%;
-  box-shadow: inset 0 0 12px rgba(var(--signal-rgb), 0.14), 0 0 20px rgba(var(--signal-rgb), 0.12);
-}
-
-.brand-mark i {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #b9eef8;
-  box-shadow: 0 0 9px var(--signal);
-  transform: translate(-50%, -50%);
 }
 
 .brand-edition {
   margin-left: 8px;
   padding-left: 18px;
   border-left: 1px solid rgba(var(--signal-rgb), 0.2);
-  color: #597080;
-  font: 9px/1 var(--mono);
-  letter-spacing: 0.16em;
+  color: #718391;
+  font: 11px/1 var(--sans);
 }
 
 .hero {
   z-index: 4;
   align-self: center;
-  width: min(650px, 52vw);
+  width: min(540px, 50vw);
   margin-top: 1vh;
-}
-
-.eyebrow {
-  margin: 0 0 18px;
-  color: #68bdd2;
-  font: 9px/1 var(--mono);
-  letter-spacing: 0.17em;
-  animation: reveal-up 700ms 150ms both cubic-bezier(0.2, 0.75, 0.2, 1);
 }
 
 h1 {
   margin: 0;
-  color: transparent;
-  background: linear-gradient(100deg, #f5fbfd 4%, #b8dce7 54%, #72cbe0 100%);
-  background-clip: text;
+  color: #eef7fa;
   filter: drop-shadow(0 12px 34px rgba(49, 143, 182, 0.12));
-  font-family: var(--display);
-  font-size: clamp(58px, 6.5vw, 102px);
-  font-weight: 400;
-  line-height: 1.04;
-  letter-spacing: -0.07em;
+  font-family: var(--sans);
+  font-size: clamp(38px, 4vw, 54px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.045em;
   white-space: nowrap;
   animation: reveal-up 900ms 220ms both cubic-bezier(0.16, 0.8, 0.24, 1);
 }
 
 .launch-status {
-  width: min(540px, 48vw);
-  margin-top: clamp(38px, 5.2vh, 58px);
-  padding: 18px 20px 16px;
-  border: 1px solid var(--line);
-  border-radius: 17px;
-  background: linear-gradient(135deg, rgba(14, 34, 49, 0.54), rgba(5, 17, 28, 0.42));
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.045), 0 22px 64px rgba(0, 3, 9, 0.2);
-  -webkit-backdrop-filter: blur(26px) saturate(128%);
-  backdrop-filter: blur(26px) saturate(128%);
+  width: min(480px, 46vw);
+  margin-top: clamp(26px, 4vh, 40px);
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line);
   animation: reveal-up 800ms 390ms both cubic-bezier(0.2, 0.75, 0.2, 1);
 }
 
@@ -181,9 +142,9 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 22px;
-  margin-bottom: 13px;
+  margin-bottom: 11px;
   color: #d9ebf1;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 #progress-value {
@@ -209,8 +170,7 @@ h1 {
   height: 100%;
   overflow: hidden;
   border-radius: inherit;
-  background: linear-gradient(90deg, #267da9, #5bc7df 62%, #b4eff8);
-  box-shadow: 0 0 16px rgba(var(--signal-rgb), 0.55);
+  background: #68cce4;
   transition: width 720ms cubic-bezier(0.22, 0.72, 0.18, 1), background 260ms ease;
 }
 
@@ -225,7 +185,7 @@ h1 {
 
 .status-detail {
   min-height: 17px;
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
@@ -278,7 +238,7 @@ footer {
   letter-spacing: 0.14em;
 }
 
-body[data-state="ready"] .meter-fill { background: linear-gradient(90deg, #2c8db4, #82dced, #e0f9fc); }
+body[data-state="ready"] .meter-fill { background: #8fdced; }
 body[data-state="crashed"] { --signal: var(--alert); --signal-rgb: 255, 182, 109; }
 body[data-state="crashed"] #whale-canvas { opacity: 0.38; filter: saturate(0.48); }
 body[data-state="crashed"] .launch-status { border-color: rgba(255, 182, 109, 0.24); }
@@ -313,8 +273,8 @@ body[data-state="crashed"] .meter-fill { background: linear-gradient(90deg, #b96
 
 @media (max-height: 680px) {
   .launch-screen { padding-block: 24px 20px; }
-  h1 { font-size: clamp(52px, 6vw, 78px); }
-  .launch-status { margin-top: 28px; padding-block: 15px 13px; }
+  h1 { font-size: clamp(36px, 4vw, 48px); }
+  .launch-status { margin-top: 24px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

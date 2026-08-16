@@ -4,7 +4,7 @@ const WINDOW_CHROME_ID = 'dsh-desktop-window-chrome'
 
 export const WINDOW_CHROME_THEMES = Object.freeze({
   dark: Object.freeze({ color: '#071117', symbolColor: '#d9edf4' }),
-  light: Object.freeze({ color: '#eef2f8', symbolColor: '#1f2937' }),
+  light: Object.freeze({ color: '#f7f8fa', symbolColor: '#1f2937' }),
 })
 
 export function normalizeWindowChromeTheme(value) {
@@ -49,7 +49,7 @@ html[data-dsh-desktop-window-chrome="true"] body {
   padding: 0 140px 0 10px;
   overflow: visible;
   border-bottom: 1px solid var(--dsh-desktop-chrome-border, rgba(174, 232, 245, 0.12));
-  background-color: var(--dsh-desktop-chrome-bg, rgba(8, 18, 24, 0.7));
+  background-color: var(--dsh-desktop-chrome-bg, #071117);
   background-image: linear-gradient(180deg, var(--dsh-desktop-chrome-highlight, rgba(255, 255, 255, 0.08)), transparent 58%);
   box-shadow: var(--dsh-desktop-chrome-shadow, inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12));
   -webkit-backdrop-filter: blur(26px) saturate(145%);
@@ -60,18 +60,18 @@ html[data-dsh-desktop-window-chrome="true"] body {
 
 html[data-dsh-desktop-chrome-theme="dark"] {
   --dsh-desktop-chrome-border: rgba(174, 232, 245, 0.12);
-  --dsh-desktop-chrome-bg: rgba(8, 18, 24, 0.7);
+  --dsh-desktop-chrome-bg: #071117;
   --dsh-desktop-chrome-highlight: rgba(255, 255, 255, 0.08);
   --dsh-desktop-chrome-sheen: rgba(148, 226, 245, 0.055);
   --dsh-desktop-chrome-shadow: inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12);
 }
 
 html[data-dsh-desktop-chrome-theme="light"] {
-  --dsh-desktop-chrome-border: rgba(71, 85, 105, 0.13);
-  --dsh-desktop-chrome-bg: rgba(246, 248, 252, 0.72);
-  --dsh-desktop-chrome-highlight: rgba(255, 255, 255, 0.58);
-  --dsh-desktop-chrome-sheen: rgba(255, 255, 255, 0.3);
-  --dsh-desktop-chrome-shadow: inset 0 1px rgba(255, 255, 255, 0.82), 0 1px 6px rgba(15, 23, 42, 0.08);
+  --dsh-desktop-chrome-border: #e5e7eb;
+  --dsh-desktop-chrome-bg: #f7f8fa;
+  --dsh-desktop-chrome-highlight: transparent;
+  --dsh-desktop-chrome-sheen: transparent;
+  --dsh-desktop-chrome-shadow: none;
 }
 
 html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
@@ -91,17 +91,6 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
     linear-gradient(90deg, transparent 54%, rgba(255, 255, 255, 0.025) 72%, transparent 90%);
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-icon {
-  position: relative;
-  z-index: 1;
-  width: 18px;
-  height: 18px;
-  flex: none;
-  border-radius: 5px;
-  object-fit: contain;
-  filter: saturate(106%) drop-shadow(0 1px 2px rgba(0, 8, 18, 0.3));
-}
-
 #${WINDOW_CHROME_ID} .dsh-window-chrome-help {
   -webkit-app-region: no-drag;
   position: relative;
@@ -111,10 +100,10 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
 }
 
 #${WINDOW_CHROME_ID} .dsh-window-chrome-help-button {
-  height: 26px;
+  height: 28px;
   padding: 0 10px;
   border: 1px solid rgba(173, 230, 244, 0.16);
-  border-radius: 7px;
+  border-radius: 14px;
   color: inherit;
   background: rgba(255, 255, 255, 0.055);
   cursor: pointer;
@@ -173,6 +162,24 @@ html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chr
   color: #172033;
 }
 
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} {
+  background-image: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-help-button {
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #0f1115;
+  background: transparent;
+}
+
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-help-button:hover,
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-help-button[aria-expanded="true"] {
+  border-color: rgba(0, 0, 0, 0.14);
+  background: #ebeff2;
+}
+
 @media (prefers-contrast: more) {
   #${WINDOW_CHROME_ID} {
     border-bottom-color: rgba(190, 238, 250, 0.5);
@@ -195,9 +202,8 @@ export function windowChromeBrowserOptions() {
   }
 }
 
-export function createWindowChromeScript({ iconDataUrl = '', showHelpMenu = false } = {}) {
+export function createWindowChromeScript({ showHelpMenu = false } = {}) {
   const data = JSON.stringify({
-    iconDataUrl: String(iconDataUrl),
     id: WINDOW_CHROME_ID,
     showHelpMenu: Boolean(showHelpMenu),
   })
@@ -206,19 +212,13 @@ export function createWindowChromeScript({ iconDataUrl = '', showHelpMenu = fals
     document.getElementById(data.id)?.remove();
     const chrome = document.createElement('div');
     chrome.id = data.id;
-    const icon = document.createElement('img');
-    icon.className = 'dsh-window-chrome-icon';
-    icon.alt = '';
-    icon.draggable = false;
-    if (data.iconDataUrl) icon.src = data.iconDataUrl;
-    chrome.append(icon);
     if (data.showHelpMenu && typeof window.dshDesktop?.helpAction === 'function') {
       const help = document.createElement('div');
       help.className = 'dsh-window-chrome-help';
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'dsh-window-chrome-help-button';
-      button.textContent = '帮助 / Help';
+      button.textContent = '帮助';
       button.setAttribute('aria-haspopup', 'menu');
       button.setAttribute('aria-expanded', 'false');
       const menu = document.createElement('div');
@@ -231,10 +231,10 @@ export function createWindowChromeScript({ iconDataUrl = '', showHelpMenu = fals
         if (restoreFocus) button.focus();
       };
       const entries = [
-        { label: '加入社群 / Join QQ Group', action: 'community' },
-        { label: '提建议 / Suggest an Idea', action: 'feedback' },
+        { label: '加入社群', action: 'community' },
+        { label: '提交建议', action: 'feedback' },
         { label: 'GitHub 项目', action: 'project' },
-        { label: '检查更新 / Check for Updates', action: 'updates' },
+        { label: '检查更新', action: 'updates' },
       ];
       for (const entry of entries) {
         const item = document.createElement('button');

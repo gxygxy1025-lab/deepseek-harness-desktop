@@ -13,6 +13,7 @@ Built on the capability list of [badseal/ssh-skill](https://github.com/badseal/s
 | Persistent connection pool | Reuses a long-lived connection per host (opposite of the ssh-skill daemon), automatically disconnects after 30 minutes idle, auto-reconnects on disconnect (up to 3 times) |
 | Command execution | exec with a timeout (default 60s), stdout/stderr separated, output truncation guard (2MB) |
 | Web terminal | xterm.js + WebSocket PTY terminal, auto-sizing, real-time output |
+| Live monitor and actions | Linux CPU / memory / disk / load / processes / failed systemd units refresh every 3 seconds; open a terminal, terminate a process, or restart a failed service after confirmation |
 | File transfer | SFTP upload (browser file picker, NDJSON progress stream), download (progress bar + browser save); remote directory browsing |
 | Port forwarding | Local port-forward tunnel (listens on 127.0.0.1 only) to reach a remote database / intranet service; list / stop supported |
 | Cluster execution | One command run concurrently across many hosts (filter by alias / environment / tag, default concurrency 8) |

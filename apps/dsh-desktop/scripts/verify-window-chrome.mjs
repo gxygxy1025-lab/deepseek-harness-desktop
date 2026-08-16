@@ -34,6 +34,7 @@ try {
   } catch (error) {
     const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8').catch(() => '')
     console.error(`runtime did not become ready; recent log:\n${runtimeLog.slice(-4_000) || '(no runtime log)'}`)
+    console.error(`startup surface:\n${(await page.locator('body').innerText().catch(() => '')).slice(-2_000) || '(unavailable)'}`)
     throw error
   }
   try {
@@ -46,16 +47,16 @@ try {
     chromeCount: document.querySelectorAll('#dsh-desktop-window-chrome').length,
     chromeText: document.querySelector('#dsh-desktop-window-chrome')?.textContent,
     backdropFilter: getComputedStyle(document.querySelector('#dsh-desktop-window-chrome')).backdropFilter,
-    iconWidth: getComputedStyle(document.querySelector('.dsh-window-chrome-icon')).width,
-    iconSource: document.querySelector('.dsh-window-chrome-icon')?.getAttribute('src'),
+    iconCount: document.querySelectorAll('.dsh-window-chrome-icon').length,
     helpRight: document.querySelector('.dsh-window-chrome-help')?.getBoundingClientRect().right,
     paddingTop: getComputedStyle(document.body).paddingTop,
+    theme: document.documentElement.dataset.dshDesktopChromeTheme,
     url: location.origin,
   }))
-  assert.equal(state.chromeText, '帮助 / Help加入社群 / Join QQ Group提建议 / Suggest an IdeaGitHub 项目检查更新 / Check for Updates')
-  assert.match(state.backdropFilter, /blur\(26px\)/u)
-  assert.equal(state.iconWidth, '18px')
-  assert.match(state.iconSource, /^data:image\/png;base64,/u)
+  assert.equal(state.chromeText, '帮助加入社群提交建议GitHub 项目检查更新')
+  assert.equal(state.theme, 'light')
+  assert.equal(state.backdropFilter, 'none')
+  assert.equal(state.iconCount, 0)
   const viewportWidth = await page.evaluate(() => innerWidth)
   assert.ok(
     Number(state.helpRight) <= viewportWidth - 139,
@@ -63,6 +64,33 @@ try {
   )
   assert.equal(state.paddingTop, '32px')
   assert.equal(state.chromeCount, 1)
+  const stickyReasoningState = await page.evaluate(() => {
+    const scrollport = document.createElement('div')
+    scrollport.style.cssText = 'position:fixed;left:20px;top:80px;width:360px;height:140px;overflow:auto;z-index:-1'
+    const think = document.createElement('div')
+    think.dataset.variant = 'think'
+    const disclosure = document.createElement('div')
+    disclosure.dataset.open = ''
+    const header = document.createElement('div')
+    header.dataset.disclosureRow = 'true'
+    header.style.height = '28px'
+    const body = document.createElement('div')
+    body.style.height = '520px'
+    disclosure.append(header, body)
+    think.append(disclosure)
+    scrollport.append(think)
+    document.body.append(scrollport)
+    const beforeTop = header.getBoundingClientRect().top
+    scrollport.scrollTop = 180
+    const afterTop = header.getBoundingClientRect().top
+    const expectedTop = scrollport.getBoundingClientRect().top + 8
+    const position = getComputedStyle(header).position
+    scrollport.remove()
+    return { afterTop, beforeTop, expectedTop, position }
+  })
+  assert.equal(stickyReasoningState.position, 'sticky')
+  assert.ok(Math.abs(stickyReasoningState.afterTop - stickyReasoningState.expectedTop) <= 1, JSON.stringify(stickyReasoningState))
+  assert.ok(stickyReasoningState.afterTop > stickyReasoningState.beforeTop - 180, JSON.stringify(stickyReasoningState))
   assert.equal(await page.evaluate(() => {
     const popup = window.open('about:blank', '_blank')
     const allowed = popup !== null
@@ -70,16 +98,16 @@ try {
     popup?.close()
     return allowed
   }), true)
-  const helpButton = page.getByRole('button', { name: '帮助 / Help' })
+  const helpButton = page.getByRole('button', { name: '帮助' })
   await helpButton.click()
   assert.equal(await helpButton.getAttribute('aria-expanded'), 'true')
   const helpMenu = page.getByRole('menu')
   await helpMenu.waitFor({ state: 'visible' })
   assert.deepEqual(await helpMenu.getByRole('menuitem').allTextContents(), [
-    '加入社群 / Join QQ Group',
-    '提建议 / Suggest an Idea',
+    '加入社群',
+    '提交建议',
     'GitHub 项目',
-    '检查更新 / Check for Updates',
+    '检查更新',
   ])
   const helpMenuBounds = await helpMenu.boundingBox()
   const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
@@ -88,11 +116,11 @@ try {
   assert.ok(helpMenuBounds.y + helpMenuBounds.height <= viewport.height)
   if (screenshot) await page.screenshot({ path: screenshot })
   const communityPagePromise = electronApp.waitForEvent('window')
-  await helpMenu.getByRole('menuitem', { name: '加入社群 / Join QQ Group' }).click()
+  await helpMenu.getByRole('menuitem', { name: '加入社群' }).click()
   const communityPage = await communityPagePromise
   await communityPage.waitForURL(/community\.html/u)
   await communityPage.locator('#community-qr[src^="data:image/png;base64,"]').waitFor({ state: 'visible' })
-  assert.equal(await communityPage.getByRole('button', { name: '帮助 / Help' }).count(), 0)
+  assert.equal(await communityPage.getByRole('button', { name: '帮助' }).count(), 0)
   await communityPage.close()
   await page.evaluate(() => {
     document.body.removeAttribute('data-ds-dark-theme')
@@ -100,12 +128,13 @@ try {
     document.body.style.backgroundColor = 'rgb(250, 250, 250)'
   })
   await page.waitForFunction(() => document.documentElement.dataset.dshDesktopChromeTheme === 'light')
-  assert.equal(await page.locator('#dsh-desktop-window-chrome').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgba(246, 248, 252, 0.72)')
+  assert.equal(await page.locator('#dsh-desktop-window-chrome').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(247, 248, 250)')
   await page.evaluate(() => {
     document.body.style.removeProperty('background-color')
     document.body.setAttribute('data-ds-dark-theme', '')
   })
   await page.waitForFunction(() => document.documentElement.dataset.dshDesktopChromeTheme === 'dark')
+  assert.equal(await page.locator('#dsh-desktop-window-chrome').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(7, 17, 23)')
   const assertDialogUsesSafeViewport = async (dialog) => {
     await dialog.waitFor({ state: 'visible' })
     const state = await dialog.evaluate((element) => ({

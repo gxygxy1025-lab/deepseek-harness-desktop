@@ -108,6 +108,7 @@ export class DshRuntimeController extends EventEmitter {
     terminateProcessTree = terminateChildProcessTree,
     pathEntries = [],
     environmentProvider = () => ({}),
+    preflight = () => {},
   }) {
     super()
     if (!cliPath || !cwd || !dshHome) throw new TypeError('cliPath, cwd, and dshHome are required')
@@ -126,7 +127,9 @@ export class DshRuntimeController extends EventEmitter {
     this.terminateProcessTree = terminateProcessTree
     this.pathEntries = pathEntries
     if (typeof environmentProvider !== 'function') throw new TypeError('environmentProvider must be a function')
+    if (typeof preflight !== 'function') throw new TypeError('runtime preflight must be a function')
     this.environmentProvider = environmentProvider
+    this.preflight = preflight
     this.child = undefined
     this.readyPromise = undefined
     this.restartTimer = undefined
@@ -159,6 +162,13 @@ export class DshRuntimeController extends EventEmitter {
       this.rejectReady = reject
     })
     this.readyPromise = readyPromise
+
+    try {
+      this.preflight()
+    } catch (error) {
+      this.#failBeforeReady(error)
+      return readyPromise
+    }
 
     const additionalEnvironment = this.environmentProvider() ?? {}
     if (typeof additionalEnvironment !== 'object' || Array.isArray(additionalEnvironment)) {

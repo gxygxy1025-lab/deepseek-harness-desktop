@@ -20,6 +20,7 @@ import { mergeQqBotPatch, readQqBotPatchEnabled } from './extensions/qqbot.mjs'
 export const BUILTIN_BUNDLES = Object.freeze([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-web-app',
+  '@linxin666/dsh-desktop-compat',
   '@linxin666/dsh-web-ui-all',
   '@tencent-connect/dsh-qqbot',
   'dshmarket',
@@ -91,6 +92,7 @@ export const WEB_UI_SETTINGS_NAMESPACES = Object.freeze([
 ].toSorted())
 
 export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
+  '@linxin666/dsh-desktop-compat',
   '@linxin666/dsh-client-ui-aionui-panel',
   '@linxin666/dsh-client-ui-git-graph',
   '@linxin666/dsh-client-ui-mode-switcher',
@@ -167,6 +169,22 @@ const LEGACY_DESKTOP_PATCH_CONFIG = `- id: directory-picker
 `
 export const DESKTOP_PATCH_CONFIG = `${DESKTOP_PATCH_START}
 ${LEGACY_DESKTOP_PATCH_CONFIG.trimEnd()}
+- id: llm-deepseek
+  config:
+    retryPolicy:
+      mode: normal
+      maxRetries: 4
+      retryableCodes:
+        - EMPTY_RESPONSE
+        - RATE_LIMIT
+        - SERVER
+        - TIMEOUT
+        - TRANSPORT
+        - STREAM_CLOSED
+      backoff:
+        initialDelayMs: 750
+        maxDelayMs: 15000
+        jitterRatio: 0.15
 - id: dsh-market
   config:
     profile: desktop

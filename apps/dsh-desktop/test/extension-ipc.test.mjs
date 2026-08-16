@@ -19,6 +19,7 @@ class FakeIpcMain {
 test('extension IPC exposes only renderer-safe QQ Bot state and forwards lifecycle events', async () => {
   const ipcMain = new FakeIpcMain()
   const sent = []
+  const opened = []
   const qqBotBinding = new EventEmitter()
   qqBotBinding.status = () => ({ bound: true, binding: false, pending: false, appId: '12*****89' })
   qqBotBinding.start = () => ({ bound: false, binding: true, pending: false })
@@ -27,7 +28,7 @@ test('extension IPC exposes only renderer-safe QQ Bot state and forwards lifecyc
   const unregister = registerExtensionIpc({
     ipcMain,
     dialog: {},
-    shell: {},
+    shell: { openExternal: async (url) => { opened.push(url); return '' } },
     getWindow: () => ({ isDestroyed: () => false, webContents: { send: (...args) => sent.push(args) } }),
     pluginManager: {},
     controller: {},
@@ -53,8 +54,15 @@ test('extension IPC exposes only renderer-safe QQ Bot state and forwards lifecyc
     { type: 'qr', status: { binding: true, qrImage: 'data:image/png;base64,abc' } },
   ]])
   assert.equal(JSON.stringify(sent).includes('appSecret'), false)
+  await ipcMain.handlers.get('extensions:community-open')(undefined, 'dsh-taffy-pet')
+  assert.deepEqual(opened, ['https://github.com/zq123123667/dsh-taffy-pet'])
+  assert.throws(
+    () => ipcMain.handlers.get('extensions:community-open')(undefined, 'https://example.com'),
+    /community plugin identifier/u,
+  )
 
   unregister()
+  assert.equal(ipcMain.handlers.has('extensions:community-open'), false)
   assert.equal(ipcMain.handlers.has('extensions:qqbot-bind'), false)
   assert.equal(qqBotBinding.listenerCount('event'), 0)
 })

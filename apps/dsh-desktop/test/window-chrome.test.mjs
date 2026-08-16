@@ -27,21 +27,24 @@ test('window chrome uses a native overlay with a compact caption area', () => {
   assert.match(WINDOW_CHROME_CSS, /box-sizing: border-box/)
   assert.match(WINDOW_CHROME_CSS, /padding-top: var\(--dsh-desktop-window-chrome-height\)/)
   assert.match(WINDOW_CHROME_CSS, /data-dsh-desktop-chrome-theme="light"/)
+  assert.match(WINDOW_CHROME_CSS, /--dsh-desktop-chrome-bg: #071117/)
+  assert.match(WINDOW_CHROME_CSS, /--dsh-desktop-chrome-bg: #f7f8fa/)
+  assert.doesNotMatch(WINDOW_CHROME_CSS, /--dsh-desktop-chrome-bg: rgba\(/)
   assert.match(WINDOW_CHROME_CSS, /dsh-desktop-modal-layer/)
   assert.match(WINDOW_CHROME_CSS, /backdrop-filter: blur\(26px\) saturate\(145%\)/)
   assert.match(WINDOW_CHROME_CSS, /dsh-desktop-window-chrome::before/)
-  assert.match(WINDOW_CHROME_CSS, /width: 18px/)
+  assert.doesNotMatch(WINDOW_CHROME_CSS, /dsh-window-chrome-icon/)
   assert.match(WINDOW_CHROME_CSS, /dsh-window-chrome-help/)
   assert.match(WINDOW_CHROME_CSS, /-webkit-app-region: no-drag/)
 })
 
-test('window chrome script mounts the application icon without Help in child windows', () => {
+test('window chrome script keeps child-window caption areas visually quiet', () => {
   const script = createWindowChromeScript({
     iconDataUrl: 'data:image/png;base64,application-icon',
   })
   assert.match(script, /"showHelpMenu":false/)
-  assert.match(script, /document\.createElement\('img'\)/)
-  assert.match(script, /icon\.src = data\.iconDataUrl/)
+  assert.doesNotMatch(script, /document\.createElement\('img'\)/)
+  assert.doesNotMatch(script, /dsh-window-chrome-icon/)
   assert.match(script, /MutationObserver/)
   assert.match(script, /setWindowChromeTheme/)
   assert.match(script, /dsh-desktop-modal-layer/)
@@ -51,10 +54,10 @@ test('window chrome script mounts the application icon without Help in child win
 test('main window chrome exposes an accessible Help dropdown with fixed actions', () => {
   const script = createWindowChromeScript({ showHelpMenu: true })
   assert.match(script, /"showHelpMenu":true/)
-  assert.match(script, /帮助 \/ Help/)
+  assert.match(script, /帮助/)
   for (const [label, action] of [
     ['加入社群', 'community'],
-    ['提建议', 'feedback'],
+    ['提交建议', 'feedback'],
     ['GitHub 项目', 'project'],
     ['检查更新', 'updates'],
   ]) {
@@ -73,7 +76,7 @@ test('window chrome theme validation and native overlay are bounded', () => {
   const calls = []
   const browserWindow = { setTitleBarOverlay: (options) => calls.push(options) }
   assert.equal(setWindowChromeTheme(browserWindow, 'light'), 'light')
-  assert.deepEqual(calls, [{ color: '#eef2f8', symbolColor: '#1f2937', height: 32 }])
+  assert.deepEqual(calls, [{ color: '#f7f8fa', symbolColor: '#1f2937', height: 32 }])
 })
 
 test('window chrome applies CSS before mounting the main-window Help surface', async () => {

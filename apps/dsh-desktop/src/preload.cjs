@@ -14,6 +14,7 @@ const api = Object.freeze({
   installPlugin: (spec, allowUnknown = false) => ipcRenderer.invoke('extensions:plugin-install', { spec, allowUnknown }),
   updatePlugin: (name, allowUnknown = false) => ipcRenderer.invoke('extensions:plugin-update', { name, allowUnknown }),
   removePlugin: (name) => ipcRenderer.invoke('extensions:plugin-remove', name),
+  openCommunityPlugin: (id) => ipcRenderer.invoke('extensions:community-open', id),
   importSkill: () => ipcRenderer.invoke('extensions:skill-import'),
   openSkill: (id) => ipcRenderer.invoke('extensions:skill-open', id),
   openSkillRoot: () => ipcRenderer.invoke('extensions:skill-root'),

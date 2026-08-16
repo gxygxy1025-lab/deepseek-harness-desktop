@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { COMMUNITY_PLUGIN_CATALOG, resolveCommunityPluginUrl } from './extensions/community-catalog.mjs'
 import { defaultSkillRoots, discoverSkills, importSkill } from './extensions/skills.mjs'
 
 const CHANNELS = [
@@ -9,6 +10,7 @@ const CHANNELS = [
   'extensions:plugin-install',
   'extensions:plugin-update',
   'extensions:plugin-remove',
+  'extensions:community-open',
   'extensions:skill-import',
   'extensions:skill-open',
   'extensions:skill-root',
@@ -54,6 +56,7 @@ export function registerExtensionIpc({
     })
     return {
       plugins,
+      communityPlugins: COMMUNITY_PLUGIN_CATALOG.map((plugin) => ({ ...plugin })),
       skills,
       qqbot: qqBotBinding.status(),
       diagnostics: catalog.diagnostics.map((item) => ({ error: item.error })),
@@ -128,6 +131,7 @@ export function registerExtensionIpc({
     return installPlugin({ spec: `${request.name}@latest`, allowUnknown: request.allowUnknown })
   })
   ipcMain.handle('extensions:plugin-remove', (_event, name) => mutatePlugin(() => pluginManager.remove(name)))
+  ipcMain.handle('extensions:community-open', (_event, id) => shell.openExternal(resolveCommunityPluginUrl(id)))
   ipcMain.handle('extensions:skill-import', async () => {
     const result = await dialog.showOpenDialog(getWindow(), {
       title: '选择技能目录 / Select skill folder',

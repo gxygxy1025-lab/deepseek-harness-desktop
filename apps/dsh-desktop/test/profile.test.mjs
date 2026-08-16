@@ -94,11 +94,18 @@ test('desktop profile includes one plugin store plus Codex login and reasoning c
   assert.equal(RETIRED_MANAGED_PACKAGES.includes('@vectorize-io/hindsight-coding-agents'), true)
   assert.match(DESKTOP_PATCH_CONFIG, /id: dsh-market[\s\S]*profile: desktop/)
   assert.match(DESKTOP_PATCH_CONFIG, /id: dsh-market[\s\S]*allowRestart: false/)
+  assert.match(DESKTOP_PATCH_CONFIG, /id: llm-deepseek[\s\S]*maxRetries: 4/u)
+  assert.match(DESKTOP_PATCH_CONFIG, /retryableCodes:[\s\S]*STREAM_CLOSED/u)
 })
 
 test('desktop profile includes the official QQ Bot bundle', () => {
   assert.equal(BUILTIN_BUNDLES.includes('@tencent-connect/dsh-qqbot'), true)
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@tencent-connect/dsh-qqbot'), true)
+})
+
+test('desktop profile mounts the queue recovery compatibility bundle', () => {
+  assert.equal(BUILTIN_BUNDLES.includes('@linxin666/dsh-desktop-compat'), true)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-desktop-compat'), true)
 })
 
 test('desktop patch refresh removes the legacy profile skin section and preserves community rows', () => {
@@ -329,6 +336,8 @@ test('official DSH CLI composes the isolated desktop profile', async () => {
     assert.match(result.stdout, /dsh-client-ui-directory-picker-browse/)
     assert.match(result.stdout, /- id: dsh-market/)
     assert.match(result.stdout, /profile: desktop/)
+    assert.match(result.stdout, /- id: llm-deepseek[\s\S]*?maxRetries: 4/u)
+    assert.match(result.stdout, /- id: llm-deepseek[\s\S]*?STREAM_CLOSED/u)
     assert.doesNotMatch(result.stdout, /- id: dsh-plugin-hub/)
     assert.match(result.stdout, /- id: llm-openai-codex/)
     assert.match(result.stdout, /name: dsh-codex-connect/)

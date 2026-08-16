@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { startQrConnect } from '@tencent-connect/qqbot-connector'
 
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
+import { ensureApiRetryPolicies } from './api-retry-policy.mjs'
 import { resolveDesktopVersion } from './app-version.mjs'
 import { createCommunityQrImage } from './community.mjs'
 import { GITHUB_FEEDBACK_URL, GITHUB_PROJECT_URL } from './community-links.mjs'
@@ -28,9 +29,12 @@ import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
+import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
 import { installUpdateSurface } from './update-surface.mjs'
 import { installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
+import { installConversationPolish } from './conversation-polish.mjs'
+import { installConversationSkills } from './conversation-skills.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
@@ -99,12 +103,23 @@ export async function startElectronApp(metadata) {
   const dshHome = runtimeHome()
   const profileStartedAt = performance.now()
   const runtimePackages = resolveRuntimePackages()
+  const runtimeCriticalFiles = resolveRuntimeCriticalFiles()
   let qqBotCredentials
+  const ensureRetryPolicies = async () => {
+    try {
+      const result = await ensureApiRetryPolicies({ dshHome })
+      if (result.changed) await logStore.append('[api-retry] added bounded retry defaults to configured providers')
+    } catch (error) {
+      await logStore.append(`[api-retry] settings migration skipped: ${error.message}`)
+    }
+  }
   const ensureProfile = async () => {
+    await ensureRetryPolicies()
     const result = await ensureDesktopProfile({ dshHome, packageRoots: runtimePackages })
     await setQqBotProfileEnabled({ profileDir: result.profileDir, enabled: Boolean(qqBotCredentials) })
     return result
   }
+  await ensureRetryPolicies()
   const profile = await ensureDesktopProfile({ dshHome, packageRoots: runtimePackages })
   const qqBotCredentialStore = new QqBotCredentialStore({
     path: join(userData, 'qqbot-credentials.json'),
@@ -158,6 +173,7 @@ export async function startElectronApp(metadata) {
     startupTimeoutMs: DEFAULT_STARTUP_TIMEOUT_MS,
     pathEntries: [runtimeBin],
     environmentProvider: qqBotEnvironment,
+    preflight: () => assertRuntimeIntegrity({ resolvedFiles: runtimeCriticalFiles }),
   })
   const qqBotBinding = new QqBotBindingService({
     initialCredentials: qqBotCredentials,
@@ -194,6 +210,14 @@ export async function startElectronApp(metadata) {
     iconDataUrl: windowChromeIconDataUrl,
     showHelpMenu: true,
     onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
+  })
+  const removeConversationPolish = installConversationPolish({
+    browserWindow: mainWindow,
+    onError: (error) => void logStore.append(`[conversation-polish] ${error.message}`),
+  })
+  const removeConversationSkills = installConversationSkills({
+    browserWindow: mainWindow,
+    onError: (error) => void logStore.append(`[conversation-skills] ${error.message}`),
   })
   const removeUpdateSurface = installUpdateSurface({
     browserWindow: mainWindow,
@@ -262,7 +286,7 @@ export async function startElectronApp(metadata) {
       parent: mainWindow,
       title: 'Extension Dock',
       icon: appIcon,
-      backgroundColor: '#071117',
+      backgroundColor: '#ffffff',
       ...windowChromeBrowserOptions(),
       webPreferences: {
         preload: PRELOAD_PATH,
@@ -310,7 +334,7 @@ export async function startElectronApp(metadata) {
       parent: mainWindow,
       title: '加入社群',
       icon: appIcon,
-      backgroundColor: '#050b13',
+      backgroundColor: '#f7f8fa',
       ...windowChromeBrowserOptions(),
       webPreferences: {
         contextIsolation: true,
@@ -416,6 +440,8 @@ export async function startElectronApp(metadata) {
         updateController?.dispose()
         updateController?.off('status', publishUpdateStatus)
         removeUpdateSurface()
+        removeConversationSkills()
+        removeConversationPolish()
         removeMainWindowChrome()
         unregisterIpc()
         unregisterExtensionIpc()
