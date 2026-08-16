@@ -18,12 +18,13 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 
 If this project helps you, Star the [GitHub repository](https://github.com/ningbainb/deepseek-harness-desktop) so more desktop users can discover it.
 
-### Latest release: 0.1.8
+### Latest release: 0.1.9
 
-`desktop-v0.1.8` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.8) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.8/DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.8/SHA256SUMS.txt)
+`desktop-v0.1.9` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.9) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.9/DeepSeek-Harness-Desktop-Setup-0.1.9-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.9/SHA256SUMS.txt)
 
 | Version | Highlights |
 | --- | --- |
+| **0.1.9** | Fixes conversation-bubble and full-response copying; downloads updates in the background; refreshes the startup and update surfaces with a particle whale and frosted glass; and adds guarded community-plugin compatibility checks, offline switching, rollback, and performance limits. |
 | **0.1.8** | Bundles ChatGPT OAuth, OpenAI Codex models, a model-aware reasoning-effort slider, and Help-menu community and feedback actions; keeps `dshmarket` as the only default store and repairs blank patches plus stale store and skin links during migration. |
 | **0.1.7** | Introduces a deep-ocean startup experience with state-driven progress and a 32px macOS-inspired frosted-glass window bar; bounds large-file preview memory, Git polling, and SSH transfer work; and strengthens first-install cold-start tolerance plus release gates. |
 | **0.1.6** | Bundles Tencent's official QQ Bot and QR Connector. Bind, refresh, cancel, rebind, or unbind from Extension Dock, then connect QQ direct messages and group chats to the desktop Harness. AppSecret is protected by Windows credential encryption and supplied only to the DSH child process. |

@@ -18,12 +18,13 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 如果这个项目对你有帮助，欢迎在 [GitHub 仓库](https://github.com/ningbainb/deepseek-harness-desktop) 点 Star，帮助更多桌面版用户发现它。
 
-### 最新版：0.1.8
+### 最新版：0.1.9
 
-`desktop-v0.1.8` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.8) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.8/DeepSeek-Harness-Desktop-Setup-0.1.8-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.8/SHA256SUMS.txt)
+`desktop-v0.1.9` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v0.1.9) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.9/DeepSeek-Harness-Desktop-Setup-0.1.9-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v0.1.9/SHA256SUMS.txt)
 
 | 版本 | 主要更新 |
 | --- | --- |
+| **0.1.9** | 修复对话气泡与整段内容复制；更新改为后台下载并加入毛玻璃更新面板与粒子鲸鱼启动页；新增社区插件适配检测、离线切换、失败回滚与性能保护。 |
 | **0.1.8** | 内置 ChatGPT OAuth 与 OpenAI Codex 模型、模型推理强度滑块、帮助菜单社群与建议入口；默认只保留 `dshmarket`，并修复空补丁、旧市场和皮肤链接迁移。 |
 | **0.1.7** | 全新深海启动界面与状态驱动进度；32px macOS 风格磨砂玻璃窗口栏；收紧大文件预览内存、Git 轮询和 SSH 传输边界，并提升首次安装后的冷启动容错与发布门禁。 |
 | **0.1.6** | 内置腾讯官方 QQ Bot 与扫码 Connector；在扩展坞完成二维码绑定、刷新、取消、重新绑定和解绑，QQ 私聊与群聊可直接接入桌面版 Harness。AppSecret 使用 Windows 凭据保护加密，只注入 DSH 子进程。 |
@@ -40,7 +41,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 - 内置 ChatGPT OAuth、OpenAI Codex 模型与推理强度滑块，登录使用系统浏览器，凭据保存在本机；
 - 独立 `desktop` profile，不覆盖既有 DSH 配置，运行时仅监听回环地址；
 - 内置崩溃恢复、日志脱敏与轮转、窗口状态恢复、严格导航与权限策略；
-- 内置 GitHub Release 更新检查，先展示中英双语更新内容，再由用户确认下载和重启安装；
+- 内置 GitHub Release 更新检查，发现新版后在后台下载，完成后再由用户阅读说明并确认重启安装；
 - 扩展坞支持社区 DSH bundle 安装/回滚、内置插件市场，以及项目、DSH、Agents 技能发现与安全导入；
 - 安装包自带官方 DSH、pnpm 与原生依赖，无需另外安装 Node.js。
 

@@ -68,6 +68,7 @@ export const BUILTIN_SKIN_PACKAGES = Object.freeze([
 // dshmarket's client-only hot mount) load them a second time.
 export const RETIRED_MANAGED_PACKAGES = Object.freeze([
   '@linxin666/dsh-web-ui-compat',
+  '@vectorize-io/hindsight-coding-agents',
   ...BUILTIN_SKIN_PACKAGES,
   'dsh-plugin-hub',
 ].toSorted())
@@ -442,21 +443,29 @@ export async function ensureDesktopProfile({
   const packagesToRetire = codexConnectEnabled
     ? RETIRED_MANAGED_PACKAGES
     : [...RETIRED_MANAGED_PACKAGES, 'dsh-codex-connect']
-  for (const packageName of packagesToRetire) {
-    changed = (await retireManagedPackage({
+  const retired = await Promise.all(packagesToRetire.map((packageName) =>
+    retireManagedPackage({
       packageName,
       profileDir,
       previous: previousRecords[packageName],
-    })) || changed
-  }
+    }),
+  ))
+  changed = retired.some(Boolean) || changed
+  const linked = await Promise.all(
+    [...activePackageRoots]
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(async ([packageName, sourceDir]) => ({
+        packageName,
+        result: await linkManagedPackage({
+          packageName,
+          profileDir,
+          sourceDir,
+          previous: previousRecords[packageName],
+        }),
+      })),
+  )
   const nextRecords = {}
-  for (const [packageName, sourceDir] of [...activePackageRoots].toSorted(([left], [right]) => left.localeCompare(right))) {
-    const result = await linkManagedPackage({
-      packageName,
-      profileDir,
-      sourceDir,
-      previous: previousRecords[packageName],
-    })
+  for (const { packageName, result } of linked) {
     nextRecords[packageName] = result.record
     changed = result.changed || changed
   }

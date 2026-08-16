@@ -1,6 +1,7 @@
 const ACTIONS = new Set(['retry', 'repair', 'open-logs', 'exit'])
 const HELP_ACTIONS = new Set(['community', 'feedback', 'project', 'updates'])
 const WINDOW_CHROME_THEMES = new Set(['light', 'dark'])
+const UPDATE_PHASES = new Set(['idle', 'checking', 'downloading', 'current', 'ready', 'unavailable', 'error'])
 
 export function normalizeWindowChromeTheme(value) {
   if (typeof value !== 'string' || !WINDOW_CHROME_THEMES.has(value)) {
@@ -33,6 +34,22 @@ export function publicRuntimeStatus(status) {
   }
 }
 
+export function publicUpdateStatus(status) {
+  const phase = UPDATE_PHASES.has(status?.phase) ? status.phase : 'idle'
+  const boundedText = (value, limit) => typeof value === 'string' ? value.slice(0, limit) : undefined
+  const percent = Number(status?.percent)
+  return {
+    phase,
+    currentVersion: boundedText(status?.currentVersion, 64),
+    version: boundedText(status?.version, 64),
+    releaseName: boundedText(status?.releaseName, 240),
+    releaseNotes: boundedText(status?.releaseNotes, 7_000),
+    percent: Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : undefined,
+    message: boundedText(status?.message, 1_000),
+    visible: status?.visible === true,
+  }
+}
+
 export function registerDesktopIpc({
   ipcMain,
   controller,
@@ -45,6 +62,7 @@ export function registerDesktopIpc({
   exitApp,
   handleHelpAction,
   setWindowChromeTheme,
+  getUpdateController,
 }) {
   const channels = [
     'desktop:info',
@@ -52,6 +70,9 @@ export function registerDesktopIpc({
     'desktop:action',
     'desktop:help-action',
     'desktop:window-chrome-theme',
+    'desktop:update-status',
+    'desktop:update-check',
+    'desktop:update-install',
   ]
   for (const channel of channels) ipcMain.removeHandler(channel)
   ipcMain.handle('desktop:info', () => ({
@@ -81,6 +102,9 @@ export function registerDesktopIpc({
     const action = normalizeHelpAction(rawAction)
     return handleHelpAction(action)
   })
+  ipcMain.handle('desktop:update-status', () => publicUpdateStatus(getUpdateController?.()?.getStatus?.()))
+  ipcMain.handle('desktop:update-check', () => getUpdateController?.()?.check?.({ manual: true }))
+  ipcMain.handle('desktop:update-install', () => getUpdateController?.()?.install?.())
   const publishStatus = (status) => {
     const window = getWindow()
     if (window && !window.isDestroyed()) window.webContents.send('desktop:status', publicRuntimeStatus(status))

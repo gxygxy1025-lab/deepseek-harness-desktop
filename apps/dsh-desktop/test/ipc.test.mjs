@@ -6,6 +6,7 @@ import {
   normalizeHelpAction,
   normalizeWindowChromeTheme,
   publicRuntimeStatus,
+  publicUpdateStatus,
 } from '../src/ipc.mjs'
 
 test('desktop action validation exposes only fixed recovery operations', () => {
@@ -39,4 +40,27 @@ test('public status omits process and filesystem internals', () => {
     publicRuntimeStatus({ state: 'crashed', error: 'failed', url: 'http://127.0.0.1:1/', pid: 1234 }),
     { state: 'crashed', error: 'failed', url: undefined, restartAttempt: 0 },
   )
+})
+
+test('public update status exposes only renderer-safe release state', () => {
+  assert.deepEqual(publicUpdateStatus({
+    phase: 'ready',
+    currentVersion: '0.1.8',
+    version: '0.1.9',
+    releaseName: 'Desktop polish',
+    releaseNotes: 'Copy and startup fixes.',
+    percent: 110,
+    visible: true,
+    token: 'secret',
+  }), {
+    phase: 'ready',
+    currentVersion: '0.1.8',
+    version: '0.1.9',
+    releaseName: 'Desktop polish',
+    releaseNotes: 'Copy and startup fixes.',
+    percent: 100,
+    message: undefined,
+    visible: true,
+  })
+  assert.equal(publicUpdateStatus({ phase: 'install-command' }).phase, 'idle')
 })
