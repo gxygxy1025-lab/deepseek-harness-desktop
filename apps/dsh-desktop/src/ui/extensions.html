@@ -5,34 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
     <title>Extension Dock</title>
+    <link rel="stylesheet" href="./harness-base.css">
     <link rel="stylesheet" href="./extensions.css">
   </head>
   <body>
-    <header>
-      <div>
-        <p class="eyebrow">DSH DESKTOP / EXTENSION DOCK</p>
-        <h1>扩展坞</h1>
-      </div>
-      <p class="intro">管理社区插件与本地技能。内置能力受到保护，所有改动只作用于 desktop profile。</p>
-    </header>
+    <div class="settings-shell">
+      <aside class="settings-sidebar">
+        <header>
+        <p class="eyebrow">桌面版设置</p>
+          <h1>扩展坞</h1>
+        </header>
+        <nav aria-label="扩展类型" role="tablist">
+          <button type="button" class="tab active" id="plugins-tab" role="tab" aria-controls="plugins" aria-selected="true" data-tab="plugins"><span>插件</span><small id="plugin-count">0</small></button>
+          <button type="button" class="tab" id="skills-tab" role="tab" aria-controls="skills" aria-selected="false" tabindex="-1" data-tab="skills"><span>技能</span><small id="skill-count">0</small></button>
+        </nav>
+        <p class="sidebar-note">内置能力受保护，所有改动仅作用于桌面版配置。</p>
+      </aside>
 
-    <nav aria-label="Extension type">
-      <button type="button" class="tab active" data-tab="plugins">插件 <span id="plugin-count">0</span></button>
-      <button type="button" class="tab" data-tab="skills">技能 <span id="skill-count">0</span></button>
-      <span class="line"></span>
-      <button type="button" class="refresh" id="refresh">刷新 / Refresh</button>
-    </nav>
-
-    <main>
-      <section id="plugins" class="panel active" aria-labelledby="plugin-heading">
+      <main>
+        <div class="content-toolbar">
+          <button type="button" class="refresh" id="refresh">刷新</button>
+        </div>
+      <section id="plugins" class="panel active" role="tabpanel" aria-labelledby="plugins-tab">
         <div class="panel-head">
-          <div><p class="index">01</p><h2 id="plugin-heading">Cordis 插件</h2></div>
+          <div><h2 id="plugin-heading">插件</h2></div>
           <p>安装注册表中的 DSH bundle。安装前请确认来源可信；插件拥有宿主进程权限。</p>
         </div>
         <section class="community-feature" aria-labelledby="community-feature-heading">
           <div class="feature-heading">
             <div>
-              <p class="index">COMMUNITY FEATURE</p>
+              <p class="index">社区</p>
               <h3 id="community-feature-heading">群友作品</h3>
             </div>
             <p>仅展示作者与仓库入口，默认不开启，也不随安装包分发第三方代码或角色素材。</p>
@@ -44,7 +46,7 @@
             <div>
               <div class="name-row">
                 <span class="name">QQ 机器人</span>
-                <span class="badge builtin">OFFICIAL / BUILT-IN</span>
+                <span class="badge builtin">内置</span>
               </div>
               <p class="description">通过腾讯官方 dsh-qqbot 将 QQ 私聊和群聊接入 desktop profile。</p>
             </div>
@@ -53,7 +55,7 @@
           <div class="qqbot-body">
             <div id="qqbot-unbound">
               <p class="qqbot-copy">绑定过程会显示一次性二维码。AppSecret 由操作系统加密保存，不会显示在页面或写入 profile 配置。</p>
-              <button type="button" id="qqbot-bind">扫码绑定 QQ 机器人</button>
+              <button type="button" class="primary" id="qqbot-bind">扫码绑定 QQ 机器人</button>
             </div>
             <div class="qqbot-scan" id="qqbot-scan" hidden>
               <div class="qr-frame"><img id="qqbot-qr" alt="QQ 机器人绑定二维码" hidden><div id="qqbot-qr-wait">正在获取二维码</div></div>
@@ -69,10 +71,10 @@
           </div>
         </article>
         <form id="plugin-form">
-          <label for="plugin-spec">NPM PACKAGE SPEC</label>
+          <label for="plugin-spec">NPM 包名</label>
           <div class="field-row">
             <input type="text" id="plugin-spec" name="spec" placeholder="@scope/dsh-plugin@1.0.0" autocomplete="off" spellcheck="false" required>
-            <button type="submit">安装并重启</button>
+            <button type="submit" class="primary">安装并重启</button>
           </div>
           <label class="risk-check"><input type="checkbox" name="allowUnknown">允许安装未声明 Desktop/DSH 适配范围的插件</label>
         </form>
@@ -83,18 +85,19 @@
         <div class="list" id="plugin-list" aria-live="polite"></div>
       </section>
 
-      <section id="skills" class="panel" aria-labelledby="skill-heading" hidden>
+      <section id="skills" class="panel" role="tabpanel" aria-labelledby="skills-tab" hidden>
         <div class="panel-head">
-          <div><p class="index">02</p><h2 id="skill-heading">技能目录</h2></div>
+          <div><h2 id="skill-heading">技能目录</h2></div>
           <p>遵循官方五级优先顺序扫描。导入后由 DSH watcher 自动刷新，无需重启。</p>
         </div>
         <div class="skill-actions">
-          <button type="button" id="import-skill">导入技能目录</button>
+          <button type="button" class="primary" id="import-skill">导入技能目录</button>
           <button type="button" class="secondary" id="open-skill-root">打开用户技能目录</button>
         </div>
         <div class="list" id="skill-list" aria-live="polite"></div>
       </section>
-    </main>
+      </main>
+    </div>
 
     <div class="toast" id="toast" role="status" hidden></div>
     <script type="module" src="./extensions.mjs"></script>

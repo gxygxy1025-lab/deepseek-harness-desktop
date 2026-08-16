@@ -8,9 +8,11 @@ import {
   UPDATE_SURFACE_CSS,
 } from '../src/update-surface.mjs'
 
-test('update surface is an accessible glass dialog driven by desktop update state', () => {
+test('update surface is an accessible Harness-themed dialog driven by desktop update state', () => {
   const script = createUpdateSurfaceScript()
-  assert.match(UPDATE_SURFACE_CSS, /backdrop-filter: blur\(32px\)/)
+  assert.match(UPDATE_SURFACE_CSS, /--dsw-alias-bg-base/u)
+  assert.match(UPDATE_SURFACE_CSS, /--dsw-alias-button-info-fill/u)
+  assert.match(UPDATE_SURFACE_CSS, /backdrop-filter: blur\(3px\)/u)
   assert.match(script, /role', 'dialog'/)
   assert.match(script, /aria-modal', 'true'/)
   assert.match(script, /getUpdateStatus/)

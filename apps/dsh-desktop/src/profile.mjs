@@ -169,6 +169,22 @@ const LEGACY_DESKTOP_PATCH_CONFIG = `- id: directory-picker
 `
 export const DESKTOP_PATCH_CONFIG = `${DESKTOP_PATCH_START}
 ${LEGACY_DESKTOP_PATCH_CONFIG.trimEnd()}
+- id: llm-deepseek
+  config:
+    retryPolicy:
+      mode: normal
+      maxRetries: 4
+      retryableCodes:
+        - EMPTY_RESPONSE
+        - RATE_LIMIT
+        - SERVER
+        - TIMEOUT
+        - TRANSPORT
+        - STREAM_CLOSED
+      backoff:
+        initialDelayMs: 750
+        maxDelayMs: 15000
+        jitterRatio: 0.15
 - id: dsh-market
   config:
     profile: desktop

@@ -6,6 +6,9 @@
 
 - 修复长任务期间发送的消息在停止当前任务后滞留队列的问题。桌面兼容层保持默认先进先出排队，不会打断正在执行的对话；当前任务收束后会自动继续发送下一条消息。
 - 修复用户停止代码执行时显示 `code run failed (abort): [object Object]` 的问题，已知的取消结果现在显示为“当前执行已停止，排队消息将继续发送。”，其他真实工具错误保持原样。
+- 对话输入区新增 Skills 技能库按钮，支持搜索、最近使用、滚轮、键盘导航与主题适配；选择技能后会在当前光标处插入自然语言技能调用。
+- 增强模型 API 的瞬态故障恢复。DeepSeek 与已配置的兼容提供方可对限流、超时、服务器错误、传输中断和流提前关闭进行最多四次退避重试，同时保留用户自定义策略，且不会重放 SSH 或插件操作。
+- 长思考内容展开后，原有折叠标题会吸附在对话滚动区域顶部，无需滚回内容开头即可关闭。
 - 新增桌面运行时完整性预检。若升级中断、安全软件隔离或磁盘异常造成关键文件缺失，应用会直接说明安装不完整并提示重新安装，不再反复启动、崩溃和重试导致卡顿。
 - 修复桌面版对话气泡、整段回复与代码块复制按钮点击无效的问题。应用只对当前本地 DSH 页面开放安全的剪贴板写入权限，剪贴板读取及其他敏感权限仍保持关闭。
 - 自动更新调整为发现新版后直接在后台下载，不再用下载前系统弹窗打断对话。下载完成后会显示新的蓝黑毛玻璃更新面板，由用户选择立即重启安装或稍后处理。
@@ -17,7 +20,9 @@
 - 修复 Windows 升级时偶发的“应用仍在运行”或文件占用提示。桌面端退出时会结束完整 DSH 进程树；安装器还会在覆盖旧版本前，仅清理旧安装目录主程序和 `resources` 内的残留进程。
 - 扩展坞现在展示每个插件的实际版本与适配状态，只在打开扩展坞时检查社区插件更新。兼容版本可一键升级，已知不兼容版本会说明原因并拦截，未声明适配的版本需用户明确确认。
 - 扩展坞新增群友作品 `dsh-taffy-pet`，标注作者 `zq123123667` 并默认保持未启用。桌面安装包只提供固定作者仓库入口，不复制第三方代码或角色素材。
+- 内置 SSH 工作区新增 Linux 实时监控页，每三秒刷新 CPU、内存、磁盘、负载、运行时间、进程和失败服务；经过校验与确认后可终止指定进程或重启指定 systemd 服务。
 - 社区插件升级会先在后台预取包，再短暂停止 DSH 完成离线精确版本切换；安装校验或重启失败时自动恢复旧清单、锁文件和运行时。内置插件继续只随经过验证的 Desktop 版本更新。
+- SSH、扩展坞、社区窗口、更新面板和窗口框架完成第二轮 Harness 原生视觉统一，收敛字体、边框、圆角、间距、焦点状态及浅色/深色主题表现。
 - 桌面 profile 复用运行包解析结果并并行检查独立链接；同机基准中，未变化配置的中位耗时由约 54.9 ms 降至 13.2 ms，新配置由约 64.9 ms 降至 22.3 ms。
 
 ### 验证
@@ -30,6 +35,8 @@
 - 插件回归覆盖三态 semver 适配、固定 npm 源、四路并发限制、精确离线安装、启动隔离和失败回滚；可复现 profile 基准不访问网络。
 - 队列回归覆盖多条消息的先进先出顺序、重复空闲事件合并、唤醒失败回滚和取消提示归一化；完整桌面 Profile 已完成真实启动验证。
 - 运行时完整性回归验证关键 OpenTelemetry 文件由启动预检和打包校验共享同一份清单，缺失时不会创建子进程或进入自动重启循环。
+- Skills 回归覆盖列表去重、搜索、插入、键盘操作与真实 Electron 菜单几何；API 回归覆盖有界错误码、退避配置和用户策略保留。
+- SSH 回归覆盖监控解析、轮询生命周期、PID 与 systemd 操作白名单，以及终端原有实时交互不受影响。
 
 ### 下载与校验
 
@@ -45,6 +52,9 @@
 
 - Fixes queued follow-up messages becoming stranded after the user stops an active task. The Desktop compatibility layer preserves the existing FIFO queue-first behavior, does not interrupt the running turn, and automatically starts the next queued message after cancellation converges.
 - Replaces the known `code run failed (abort): [object Object]` cancellation presentation with a clear message that the active execution stopped and queued work will continue. Unrelated tool failures are left unchanged.
+- Adds a Skills library beside the conversation command button with search, recent items, wheel and keyboard navigation, theme support, and insertion at the current composer selection.
+- Strengthens transient model API recovery for DeepSeek and configured compatible providers with up to four bounded backoff retries for rate limits, timeouts, server failures, transport interruptions, and prematurely closed streams. User-authored policies remain authoritative, and SSH or plugin actions are never replayed.
+- Keeps the original reasoning disclosure header sticky inside the conversation scroll area so long reasoning can be collapsed without returning to its beginning.
 - Adds a packaged-runtime integrity preflight. If an interrupted upgrade, security quarantine, or filesystem problem removes a critical file, Desktop now reports an incomplete installation and recommends reinstalling instead of repeatedly spawning, crashing, and restarting.
 - Fixes inactive copy buttons for message bubbles, complete responses, and code blocks in the desktop app. Only sanitized clipboard writes from the active local DSH origin are allowed; clipboard reads and other sensitive permissions remain denied.
 - Starts downloading a discovered desktop release in the background instead of interrupting the conversation with a pre-download system prompt. A new blue-black glass panel appears after the download and lets the user restart and install or defer it.
@@ -56,7 +66,9 @@
 - Fixes intermittent “application is still running” and file-in-use errors during Windows upgrades. Desktop shutdown now terminates the complete DSH process tree, while installer preflight removes only stale processes whose executables belong to the previous app installation.
 - Extension Dock now shows actual plugin versions and compatibility states and checks community updates only when opened. Compatible releases can update directly, known-incompatible releases are blocked with an explanation, and undeclared compatibility requires explicit confirmation.
 - Adds `dsh-taffy-pet` by community author `zq123123667` as a disabled featured entry. Desktop ships only a fixed link to the author's repository and does not redistribute third-party code or character assets.
+- Adds a Linux monitoring page to the built-in SSH workspace. It refreshes CPU, memory, disk, load, uptime, processes, and failed services every three seconds, with validated and confirmation-gated process termination and systemd restart actions.
 - Community updates prefetch packages while DSH is available, then perform an exact offline switch during brief downtime. Failed validation or restart restores the old manifest, lockfile, and runtime. Built-ins continue to update only with a tested Desktop release.
+- Completes a second Harness-native visual pass across SSH, Extension Dock, the community window, update surfaces, and window chrome, aligning typography, borders, radii, spacing, focus states, and light/dark themes.
 - Desktop profile preparation now reuses runtime resolution and checks independent links concurrently. On the reference machine, median unchanged-profile time fell from about 54.9 ms to 13.2 ms and fresh-profile time from about 64.9 ms to 22.3 ms.
 
 ### Verification
@@ -69,6 +81,8 @@
 - Plugin regression covers three-state semver assessment, the fixed npm origin, four-request concurrency, exact offline installation, startup quarantine, and failed-update rollback; the reproducible profile benchmark performs no network access.
 - Queue regression covers FIFO preservation across multiple messages, coalesced idle notifications, rollback after a failed wake, and cancellation-message normalization. The complete Desktop profile also passes a real host startup check.
 - Runtime-integrity regression proves that startup preflight and package verification share the same critical OpenTelemetry file contract and that a missing file cannot spawn a child or enter the restart loop.
+- Skills regression covers inventory deduplication, search, insertion, keyboard behavior, and real Electron menu geometry; API recovery tests cover bounded error codes, backoff configuration, and preservation of user policies.
+- SSH regression covers monitor parsing, polling lifecycle, PID and systemd action allowlists, and preservation of the existing live terminal behavior.
 
 ### Download and verification
 

@@ -202,14 +202,33 @@ window.dshDesktop.onQqBotEvent((payload) => {
   if (payload.type === 'error') notify(payload.error ?? 'QQ 机器人绑定失败', true)
 })
 
-for (const tab of document.querySelectorAll('[data-tab]')) {
-  tab.addEventListener('click', () => {
-    for (const item of document.querySelectorAll('[data-tab]')) item.classList.toggle('active', item === tab)
-    for (const panel of document.querySelectorAll('.panel')) {
-      const active = panel.id === tab.dataset.tab
-      panel.hidden = !active
-      panel.classList.toggle('active', active)
-    }
+const tabs = Array.from(document.querySelectorAll('[data-tab]'))
+function activateTab(tab, focus = false) {
+  for (const item of tabs) {
+    const active = item === tab
+    item.classList.toggle('active', active)
+    item.setAttribute('aria-selected', String(active))
+    item.tabIndex = active ? 0 : -1
+  }
+  for (const panel of document.querySelectorAll('.panel')) {
+    const active = panel.id === tab.dataset.tab
+    panel.hidden = !active
+    panel.classList.toggle('active', active)
+  }
+  if (focus) tab.focus()
+}
+
+for (const [index, tab] of tabs.entries()) {
+  tab.addEventListener('click', () => { activateTab(tab) })
+  tab.addEventListener('keydown', (event) => {
+    let nextIndex
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length
+    if (event.key === 'Home') nextIndex = 0
+    if (event.key === 'End') nextIndex = tabs.length - 1
+    if (nextIndex === undefined) return
+    event.preventDefault()
+    activateTab(tabs[nextIndex], true)
   })
 }
 

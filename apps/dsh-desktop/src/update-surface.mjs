@@ -7,9 +7,9 @@ export const UPDATE_SURFACE_CSS = `
   inset: var(--dsh-desktop-window-chrome-height, 32px) 0 0;
   display: grid;
   place-items: center;
-  padding: 28px;
-  color: #edf7ff;
-  font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
+  padding: 24px;
+  color: var(--dsw-alias-label-primary, #0f1115);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 #${UPDATE_SURFACE_ID}[hidden] { display: none; }
@@ -17,25 +17,21 @@ export const UPDATE_SURFACE_CSS = `
 #${UPDATE_SURFACE_ID} .dsh-update-mask {
   position: absolute;
   inset: 0;
-  background: rgba(1, 7, 15, 0.52);
-  -webkit-backdrop-filter: blur(9px) saturate(112%);
-  backdrop-filter: blur(9px) saturate(112%);
+  background: var(--dsw-alias-bg-mask-1, rgba(17, 24, 39, 0.28));
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-panel {
   position: relative;
-  width: min(560px, calc(100vw - 56px));
+  width: min(520px, calc(100vw - 48px));
   max-height: min(680px, calc(100vh - 88px));
-  padding: 28px;
+  padding: 22px 24px 24px;
   overflow: auto;
-  border: 1px solid rgba(164, 220, 242, 0.2);
-  border-radius: 24px;
-  background:
-    linear-gradient(145deg, rgba(22, 42, 58, 0.88), rgba(5, 15, 27, 0.78)),
-    rgba(5, 15, 27, 0.82);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 32px 90px rgba(0, 3, 10, 0.52);
-  -webkit-backdrop-filter: blur(32px) saturate(148%);
-  backdrop-filter: blur(32px) saturate(148%);
+  border: 1px solid var(--dsw-alias-border-l2, #e1e4e8);
+  border-radius: 18px;
+  background: var(--dsw-alias-bg-base, #ffffff);
+  box-shadow: var(--dsw-shadow-lv3, 0 0 1px rgba(0, 0, 0, 0.2), 0 0 4px rgba(0, 0, 0, 0.02), 0 12px 32px rgba(0, 0, 0, 0.08));
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-header {
@@ -46,74 +42,72 @@ export const UPDATE_SURFACE_CSS = `
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-kicker {
-  margin: 0 0 9px;
-  color: #75d8ef;
-  font: 650 10px/1.2 "Cascadia Mono", Consolas, monospace;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  margin: 0 0 4px;
+  color: var(--dsw-alias-label-secondary, #737984);
+  font-size: 12px;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-title {
   margin: 0;
-  color: #f5fbff;
-  font-size: 25px;
-  font-weight: 610;
-  letter-spacing: -0.025em;
+  color: var(--dsw-alias-label-primary, #0f1115);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-close {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   flex: none;
-  border: 1px solid rgba(183, 225, 241, 0.16);
-  border-radius: 11px;
-  color: #b8cfda;
-  background: rgba(255, 255, 255, 0.055);
+  border: 0;
+  border-radius: 28px;
+  color: var(--dsw-alias-label-secondary, #656b75);
+  background: transparent;
   cursor: pointer;
   font-size: 20px;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-status {
-  margin: 22px 0 0;
-  color: #a8becb;
-  font-size: 14px;
-  line-height: 1.7;
+  margin: 18px 0 0;
+  color: var(--dsw-alias-label-secondary, #656b75);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-version {
   display: flex;
-  gap: 10px;
-  margin: 17px 0 0;
-  color: #dcebf2;
-  font: 12px/1.5 "Cascadia Mono", Consolas, monospace;
+  gap: 8px;
+  margin: 14px 0 0;
+  color: var(--dsw-alias-label-secondary, #656b75);
+  font-size: 12px;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-version span {
-  padding: 6px 9px;
-  border: 1px solid rgba(157, 211, 233, 0.13);
-  border-radius: 8px;
-  background: rgba(2, 12, 22, 0.26);
+  padding: 4px 8px;
+  border: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, #f7f8fa);
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-notes {
   max-height: 230px;
-  margin: 18px 0 0;
-  padding: 15px 17px;
+  margin: 14px 0 0;
+  padding: 12px 14px;
   overflow: auto;
-  border: 1px solid rgba(157, 211, 233, 0.12);
-  border-radius: 13px;
-  color: #acc0cc;
-  background: rgba(1, 8, 17, 0.34);
-  font: 12px/1.7 "Cascadia Mono", Consolas, monospace;
+  border: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-secondary, #656b75);
+  background: var(--dsw-alias-bg-layer-2, #f7f8fa);
+  font: 12px/1.65 "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
   white-space: pre-wrap;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-progress {
-  height: 5px;
-  margin-top: 22px;
+  height: 4px;
+  margin-top: 18px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(136, 195, 222, 0.12);
+  background: var(--dsw-alias-interactive-bg-hover, #e8ebf0);
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-progress i {
@@ -121,8 +115,7 @@ export const UPDATE_SURFACE_CSS = `
   width: var(--dsh-update-progress, 0%);
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #2f87c8, #70daf0, #c8f5ff);
-  box-shadow: 0 0 18px rgba(112, 218, 240, 0.52);
+  background: var(--dsw-alias-state-business-primary, #4d78e8);
   transition: width 260ms ease;
 }
 
@@ -130,29 +123,40 @@ export const UPDATE_SURFACE_CSS = `
   display: flex;
   justify-content: flex-end;
   gap: 9px;
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-action {
-  min-height: 39px;
-  padding: 0 16px;
-  border: 1px solid rgba(145, 213, 237, 0.2);
-  border-radius: 11px;
-  color: #d8edf5;
-  background: rgba(255, 255, 255, 0.06);
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2, #d9dce1);
+  border-radius: 14px;
+  color: var(--dsw-alias-label-primary, #3f444c);
+  background: var(--dsw-alias-bg-base, #ffffff);
   cursor: pointer;
-  font: 560 12px "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
+  font: 400 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-action[data-primary="true"] {
-  border-color: rgba(121, 222, 242, 0.64);
-  color: #041017;
-  background: linear-gradient(135deg, #baf2fc, #67d1e9);
-  box-shadow: 0 10px 28px rgba(63, 180, 211, 0.2);
+  min-height: 34px;
+  padding-inline: 14px;
+  border-color: var(--dsw-alias-state-business-primary, #4d78e8);
+  border-radius: 9px;
+  color: var(--dsw-alias-label-primary-foreground, #ffffff);
+  background: var(--dsw-alias-button-info-fill, #4d78e8);
+}
+
+#${UPDATE_SURFACE_ID} .dsh-update-close:hover,
+#${UPDATE_SURFACE_ID} .dsh-update-action:hover:not([data-primary="true"]) {
+  background: var(--dsw-alias-interactive-bg-hover, #f1f2f4);
+}
+
+#${UPDATE_SURFACE_ID} .dsh-update-action[data-primary="true"]:hover {
+  background: var(--dsw-alias-button-info-hover, #416ad3);
 }
 
 #${UPDATE_SURFACE_ID} button:focus-visible {
-  outline: 2px solid #baf2fc;
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4d78e8);
   outline-offset: 2px;
 }
 
@@ -184,7 +188,7 @@ export function createUpdateSurfaceScript() {
     const heading = document.createElement('div');
     const kicker = document.createElement('p');
     kicker.className = 'dsh-update-kicker';
-    kicker.textContent = 'DESKTOP UPDATE';
+    kicker.textContent = '桌面版更新';
     const title = document.createElement('h2');
     title.id = 'dsh-update-title';
     title.className = 'dsh-update-title';
@@ -222,9 +226,9 @@ export function createUpdateSurfaceScript() {
       item.textContent = label;
       return item;
     };
-    const later = button('稍后 / Later', 'later');
-    const recheck = button('重新检查 / Check again', 'check');
-    const install = button('重启并安装 / Restart and install', 'install', true);
+    const later = button('稍后', 'later');
+    const recheck = button('重新检查', 'check');
+    const install = button('重启并安装', 'install', true);
 
     const hide = () => { root.hidden = true; };
     const show = () => { root.hidden = false; close.focus(); };

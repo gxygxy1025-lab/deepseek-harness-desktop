@@ -18,13 +18,20 @@ test('startup branding contains no decorative blue circle', async () => {
 test('whale pose stays inside the right-side swim corridor', () => {
   const width = 1440
   const height = 900
+  const samples = []
   for (let elapsed = 0; elapsed <= 180; elapsed += 0.25) {
     const pose = computeWhalePose(elapsed, width, height, false)
-    assert.ok(pose.centerX >= width * 0.73 && pose.centerX <= width * 0.77)
-    assert.ok(pose.centerY >= height * 0.36 && pose.centerY <= height * 0.48)
-    assert.ok(Math.abs(pose.heading) <= 0.035)
+    samples.push(pose)
+    assert.ok(pose.centerX >= width * 0.715 && pose.centerX <= width * 0.815)
+    assert.ok(pose.centerY >= height * 0.345 && pose.centerY <= height * 0.49)
+    assert.ok(Math.abs(pose.heading) <= 0.05)
     assert.ok(pose.breathe >= 0.985 && pose.breathe <= 1.015)
   }
+  const horizontalTravel = Math.max(...samples.map(({ centerX }) => centerX)) - Math.min(...samples.map(({ centerX }) => centerX))
+  const verticalTravel = Math.max(...samples.map(({ centerY }) => centerY)) - Math.min(...samples.map(({ centerY }) => centerY))
+  assert.ok(horizontalTravel >= width * 0.065)
+  assert.ok(verticalTravel >= height * 0.085)
+  assert.ok(new Set(samples.map(({ finPhase }) => finPhase.toFixed(2))).size > 100)
 })
 
 test('reduced motion returns a stable final pose', () => {

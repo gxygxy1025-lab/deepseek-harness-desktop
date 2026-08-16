@@ -75,24 +75,31 @@ export function computeWhalePose(elapsed, width, height, reducedMotion = false) 
       centerY: height * 0.42,
       heading: 0,
       tailPhase: 0,
+      finPhase: 0,
       breathe: 1,
     }
   }
 
+  const pathPhase = elapsed * 0.115
   return {
-    centerX: width * (0.75 + Math.sin(elapsed * 0.18) * 0.011 + Math.sin(elapsed * 0.071) * 0.004),
-    centerY: height * (0.42 + Math.sin(elapsed * 0.24 + 0.7) * 0.031 + Math.sin(elapsed * 0.09) * 0.009),
-    heading: Math.sin(elapsed * 0.24 + 1.2) * 0.021 + Math.sin(elapsed * 0.11) * 0.006,
-    tailPhase: elapsed * 1.18,
-    breathe: 1 + Math.sin(elapsed * 0.72) * 0.011,
+    centerX: width * (0.765 + Math.sin(pathPhase) * 0.035 + Math.sin(pathPhase * 0.47 + 1.2) * 0.008),
+    centerY: height * (0.415 + Math.sin(pathPhase * 1.3 + 0.6) * 0.052 + Math.sin(elapsed * 0.31) * 0.008),
+    heading: Math.cos(pathPhase) * 0.038 + Math.sin(elapsed * 0.2 + 0.4) * 0.007,
+    tailPhase: elapsed * 1.65,
+    finPhase: elapsed * 1.08,
+    breathe: 1 + Math.sin(elapsed * 0.72) * 0.012,
   }
 }
 
 function projectWhalePoint(x, y, pose, scale, extraY = 0) {
   const localX = (x - MASK_WIDTH / 2) * scale
   const tailWeight = Math.max(0, Math.min(1, (x - 470) / 170))
-  const tailWave = Math.sin(pose.tailPhase + x * 0.018) * 12 * scale * tailWeight
-  const localY = (y - MASK_HEIGHT / 2) * scale * pose.breathe + tailWave + extraY
+  const bodyWave = Math.sin(pose.tailPhase * 0.48 + x * 0.014) * 2.4 * scale * (0.18 + tailWeight * 0.82)
+  const tailWave = Math.sin(pose.tailPhase + x * 0.018) * 17 * scale * tailWeight
+  const finXWeight = Math.max(0, 1 - Math.abs(x - 302) / 88)
+  const finYWeight = Math.max(0, Math.min(1, (y - 258) / 78))
+  const finWave = Math.sin(pose.finPhase) * 10 * scale * finXWeight * finYWeight
+  const localY = (y - MASK_HEIGHT / 2) * scale * pose.breathe + bodyWave + tailWave + finWave + extraY
   const cosine = Math.cos(pose.heading)
   const sine = Math.sin(pose.heading)
   return {
@@ -112,6 +119,12 @@ export function mountParticleWhale(canvas) {
     y: random(),
     size: 0.4 + random() * 1.2,
     speed: 0.08 + random() * 0.18,
+    phase: random() * Math.PI * 2,
+  }))
+  const breathBubbles = Array.from({ length: 11 }, () => ({
+    delay: random(),
+    drift: 0.55 + random() * 0.9,
+    size: 0.55 + random() * 1.35,
     phase: random() * Math.PI * 2,
   }))
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -156,7 +169,6 @@ export function mountParticleWhale(canvas) {
     const scale = whaleWidth / MASK_WIDTH
     const pose = computeWhalePose(elapsed, width, height, reducedMotion)
     const reveal = reducedMotion ? 1 : easeOut(elapsed / 1.7)
-    const revealOrigin = projectWhalePoint(MASK_WIDTH * 0.94, MASK_HEIGHT / 2, pose, scale)
 
     for (let index = 0; index < particles.length; index += 1) {
       const particle = particles[index]
@@ -164,8 +176,11 @@ export function mountParticleWhale(canvas) {
       if (localReveal <= 0) continue
       const wave = reducedMotion ? 0 : Math.sin(elapsed * 0.82 + particle.phase + particle.x * 0.012) * 1.9
       const target = projectWhalePoint(particle.x, particle.y, pose, scale, wave)
-      const x = revealOrigin.x + (target.x - revealOrigin.x) * localReveal
-      const y = pose.centerY + (target.y - pose.centerY) * localReveal
+      const dispersion = (1 - localReveal) ** 2
+      const spiral = (20 + particle.delay * 42) * scale * dispersion
+      const revealAngle = particle.phase + elapsed * 0.54
+      const x = target.x + Math.cos(revealAngle) * spiral + dispersion * 16 * scale
+      const y = target.y + Math.sin(revealAngle) * spiral
       const pulse = reducedMotion ? 1 : 0.82 + Math.sin(elapsed * 1.1 + particle.phase) * 0.18
       const radius = particle.size * scale * pulse
       const tailGlow = Math.max(0, (particle.x - 500) / 220)
@@ -191,6 +206,20 @@ export function mountParticleWhale(canvas) {
     context.arc(eye.x, eye.y, Math.max(1.1, 1.8 * scale), 0, Math.PI * 2)
     context.fill()
     context.shadowBlur = 0
+
+    const bubbleOrigin = projectWhalePoint(166, 118, pose, scale)
+    for (const bubble of breathBubbles) {
+      const bubbleProgress = (elapsed * 0.17 + bubble.delay) % 1
+      const bubbleAlpha = Math.sin(bubbleProgress * Math.PI) * 0.24 * reveal
+      const bubbleX = bubbleOrigin.x + Math.sin(bubble.phase + bubbleProgress * 5) * 8 * bubble.drift * scale - bubbleProgress * 13 * scale
+      const bubbleY = bubbleOrigin.y - bubbleProgress * 92 * scale
+      context.strokeStyle = `rgba(147, 224, 248, ${bubbleAlpha})`
+      context.lineWidth = Math.max(0.45, 0.7 * scale)
+      context.beginPath()
+      context.arc(bubbleX, bubbleY, Math.max(0.6, bubble.size * scale), 0, Math.PI * 2)
+      context.stroke()
+    }
+
     context.globalCompositeOperation = 'source-over'
     if (!reducedMotion) scheduleFrame()
   }
