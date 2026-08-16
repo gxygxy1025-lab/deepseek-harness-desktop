@@ -2,8 +2,19 @@
 
 ## Unreleased
 
+中文：暂无。
+
+English: No changes yet.
+
+## 2.0.0 - 2026-08-16
+
 中文：
 
+- 修复取消当前任务后排队消息滞留，并将已知的对象字符串取消错误替换为明确提示；长思考内容的折叠标题会吸附在滚动区域顶部。
+- 新增对话 Skills 技能库，支持搜索、最近使用、滚轮与键盘导航；为瞬态模型 API 故障增加最多四次的有界退避重试。
+- 新增 Linux SSH 实时监控和经过校验、需要确认的进程终止与 systemd 服务重启操作，保留原有实时终端能力。
+- 新增运行时完整性预检，安装不完整时直接提示修复而不进入崩溃重启循环；统一桌面自有界面与 Harness 原生视觉。
+- 删除启动页蓝色装饰点，增强右侧粒子鲸鱼的游动、呼吸、转向和尾部动作，并适配减少动态效果与后台暂停。
 - 扩展坞新增插件实际版本、三态兼容性和社区更新检查；内置插件随 Desktop 更新，已知不兼容版本会被拦截，未知适配需明确确认。
 - 社区插件升级改为运行中预取、离线精确切换和启动失败自动回滚；启动时只做本地兼容隔离，不访问注册表。
 - 缓存运行包解析并并行检查 profile 链接，同机未变化配置中位耗时从约 54.9 ms 降至 13.2 ms。
@@ -13,6 +24,11 @@
 
 English:
 
+- Restored queued messages after cancellation, replaced the known object-string cancellation error with a clear message, and made the reasoning disclosure control sticky inside the conversation scroll area.
+- Added a searchable Skills library with recent items, wheel and keyboard navigation, plus up to four bounded backoff retries for transient model API failures.
+- Added live Linux SSH monitoring and validated, confirmation-gated process termination and systemd restart actions while preserving the existing real-time terminal.
+- Added packaged-runtime integrity preflight so incomplete installs show repair guidance instead of entering a crash/restart loop, and aligned Desktop-owned surfaces with the native Harness visual system.
+- Removed the decorative startup dot, expanded the right-side particle whale's swimming, breathing, heading, and tail motion, and added reduced-motion and hidden-document behavior.
 - Added actual plugin versions, three-state compatibility, and community update checks to Extension Dock; built-ins follow Desktop releases, known-incompatible candidates are blocked, and unknown compatibility requires confirmation.
 - Changed community upgrades to online prefetch, exact offline switching, and automatic rollback after a failed start; launch performs only local compatibility quarantine and no registry access.
 - Cached runtime package resolution and parallelized profile-link checks, reducing median unchanged-profile preparation on the reference machine from about 54.9 ms to 13.2 ms.
