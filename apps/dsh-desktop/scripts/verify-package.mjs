@@ -9,6 +9,7 @@ import {
   WEB_UI_SETTINGS_NAMESPACES,
   packagePathSegments,
 } from '../src/profile.mjs'
+import { CRITICAL_RUNTIME_FILES } from '../src/runtime-integrity.mjs'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const argumentsList = process.argv.slice(2)
@@ -35,6 +36,9 @@ for (const packageName of requiredPackages) {
 
 await access(join(unpackedModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
 await access(join(unpackedModules, 'pnpm', 'bin', 'pnpm.mjs'))
+for (const relativePath of CRITICAL_RUNTIME_FILES) {
+  await access(join(unpackedModules, ...relativePath.split('/')))
+}
 for (const packageName of BUILTIN_SKIN_PACKAGES) {
   const skinId = packageName.slice(packageName.lastIndexOf('-skin-') + '-skin-'.length)
   const packageRoot = join(unpackedModules, '@linxin666', 'dsh-skins', 'skins', skinId)

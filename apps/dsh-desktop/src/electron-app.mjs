@@ -28,6 +28,7 @@ import { installNavigationPolicy } from './navigation-policy.mjs'
 import { ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
+import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
 import { installUpdateSurface } from './update-surface.mjs'
 import { installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
@@ -99,6 +100,7 @@ export async function startElectronApp(metadata) {
   const dshHome = runtimeHome()
   const profileStartedAt = performance.now()
   const runtimePackages = resolveRuntimePackages()
+  const runtimeCriticalFiles = resolveRuntimeCriticalFiles()
   let qqBotCredentials
   const ensureProfile = async () => {
     const result = await ensureDesktopProfile({ dshHome, packageRoots: runtimePackages })
@@ -158,6 +160,7 @@ export async function startElectronApp(metadata) {
     startupTimeoutMs: DEFAULT_STARTUP_TIMEOUT_MS,
     pathEntries: [runtimeBin],
     environmentProvider: qqBotEnvironment,
+    preflight: () => assertRuntimeIntegrity({ resolvedFiles: runtimeCriticalFiles }),
   })
   const qqBotBinding = new QqBotBindingService({
     initialCredentials: qqBotCredentials,

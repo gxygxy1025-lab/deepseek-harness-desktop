@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
-  "version": "0.1.9",
+  "version": "2.0.0",
   "private": true,
   "description": "Lossless desktop shell for DeepSeek Harness and the complete dsh-web-ui plugin collection",
   "author": "DeepSeek Harness Desktop contributors",
@@ -50,6 +50,7 @@
     "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
     "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
     "@deepseek-ai/dsh-workflow": "0.1.0-rc.6",
+    "@linxin666/dsh-desktop-compat": "workspace:*",
     "@linxin666/dsh-web-ui-all": "workspace:*",
     "@tencent-connect/dsh-qqbot": "0.3.0",
     "@tencent-connect/qqbot-connector": "1.2.0",

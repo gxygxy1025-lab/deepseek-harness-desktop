@@ -49,7 +49,7 @@ html[data-dsh-desktop-window-chrome="true"] body {
   padding: 0 140px 0 10px;
   overflow: visible;
   border-bottom: 1px solid var(--dsh-desktop-chrome-border, rgba(174, 232, 245, 0.12));
-  background-color: var(--dsh-desktop-chrome-bg, rgba(8, 18, 24, 0.7));
+  background-color: var(--dsh-desktop-chrome-bg, #071117);
   background-image: linear-gradient(180deg, var(--dsh-desktop-chrome-highlight, rgba(255, 255, 255, 0.08)), transparent 58%);
   box-shadow: var(--dsh-desktop-chrome-shadow, inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12));
   -webkit-backdrop-filter: blur(26px) saturate(145%);
@@ -60,7 +60,7 @@ html[data-dsh-desktop-window-chrome="true"] body {
 
 html[data-dsh-desktop-chrome-theme="dark"] {
   --dsh-desktop-chrome-border: rgba(174, 232, 245, 0.12);
-  --dsh-desktop-chrome-bg: rgba(8, 18, 24, 0.7);
+  --dsh-desktop-chrome-bg: #071117;
   --dsh-desktop-chrome-highlight: rgba(255, 255, 255, 0.08);
   --dsh-desktop-chrome-sheen: rgba(148, 226, 245, 0.055);
   --dsh-desktop-chrome-shadow: inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12);
@@ -68,7 +68,7 @@ html[data-dsh-desktop-chrome-theme="dark"] {
 
 html[data-dsh-desktop-chrome-theme="light"] {
   --dsh-desktop-chrome-border: rgba(71, 85, 105, 0.13);
-  --dsh-desktop-chrome-bg: rgba(246, 248, 252, 0.72);
+  --dsh-desktop-chrome-bg: #eef2f8;
   --dsh-desktop-chrome-highlight: rgba(255, 255, 255, 0.58);
   --dsh-desktop-chrome-sheen: rgba(255, 255, 255, 0.3);
   --dsh-desktop-chrome-shadow: inset 0 1px rgba(255, 255, 255, 0.82), 0 1px 6px rgba(15, 23, 42, 0.08);
@@ -206,12 +206,14 @@ export function createWindowChromeScript({ iconDataUrl = '', showHelpMenu = fals
     document.getElementById(data.id)?.remove();
     const chrome = document.createElement('div');
     chrome.id = data.id;
-    const icon = document.createElement('img');
-    icon.className = 'dsh-window-chrome-icon';
-    icon.alt = '';
-    icon.draggable = false;
-    if (data.iconDataUrl) icon.src = data.iconDataUrl;
-    chrome.append(icon);
+    if (data.iconDataUrl && !document.querySelector('.launch-screen')) {
+      const icon = document.createElement('img');
+      icon.className = 'dsh-window-chrome-icon';
+      icon.alt = '';
+      icon.draggable = false;
+      icon.src = data.iconDataUrl;
+      chrome.append(icon);
+    }
     if (data.showHelpMenu && typeof window.dshDesktop?.helpAction === 'function') {
       const help = document.createElement('div');
       help.className = 'dsh-window-chrome-help';

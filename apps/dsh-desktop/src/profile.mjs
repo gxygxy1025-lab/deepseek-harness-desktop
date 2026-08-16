@@ -20,6 +20,7 @@ import { mergeQqBotPatch, readQqBotPatchEnabled } from './extensions/qqbot.mjs'
 export const BUILTIN_BUNDLES = Object.freeze([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-web-app',
+  '@linxin666/dsh-desktop-compat',
   '@linxin666/dsh-web-ui-all',
   '@tencent-connect/dsh-qqbot',
   'dshmarket',
@@ -91,6 +92,7 @@ export const WEB_UI_SETTINGS_NAMESPACES = Object.freeze([
 ].toSorted())
 
 export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
+  '@linxin666/dsh-desktop-compat',
   '@linxin666/dsh-client-ui-aionui-panel',
   '@linxin666/dsh-client-ui-git-graph',
   '@linxin666/dsh-client-ui-mode-switcher',

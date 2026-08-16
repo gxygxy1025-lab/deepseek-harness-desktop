@@ -68,6 +68,39 @@ function easeOut(value) {
   return 1 - (1 - bounded) ** 3
 }
 
+export function computeWhalePose(elapsed, width, height, reducedMotion = false) {
+  if (reducedMotion) {
+    return {
+      centerX: width * 0.75,
+      centerY: height * 0.42,
+      heading: 0,
+      tailPhase: 0,
+      breathe: 1,
+    }
+  }
+
+  return {
+    centerX: width * (0.75 + Math.sin(elapsed * 0.18) * 0.011 + Math.sin(elapsed * 0.071) * 0.004),
+    centerY: height * (0.42 + Math.sin(elapsed * 0.24 + 0.7) * 0.031 + Math.sin(elapsed * 0.09) * 0.009),
+    heading: Math.sin(elapsed * 0.24 + 1.2) * 0.021 + Math.sin(elapsed * 0.11) * 0.006,
+    tailPhase: elapsed * 1.18,
+    breathe: 1 + Math.sin(elapsed * 0.72) * 0.011,
+  }
+}
+
+function projectWhalePoint(x, y, pose, scale, extraY = 0) {
+  const localX = (x - MASK_WIDTH / 2) * scale
+  const tailWeight = Math.max(0, Math.min(1, (x - 470) / 170))
+  const tailWave = Math.sin(pose.tailPhase + x * 0.018) * 12 * scale * tailWeight
+  const localY = (y - MASK_HEIGHT / 2) * scale * pose.breathe + tailWave + extraY
+  const cosine = Math.cos(pose.heading)
+  const sine = Math.sin(pose.heading)
+  return {
+    x: pose.centerX + localX * cosine - localY * sine,
+    y: pose.centerY + localX * sine + localY * cosine,
+  }
+}
+
 export function mountParticleWhale(canvas) {
   if (!(canvas instanceof HTMLCanvasElement)) return () => {}
   const context = canvas.getContext('2d')
@@ -88,6 +121,11 @@ export function mountParticleWhale(canvas) {
   let stopped = false
   const startedAt = performance.now()
 
+  const scheduleFrame = () => {
+    if (stopped || document.hidden || frame !== undefined) return
+    frame = window.requestAnimationFrame(draw)
+  }
+
   const resize = () => {
     const ratio = Math.min(2, window.devicePixelRatio || 1)
     width = canvas.clientWidth
@@ -95,9 +133,11 @@ export function mountParticleWhale(canvas) {
     canvas.width = Math.max(1, Math.round(width * ratio))
     canvas.height = Math.max(1, Math.round(height * ratio))
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
+    if (reducedMotion) scheduleFrame()
   }
 
   const draw = (now) => {
+    frame = undefined
     if (stopped) return
     const elapsed = (now - startedAt) / 1000
     context.clearRect(0, 0, width, height)
@@ -112,23 +152,20 @@ export function mountParticleWhale(canvas) {
       context.fill()
     }
 
-    const whaleWidth = Math.min(width * 0.61, 820)
+    const whaleWidth = Math.min(width * 0.47, 720)
     const scale = whaleWidth / MASK_WIDTH
-    const centerX = width < 920 ? width * 0.61 : width * 0.72
-    const centerY = height * 0.43
+    const pose = computeWhalePose(elapsed, width, height, reducedMotion)
     const reveal = reducedMotion ? 1 : easeOut(elapsed / 1.7)
-    const float = reducedMotion ? 0 : Math.sin(elapsed * 0.48) * 5
+    const revealOrigin = projectWhalePoint(MASK_WIDTH * 0.94, MASK_HEIGHT / 2, pose, scale)
 
     for (let index = 0; index < particles.length; index += 1) {
       const particle = particles[index]
       const localReveal = easeOut((reveal - particle.delay * 0.25) / 0.82)
       if (localReveal <= 0) continue
       const wave = reducedMotion ? 0 : Math.sin(elapsed * 0.82 + particle.phase + particle.x * 0.012) * 1.9
-      const targetX = centerX + (particle.x - MASK_WIDTH / 2) * scale
-      const targetY = centerY + (particle.y - MASK_HEIGHT / 2) * scale + float + wave
-      const originX = centerX + whaleWidth * 0.44
-      const x = originX + (targetX - originX) * localReveal
-      const y = centerY + (targetY - centerY) * localReveal
+      const target = projectWhalePoint(particle.x, particle.y, pose, scale, wave)
+      const x = revealOrigin.x + (target.x - revealOrigin.x) * localReveal
+      const y = pose.centerY + (target.y - pose.centerY) * localReveal
       const pulse = reducedMotion ? 1 : 0.82 + Math.sin(elapsed * 1.1 + particle.phase) * 0.18
       const radius = particle.size * scale * pulse
       const tailGlow = Math.max(0, (particle.x - 500) / 220)
@@ -146,25 +183,35 @@ export function mountParticleWhale(canvas) {
         context.stroke()
       }
     }
-    const eyeX = centerX + (137 - MASK_WIDTH / 2) * scale
-    const eyeY = centerY + (180 - MASK_HEIGHT / 2) * scale + float
+    const eye = projectWhalePoint(137, 180, pose, scale)
     context.shadowColor = 'rgba(188, 244, 255, 0.9)'
     context.shadowBlur = 14
     context.fillStyle = `rgba(220, 251, 255, ${0.76 * reveal})`
     context.beginPath()
-    context.arc(eyeX, eyeY, Math.max(1.1, 1.8 * scale), 0, Math.PI * 2)
+    context.arc(eye.x, eye.y, Math.max(1.1, 1.8 * scale), 0, Math.PI * 2)
     context.fill()
     context.shadowBlur = 0
     context.globalCompositeOperation = 'source-over'
-    if (!reducedMotion) frame = window.requestAnimationFrame(draw)
+    if (!reducedMotion) scheduleFrame()
+  }
+
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      if (frame !== undefined) window.cancelAnimationFrame(frame)
+      frame = undefined
+      return
+    }
+    scheduleFrame()
   }
 
   resize()
   window.addEventListener('resize', resize)
-  frame = window.requestAnimationFrame(draw)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  scheduleFrame()
   return () => {
     stopped = true
-    window.cancelAnimationFrame(frame)
+    if (frame !== undefined) window.cancelAnimationFrame(frame)
     window.removeEventListener('resize', resize)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
   }
 }

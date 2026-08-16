@@ -101,6 +101,11 @@ test('desktop profile includes the official QQ Bot bundle', () => {
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@tencent-connect/dsh-qqbot'), true)
 })
 
+test('desktop profile mounts the queue recovery compatibility bundle', () => {
+  assert.equal(BUILTIN_BUNDLES.includes('@linxin666/dsh-desktop-compat'), true)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-desktop-compat'), true)
+})
+
 test('desktop patch refresh removes the legacy profile skin section and preserves community rows', () => {
   const skinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- id: ui-skin-qq98\n# --- end dsh-skin managed ---'
   const communityRow = "- id: community\n  name: '@community/plugin'"

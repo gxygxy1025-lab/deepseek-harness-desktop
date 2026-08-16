@@ -1,0 +1,5 @@
+# Desktop-only host compatibility layer. It uses public DSH event and tool
+# hooks and can be removed when the upstream cancellation contract is fixed.
+- insert:
+    - id: desktop-compat
+      name: '@linxin666/dsh-desktop-compat'

@@ -146,3 +146,32 @@ test('controller rejects startup when the child exits before readiness', async (
   await assert.rejects(ready, /before readiness/)
   assert.equal(controller.status.state, 'crashed')
 })
+
+test('controller fails preflight without spawning or scheduling an automatic restart', async () => {
+  let spawnCalls = 0
+  let scheduleCalls = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    autoRestart: true,
+    preflight: () => {
+      const error = new Error('安装不完整，请重新安装 Desktop')
+      error.code = 'DSH_DESKTOP_INSTALLATION_INCOMPLETE'
+      throw error
+    },
+    spawnProcess: () => {
+      spawnCalls += 1
+      throw new Error('unexpected spawn')
+    },
+    schedule: () => {
+      scheduleCalls += 1
+      return 1
+    },
+  })
+
+  await assert.rejects(controller.start(), /重新安装 Desktop/u)
+  assert.equal(controller.status.state, 'crashed')
+  assert.equal(spawnCalls, 0)
+  assert.equal(scheduleCalls, 0)
+})

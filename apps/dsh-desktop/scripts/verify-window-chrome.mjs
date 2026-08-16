@@ -34,6 +34,7 @@ try {
   } catch (error) {
     const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8').catch(() => '')
     console.error(`runtime did not become ready; recent log:\n${runtimeLog.slice(-4_000) || '(no runtime log)'}`)
+    console.error(`startup surface:\n${(await page.locator('body').innerText().catch(() => '')).slice(-2_000) || '(unavailable)'}`)
     throw error
   }
   try {
@@ -100,12 +101,13 @@ try {
     document.body.style.backgroundColor = 'rgb(250, 250, 250)'
   })
   await page.waitForFunction(() => document.documentElement.dataset.dshDesktopChromeTheme === 'light')
-  assert.equal(await page.locator('#dsh-desktop-window-chrome').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgba(246, 248, 252, 0.72)')
+  assert.equal(await page.locator('#dsh-desktop-window-chrome').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(238, 242, 248)')
   await page.evaluate(() => {
     document.body.style.removeProperty('background-color')
     document.body.setAttribute('data-ds-dark-theme', '')
   })
   await page.waitForFunction(() => document.documentElement.dataset.dshDesktopChromeTheme === 'dark')
+  assert.equal(await page.locator('#dsh-desktop-window-chrome').evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(7, 17, 23)')
   const assertDialogUsesSafeViewport = async (dialog) => {
     await dialog.waitFor({ state: 'visible' })
     const state = await dialog.evaluate((element) => ({

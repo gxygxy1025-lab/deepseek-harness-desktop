@@ -1,4 +1,5 @@
 const pluginList = document.querySelector('#plugin-list')
+const communityPluginList = document.querySelector('#community-plugin-list')
 const skillList = document.querySelector('#skill-list')
 const pluginCount = document.querySelector('#plugin-count')
 const skillCount = document.querySelector('#skill-count')
@@ -90,6 +91,11 @@ function skillMarkup(skill) {
   return `<article class="item"><div><div class="name-row"><span class="name">${escapeHtml(skill.name)}</span>${shadow}</div><p class="description">${escapeHtml(skill.description)}</p></div><button type="button" class="item-action" data-open-skill="${escapeHtml(skill.id)}">${escapeHtml(skill.source)}</button></article>`
 }
 
+function communityPluginMarkup(plugin) {
+  const state = plugin.enabled ? '已启用' : '未启用'
+  return `<article class="community-plugin-card"><div><div class="name-row"><span class="name">${escapeHtml(plugin.name)}</span><span class="badge">社区</span><span class="badge inactive">${state}</span></div><p class="description">${escapeHtml(plugin.description)}</p><p class="community-author">作者：${escapeHtml(plugin.author)} · 第三方插件与素材由作者仓库说明负责</p></div><button type="button" class="item-action community-open" data-open-community-plugin="${escapeHtml(plugin.id)}">查看作者仓库</button></article>`
+}
+
 function renderQqBot(status, eventType) {
   const bound = Boolean(status?.bound)
   const binding = Boolean(status?.binding)
@@ -117,6 +123,9 @@ async function refresh() {
     pluginCount.textContent = inventory.plugins.length
     skillCount.textContent = inventory.skills.length
     renderQqBot(inventory.qqbot)
+    communityPluginList.innerHTML = inventory.communityPlugins?.length
+      ? inventory.communityPlugins.map(communityPluginMarkup).join('')
+      : '<p class="empty">暂无社区推荐</p>'
     renderPlugins(inventory.plugins)
     skillList.innerHTML = inventory.skills.length ? inventory.skills.map(skillMarkup).join('') : '<p class="empty">尚未发现技能</p>'
   } catch (error) {
@@ -248,6 +257,19 @@ pluginList.addEventListener('click', async (event) => {
     await refresh()
   } catch (error) {
     notify(error.message, true)
+    button.disabled = false
+  }
+})
+
+communityPluginList.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-open-community-plugin]')
+  if (!button) return
+  button.disabled = true
+  try {
+    await window.dshDesktop.openCommunityPlugin(button.dataset.openCommunityPlugin)
+  } catch (error) {
+    notify(error.message, true)
+  } finally {
     button.disabled = false
   }
 })
