@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -20,7 +20,8 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(include, /cleanup-stale-processes\.ps1/u)
   assert.match(cleanup, /DeepSeek Harness Desktop\.exe/u)
   assert.match(cleanup, /StartsWith\(\$resourcePrefix, \$comparison\)/u)
-  assert.match(cleanup, /Get-Process -ErrorAction Stop/u)
+  assert.match(cleanup, /Get-ChildItem -LiteralPath \$resourceRoot -Recurse -File -Filter '\*\.exe'/u)
+  assert.match(cleanup, /Get-Process -Name \$candidateNames -ErrorAction SilentlyContinue/u)
   assert.match(cleanup, /\$process\.Path/u)
   assert.match(cleanup, /Sort-Object[\s\S]*Descending/u)
   assert.match(cleanup, /for \(\$attempt = 0; \$attempt -lt \$maxAttempts/u)
@@ -31,21 +32,27 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.doesNotMatch(cleanup, /taskkill|\/IM\s|ProcessName/u)
 })
 
-test('Windows installer preflight terminates an exact-path owned process', {
+test('Windows installer preflight terminates exact-path app and resource processes', {
   skip: process.platform !== 'win32',
   timeout: 15_000,
 }, async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-cleanup-'))
   const executable = join(temporary, 'DeepSeek Harness Desktop.exe')
-  let ownedProcess
+  const resourceExecutable = join(temporary, 'resources', 'bin', 'dsh-runtime-helper.exe')
+  const ownedProcesses = []
   try {
+    await mkdir(join(temporary, 'resources', 'bin'), { recursive: true })
     await copyFile(process.execPath, executable)
-    ownedProcess = spawn(executable, ['-e', 'setInterval(() => {}, 1000)'], {
-      windowsHide: true,
-      stdio: 'ignore',
-    })
-    await once(ownedProcess, 'spawn')
-    const ownedExit = once(ownedProcess, 'exit')
+    await copyFile(process.execPath, resourceExecutable)
+    for (const target of [executable, resourceExecutable]) {
+      const process = spawn(target, ['-e', 'setInterval(() => {}, 1000)'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      })
+      ownedProcesses.push(process)
+      await once(process, 'spawn')
+    }
+    const ownedExits = ownedProcesses.map((process) => once(process, 'exit'))
     await execFileAsync(
       'powershell.exe',
       [
@@ -61,10 +68,13 @@ test('Windows installer preflight terminates an exact-path owned process', {
       ],
       { timeout: 10_000, windowsHide: true },
     )
-    const [ownedExitCode] = await ownedExit
-    assert.notEqual(ownedExitCode, 0)
+    for (const [ownedExitCode] of await Promise.all(ownedExits)) {
+      assert.notEqual(ownedExitCode, 0)
+    }
   } finally {
-    if (ownedProcess?.exitCode === null) ownedProcess.kill('SIGKILL')
+    for (const process of ownedProcesses) {
+      if (process.exitCode === null) process.kill('SIGKILL')
+    }
     await rm(temporary, { recursive: true, force: true })
   }
 })

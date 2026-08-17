@@ -22,8 +22,15 @@ try {
 
   $resourcePrefix = "$resourceRoot\"
   $comparison = [System.StringComparison]::OrdinalIgnoreCase
+  $candidateNames = @([System.IO.Path]::GetFileNameWithoutExtension($mainExecutable))
+  if (Test-Path -LiteralPath $resourceRoot -PathType Container) {
+    $candidateNames += @(Get-ChildItem -LiteralPath $resourceRoot -Recurse -File -Filter '*.exe' -ErrorAction SilentlyContinue | ForEach-Object {
+      [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+    })
+  }
+  $candidateNames = @($candidateNames | Sort-Object -Unique)
   function Get-OwnedProcesses {
-    @(foreach ($process in Get-Process -ErrorAction Stop) {
+    @(foreach ($process in Get-Process -Name $candidateNames -ErrorAction SilentlyContinue) {
       try {
         $path = $process.Path
       } catch {
