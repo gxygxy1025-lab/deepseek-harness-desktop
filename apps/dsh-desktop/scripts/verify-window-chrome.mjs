@@ -201,17 +201,18 @@ try {
     assert.match(String(state.layerClass), /dsh-desktop-modal-layer/u)
     assert.ok(Number(state.layerTop) >= 31, `modal layer starts under the title bar: ${state.layerTop}`)
   }
-  const introDialog = page.locator('[role="dialog"]').filter({ hasText: '内测声明' })
+  const introContinueButton = page.getByRole('button', { name: /继续|Continue/iu })
+  const introDialog = page.getByRole('dialog').filter({ has: introContinueButton })
   // The upstream UI may skip this one-time disclosure when the profile or
   // release channel has already recorded acceptance. Validate its chrome
   // boundary when present, but do not make an unrelated menu E2E depend on it.
   if (await introDialog.isVisible()) {
     await assertDialogUsesSafeViewport(introDialog)
-    await page.getByRole('button', { name: '继续', exact: true }).click()
+    await introDialog.getByRole('button', { name: /继续|Continue/iu }).click()
     await introDialog.waitFor({ state: 'hidden' })
   }
-  await page.locator('button').filter({ hasText: /^设置$/u }).first().evaluate((button) => button.click())
-  const settingsDialog = page.locator('[role="dialog"]').filter({ hasText: '插件市场' })
+  await page.getByRole('button', { name: /设置|Settings/iu }).first().evaluate((button) => button.click())
+  const settingsDialog = page.locator('[role="dialog"]:visible').last()
   await assertDialogUsesSafeViewport(settingsDialog)
   const nativeWindowState = await electronApp.evaluate(({ app, BrowserWindow, Menu, nativeImage }) => {
     const window = BrowserWindow.getAllWindows()[0]
