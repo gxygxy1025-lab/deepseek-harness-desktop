@@ -10,6 +10,20 @@ import { promisify } from 'node:util'
 const desktopRoot = join(import.meta.dirname, '..')
 const execFileAsync = promisify(execFile)
 
+async function settleWithin(promise, timeoutMs, message) {
+  let timer
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 test('NSIS preflight cleans only stale processes owned by the previous install', async () => {
   const config = await readFile(join(desktopRoot, 'electron-builder.yml'), 'utf8')
   const include = await readFile(join(desktopRoot, 'build', 'installer.nsh'), 'utf8')
@@ -68,15 +82,27 @@ test('Windows installer preflight terminates exact-path app and resource process
         '-InstallDirectory',
         temporary,
       ],
-      { timeout: 10_000, windowsHide: true },
+      { timeout: 5_000, windowsHide: true },
     )
-    for (const [ownedExitCode] of await Promise.all(ownedProcesses.map(({ exit }) => exit))) {
+    const ownedExits = await settleWithin(
+      Promise.all(ownedProcesses.map(({ exit }) => exit)),
+      3_000,
+      'installer cleanup returned without terminating every owned process',
+    )
+    for (const [ownedExitCode] of ownedExits) {
       assert.notEqual(ownedExitCode, 0)
     }
   } finally {
     for (const { child } of ownedProcesses) {
       if (child.exitCode === null) child.kill('SIGKILL')
     }
+    try {
+      await settleWithin(
+        Promise.allSettled(ownedProcesses.map(({ exit }) => exit)),
+        2_000,
+        'owned process teardown did not settle',
+      )
+    } catch {}
     await rm(temporary, { recursive: true, force: true })
   }
 })
