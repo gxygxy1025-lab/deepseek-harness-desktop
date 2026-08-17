@@ -1,93 +1,59 @@
-# DeepSeek Harness Desktop 2.0.0
+# DeepSeek Harness Desktop 2.1.0
 
 ## 中文
 
 ### 本次亮点
 
-- 修复长任务期间发送的消息在停止当前任务后滞留队列的问题。桌面兼容层保持默认先进先出排队，不会打断正在执行的对话；当前任务收束后会自动继续发送下一条消息。
-- 修复用户停止代码执行时显示 `code run failed (abort): [object Object]` 的问题，已知的取消结果现在显示为“当前执行已停止，排队消息将继续发送。”，其他真实工具错误保持原样。
-- 对话输入区新增 Skills 技能库按钮，支持搜索、最近使用、滚轮、键盘导航与主题适配；选择技能后会在当前光标处插入自然语言技能调用。
-- 增强模型 API 的瞬态故障恢复。DeepSeek 与已配置的兼容提供方可对限流、超时、服务器错误、传输中断和流提前关闭进行最多四次退避重试，同时保留用户自定义策略，且不会重放 SSH 或插件操作。
-- 长思考内容展开后，原有折叠标题会吸附在对话滚动区域顶部，无需滚回内容开头即可关闭。
-- 新增桌面运行时完整性预检。若升级中断、安全软件隔离或磁盘异常造成关键文件缺失，应用会直接说明安装不完整并提示重新安装，不再反复启动、崩溃和重试导致卡顿。
-- 修复桌面版对话气泡、整段回复与代码块复制按钮点击无效的问题。应用只对当前本地 DSH 页面开放安全的剪贴板写入权限，剪贴板读取及其他敏感权限仍保持关闭。
-- 自动更新调整为发现新版后直接在后台下载，不再用下载前系统弹窗打断对话。下载完成后会显示新的蓝黑毛玻璃更新面板，由用户选择立即重启安装或稍后处理。
-- 侧边栏“检查更新”在桌面环境中改为检查 DeepSeek Harness Desktop，不再误触发 Web UI 插件自更新；普通浏览器部署仍保留原插件更新能力。
-- 启动页改为简洁的“探索未至之境”界面，只保留当前状态和单条进度条。顶部小蓝图标与原有大圆球、轨道和阶段列表已移除，替换为完全本地绘制的原创蓝黑粒子鲸鱼。
-- 粒子鲸鱼会在启动页右侧缓慢游动，带有轻微转向、呼吸和尾部摆动，不遮挡标题与进度区域。页面隐藏时停止绘制，系统开启“减少动态效果”时显示静态版本。
-- 顶部拖动区改为与 Windows 原生最小化、最大化和关闭区域相同的实色基底，消除两侧颜色深浅不一致的问题。
-- 更新面板统一展示当前版本、目标版本、发行说明、下载进度、错误重试与重启安装状态，并继续在安装前安全停止内置 DSH 运行时。
-- 修复 Windows 升级时偶发的“应用仍在运行”或文件占用提示。桌面端退出时会结束完整 DSH 进程树；安装器还会在覆盖旧版本前，仅清理旧安装目录主程序和 `resources` 内的残留进程。
-- 扩展坞现在展示每个插件的实际版本与适配状态，只在打开扩展坞时检查社区插件更新。兼容版本可一键升级，已知不兼容版本会说明原因并拦截，未声明适配的版本需用户明确确认。
-- 扩展坞新增群友作品 `dsh-taffy-pet`，标注作者 `zq123123667` 并默认保持未启用。桌面安装包只提供固定作者仓库入口，不复制第三方代码或角色素材。
-- 内置 SSH 工作区新增 Linux 实时监控页，每三秒刷新 CPU、内存、磁盘、负载、运行时间、进程和失败服务；经过校验与确认后可终止指定进程或重启指定 systemd 服务。
-- 社区插件升级会先在后台预取包，再短暂停止 DSH 完成离线精确版本切换；安装校验或重启失败时自动恢复旧清单、锁文件和运行时。内置插件继续只随经过验证的 Desktop 版本更新。
-- SSH、扩展坞、社区窗口、更新面板和窗口框架完成第二轮 Harness 原生视觉统一，收敛字体、边框、圆角、间距、焦点状态及浅色/深色主题表现。
-- 桌面 profile 复用运行包解析结果并并行检查独立链接；同机基准中，未变化配置的中位耗时由约 54.9 ms 降至 13.2 ms，新配置由约 64.9 ms 降至 22.3 ms。
+- 自动更新加入国内下载加速。桌面版会对 `gh-proxy.com`、`ghproxy.net`、`ghfast.top` 与 GitHub 官方通道并发读取少量安装包字节，按用户当时的网络表现自动排序；任一镜像下载失败会静默切换到下一通道。版本发现和 `latest.yml` 仍来自 GitHub，安装包仍按官方元数据中的 SHA-512 校验，镜像只负责传输文件。
+- 新增插件三层容灾。安装、更新或启用插件前保存 profile 清单、锁文件和启用状态；启动失败时识别缺少依赖、功能冲突、版本不兼容或 loader 故障，自动隔离故障插件并只重试一次；连续失败后进入只加载内置插件的安全模式。按住 Shift 启动也可以强制进入安全模式。
+- 启动失败页和扩展坞加入独立恢复入口。用户可以一键停用故障插件并重启、重新启用、卸载、恢复最近三份可用配置或导出诊断包。恢复页面由 Electron 直接显示，不依赖已经失败的 DSH 插件系统；聊天记录、模型设置和账号信息不会被修改。
+- 统一皮肤中心、插件市场与桌面宿主的持久化口径。修复只写入 `dependencies` 的市场主题在内存激活后被拒绝、旧 `disabledSkins` 无法迁移而复活、Windows 文件瞬时锁被误判为写入失败，以及共享 section 重写导致接线信息丢失等问题。
+- 插件市场的安装、更新与卸载统一交给桌面 PluginManager，避免绕过事务直接修改 profile。扩展操作现在全程串行，变更失败时恢复旧清单、锁文件与运行时；顶部“工具”菜单新增“扩展坞”，用户无需再寻找隐藏入口。
+- 修复 Windows 更新安装时旧进程未完全退出、安装器无法删除旧文件的问题。桌面版会先停止完整运行时进程树，安装器只清理旧安装目录实际拥有的残留进程；安装启动超时会恢复原运行时，不再留下无法使用的空壳窗口。
+- 所有后台 PowerShell 和子进程默认隐藏窗口，避免命令框突然出现并抢走焦点。运行时停止、重启、日志、窗口状态、下载目标、导航、QQ Bot 与可选集成加载都增加了失败隔离，单个诊断或观察器错误不再改变主流程结果。
+- 修复中文路径或非系统盘工作区启动失败后反复重启的问题。相同崩溃只自动重试一次，清理完成前不会启动替代进程；稳定运行会重置熔断状态，无法恢复时会展示可操作的安全模式和修复入口。
+- 补齐 `dsh-catppuccin` 缺少的 `schemastery` 运行依赖并刷新内置插件组合。共享 tsdown 与 Vitest 配置迁移到受支持接口，新增打包运行时依赖、原生模块、source map、市场与皮肤组合回归，降低严格 pnpm 安装下的漏包风险。
 
 ### 验证
 
-- 桌面测试覆盖后台自动下载、进度状态、下载完成后的显式安装、手动检查及更新错误。
-- IPC 测试验证更新状态只向渲染层暴露版本、说明、进度和错误等安全字段。
-- 剪贴板权限测试覆盖本地运行时源校验、端口隔离以及其他权限的默认拒绝行为。
-- 启动页使用 1440×900 桌面窗口完成视觉回归，验证粒子鲸鱼、毛玻璃进度条和紧凑布局。
-- 安装器测试验证清理逻辑按旧安装路径限定范围，不会按通用进程名结束其他软件；运行时测试验证 Windows 使用 `taskkill /T /F` 回收完整子进程树。
-- 插件回归覆盖三态 semver 适配、固定 npm 源、四路并发限制、精确离线安装、启动隔离和失败回滚；可复现 profile 基准不访问网络。
-- 队列回归覆盖多条消息的先进先出顺序、重复空闲事件合并、唤醒失败回滚和取消提示归一化；完整桌面 Profile 已完成真实启动验证。
-- 运行时完整性回归验证关键 OpenTelemetry 文件由启动预检和打包校验共享同一份清单，缺失时不会创建子进程或进入自动重启循环。
-- Skills 回归覆盖列表去重、搜索、插入、键盘操作与真实 Electron 菜单几何；API 回归覆盖有界错误码、退避配置和用户策略保留。
-- SSH 回归覆盖监控解析、轮询生命周期、PID 与 systemd 操作白名单，以及终端原有实时交互不受影响。
+- Desktop Node 测试共 217 项通过，覆盖插件快照、故障分类、安全模式、依赖层旧插件隔离、更新镜像测速与故障切换、安装器恢复、Windows 隐藏子进程、皮肤市场迁移和桌面生命周期。
+- 根级脚本测试共 105 项通过；28 个工作区的类型检查、全部包测试、运行时依赖检查、共享生成文件、双语发行说明、官网回退、聚合包、图库、皮肤中心、社区索引与文档门禁全部通过。
+- Windows x64 本地 NSIS 打包、57 个运行时包载荷验证和真实打包启动 smoke 均通过；确认更新镜像路由进入 `app.asar`，打包后的 DSH profile 能启动并加载渲染器。
+- 正式安装包仍由 GitHub Actions 的 Windows Runner 使用 Node 24 从发布标签重新构建，并在 Release 中同时生成安装包、blockmap、`latest.yml` 与 `SHA256SUMS.txt`。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-2.0.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用发现新版后会自动后台下载，但只有用户点击“重启并安装”后才会退出并安装。
+下载 `DeepSeek-Harness-Desktop-Setup-2.1.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。应用会在后台自动选择可用下载源，下载完成后仍由用户决定何时“重启并安装”。如需强制只使用 GitHub，可设置 `DSH_DESKTOP_UPDATE_MIRRORS=official`；发行维护者也可以提供逗号或分号分隔的自建 HTTPS 镜像前缀。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目的 GitHub Release 页面下载并核对 SHA-256。
+这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。国内加速通道由第三方提供，可用性会变化；桌面版始终保留 GitHub 官方回退并验证安装包摘要。请只从本项目 GitHub Release 页面获取版本信息，并核对 SHA-256 校验值。
 
 ## English
 
 ### Highlights
 
-- Fixes queued follow-up messages becoming stranded after the user stops an active task. The Desktop compatibility layer preserves the existing FIFO queue-first behavior, does not interrupt the running turn, and automatically starts the next queued message after cancellation converges.
-- Replaces the known `code run failed (abort): [object Object]` cancellation presentation with a clear message that the active execution stopped and queued work will continue. Unrelated tool failures are left unchanged.
-- Adds a Skills library beside the conversation command button with search, recent items, wheel and keyboard navigation, theme support, and insertion at the current composer selection.
-- Strengthens transient model API recovery for DeepSeek and configured compatible providers with up to four bounded backoff retries for rate limits, timeouts, server failures, transport interruptions, and prematurely closed streams. User-authored policies remain authoritative, and SSH or plugin actions are never replayed.
-- Keeps the original reasoning disclosure header sticky inside the conversation scroll area so long reasoning can be collapsed without returning to its beginning.
-- Adds a packaged-runtime integrity preflight. If an interrupted upgrade, security quarantine, or filesystem problem removes a critical file, Desktop now reports an incomplete installation and recommends reinstalling instead of repeatedly spawning, crashing, and restarting.
-- Fixes inactive copy buttons for message bubbles, complete responses, and code blocks in the desktop app. Only sanitized clipboard writes from the active local DSH origin are allowed; clipboard reads and other sensitive permissions remain denied.
-- Starts downloading a discovered desktop release in the background instead of interrupting the conversation with a pre-download system prompt. A new blue-black glass panel appears after the download and lets the user restart and install or defer it.
-- Routes the sidebar update trigger to DeepSeek Harness Desktop when hosted by Electron instead of updating the Web UI plugin. Browser-only deployments retain the existing plugin updater.
-- Simplifies startup to “探索未至之境”, one status line, and one progress meter. The small blue title icon, previous sphere, orbits, and phase list are removed and replaced with an original locally rendered blue-black particle whale.
-- Lets the particle whale swim slowly within the right-side corridor with restrained heading, breathing, and tail movement, without covering the title or progress surface. Rendering pauses while the document is hidden, and reduced-motion systems receive a static composition.
-- Matches the injected drag region to the solid dark and light colors used by the native Windows minimize, maximize, and close area, removing the visible depth mismatch.
-- Unifies current version, target version, release notes, download progress, retry, and restart-install states in the desktop update surface while preserving the safe runtime shutdown before installation.
-- Fixes intermittent “application is still running” and file-in-use errors during Windows upgrades. Desktop shutdown now terminates the complete DSH process tree, while installer preflight removes only stale processes whose executables belong to the previous app installation.
-- Extension Dock now shows actual plugin versions and compatibility states and checks community updates only when opened. Compatible releases can update directly, known-incompatible releases are blocked with an explanation, and undeclared compatibility requires explicit confirmation.
-- Adds `dsh-taffy-pet` by community author `zq123123667` as a disabled featured entry. Desktop ships only a fixed link to the author's repository and does not redistribute third-party code or character assets.
-- Adds a Linux monitoring page to the built-in SSH workspace. It refreshes CPU, memory, disk, load, uptime, processes, and failed services every three seconds, with validated and confirmation-gated process termination and systemd restart actions.
-- Community updates prefetch packages while DSH is available, then perform an exact offline switch during brief downtime. Failed validation or restart restores the old manifest, lockfile, and runtime. Built-ins continue to update only with a tested Desktop release.
-- Completes a second Harness-native visual pass across SSH, Extension Dock, the community window, update surfaces, and window chrome, aligning typography, borders, radii, spacing, focus states, and light/dark themes.
-- Desktop profile preparation now reuses runtime resolution and checks independent links concurrently. On the reference machine, median unchanged-profile time fell from about 54.9 ms to 13.2 ms and fresh-profile time from about 64.9 ms to 22.3 ms.
+- Added accelerated update downloads for mainland-China networks. Desktop probes a bounded prefix of the installer through `gh-proxy.com`, `ghproxy.net`, `ghfast.top`, and GitHub in parallel, ranks them for the user's current connection, and silently moves to the next source when a transfer fails. Release discovery and `latest.yml` remain on GitHub, and electron-updater still verifies the installer against the authoritative SHA-512 metadata; mirrors transport bytes only.
+- Added three layers of plugin resilience. Desktop snapshots the profile manifest, lockfile, and enabled state before install, update, or enable operations. When startup fails, it classifies missing dependencies, capability conflicts, incompatible versions, and loader failures, isolates the likely culprit, and retries only once. A second failure enters safe mode with built-ins only, and holding Shift during launch requests safe mode directly.
+- Added recovery controls to both the independent startup failure page and Extension Dock. Users can disable the failing plugin and restart, re-enable or uninstall it later, restore one of the three most recent working snapshots, or export a diagnostic bundle. The recovery page is rendered by Electron and does not depend on the failed DSH plugin graph. Conversations, model settings, and account data are left untouched.
+- Unified persistence semantics across Skin Center, the marketplace, and the Desktop host. This fixes marketplace themes that exist only in profile dependencies being activated in memory and then rejected, legacy `disabledSkins` entries reviving after migration, transient Windows read locks being misreported as failed writes, and shared-section rewrites losing wiring information.
+- Routed marketplace install, update, and uninstall operations through Desktop PluginManager instead of allowing direct profile mutation. Extension operations are serialized across the complete transaction, and failures restore the previous manifest, lockfile, and runtime. The top-level Tools menu now exposes Extension Dock so users no longer need to discover a hidden entry point.
+- Fixed Windows update installation when old runtime processes still own application files. Desktop stops the complete runtime process tree before launching the installer, while the NSIS preflight limits stale-process cleanup to executables actually owned by the previous installation. If the installer does not launch within the bounded timeout, the original runtime is recovered.
+- Made PowerShell and other background subprocesses hidden by default so command windows do not steal focus. Runtime stop/restart, logging, window state, download destinations, navigation, QQ Bot, and optional integration loading now isolate observer and diagnostic failures so a secondary error cannot take ownership of the main lifecycle.
+- Fixed repeated restart loops after failures in Unicode paths or workspaces on non-system drives. Identical crashes receive only one automatic retry, replacement startup waits for complete cleanup, stable operation resets the circuit breaker, and unrecoverable cases lead to actionable repair and safe-mode controls.
+- Completed the missing `schemastery` runtime dependency used by `dsh-catppuccin` and refreshed the built-in plugin composition. Shared tsdown and Vitest configuration now uses supported interfaces, with additional package, native module, source map, marketplace, and skin integration gates reducing missing-package risk under strict pnpm installation.
 
 ### Verification
 
-- Desktop tests cover automatic background download, progress state, explicit installation after download, manual checks, and update errors.
-- IPC tests ensure that renderer update state contains only safe version, notes, progress, and error fields.
-- Clipboard permission tests cover active loopback-origin matching, port isolation, and deny-by-default behavior for every other permission.
-- The startup page was visually checked at 1440×900 for the particle whale, glass progress surface, and compact layout.
-- Installer tests verify that stale-process cleanup is restricted to the previous installation paths rather than generic process names; runtime tests verify complete Windows child-tree termination with `taskkill /T /F`.
-- Plugin regression covers three-state semver assessment, the fixed npm origin, four-request concurrency, exact offline installation, startup quarantine, and failed-update rollback; the reproducible profile benchmark performs no network access.
-- Queue regression covers FIFO preservation across multiple messages, coalesced idle notifications, rollback after a failed wake, and cancellation-message normalization. The complete Desktop profile also passes a real host startup check.
-- Runtime-integrity regression proves that startup preflight and package verification share the same critical OpenTelemetry file contract and that a missing file cannot spawn a child or enter the restart loop.
-- Skills regression covers inventory deduplication, search, insertion, keyboard behavior, and real Electron menu geometry; API recovery tests cover bounded error codes, backoff configuration, and preservation of user policies.
-- SSH regression covers monitor parsing, polling lifecycle, PID and systemd action allowlists, and preservation of the existing live terminal behavior.
+- All 217 Desktop Node tests pass, covering plugin snapshots, failure classification, safe mode, dependency-only legacy isolation, mirror probing and fallback, installer recovery, hidden Windows subprocesses, skin marketplace migration, and Electron lifecycle behavior.
+- All 105 root script tests pass. Type checking for 28 workspaces, every package test, runtime dependency validation, shared generated files, bilingual release notes, website fallback data, aggregates, gallery, Skin Center, community index, and documentation gates all pass.
+- Local Windows x64 NSIS packaging, validation of 57 packaged runtime dependencies, and the real packaged startup smoke test pass. The mirror router is present inside `app.asar`, and the packaged DSH profile reaches the renderer.
+- The official installer is rebuilt from the release tag by the GitHub Actions Windows runner with Node 24, which publishes the installer, blockmap, `latest.yml`, and `SHA256SUMS.txt` from the same build.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-2.0.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. The app downloads discovered releases in the background, but exits and installs only after the user chooses “Restart and install”.
+Download `DeepSeek-Harness-Desktop-Setup-2.1.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Desktop selects an available download source in the background, but the user still decides when to choose “Restart and install” after the download completes. Set `DSH_DESKTOP_UPDATE_MIRRORS=official` to force GitHub only; release maintainers can also provide comma- or semicolon-separated custom HTTPS mirror prefixes.
 
 ### Notice
 
-This is a community build and not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Download only from this project's GitHub Release page and verify the SHA-256 checksum.
+This is a community build and not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Mainland acceleration endpoints are third-party services whose availability can change; Desktop always retains the official GitHub fallback and verifies the installer digest. Obtain release information only from this project's GitHub Release page and verify the SHA-256 checksum.

@@ -129,6 +129,81 @@ test('binding cancellation ignores the connector failure callback and unbind cle
   assert.equal(maskAppId('abcd1234'), 'ab****34')
 })
 
+test('binding cancellation stops a connector that finishes loading later', async () => {
+  let releaseConnector
+  let stopped = 0
+  const service = new QqBotBindingService({
+    credentialStore: { save: async () => {}, clear: async () => {} },
+    startQrConnect: async () => {
+      await new Promise((resolve) => { releaseConnector = resolve })
+      return () => { stopped += 1 }
+    },
+    setProfileEnabled: async () => {},
+    setRuntimeCredentials: () => {},
+    restartRuntime: async () => {},
+  })
+
+  assert.equal(service.start().binding, true)
+  assert.equal(service.cancel().binding, false)
+  releaseConnector()
+  await tick()
+
+  assert.equal(stopped, 1)
+  assert.deepEqual(service.status(), {
+    bound: false,
+    binding: false,
+    pending: false,
+    appId: undefined,
+    qrImage: undefined,
+  })
+})
+
+test('an asynchronously loaded connector still publishes QR state', async () => {
+  let callbacks
+  const service = new QqBotBindingService({
+    credentialStore: { save: async () => {}, clear: async () => {} },
+    startQrConnect: async (value) => {
+      await tick()
+      callbacks = value
+      return () => {}
+    },
+    renderQr: async () => 'data:image/png;base64,lazy',
+    setProfileEnabled: async () => {},
+    setRuntimeCredentials: () => {},
+    restartRuntime: async () => {},
+  })
+
+  assert.equal(service.start().binding, true)
+  await tick()
+  await tick()
+  callbacks.onQrDisplayed('https://example.test/lazy-qr')
+  await tick()
+
+  assert.equal(service.status().qrImage, 'data:image/png;base64,lazy')
+  service.cancel()
+})
+
+test('a connector that fails synchronously cannot publish waiting after the error', () => {
+  let stopped = 0
+  const events = []
+  const service = new QqBotBindingService({
+    credentialStore: { save: async () => {}, clear: async () => {} },
+    startQrConnect: (callbacks) => {
+      callbacks.onFailure(new Error('connector startup failed'))
+      return () => { stopped += 1 }
+    },
+    setProfileEnabled: async () => {},
+    setRuntimeCredentials: () => {},
+    restartRuntime: async () => {},
+  })
+  service.on('event', (event) => events.push(event))
+
+  assert.equal(service.start().binding, false)
+  assert.equal(stopped, 1)
+  assert.equal(events.at(-1).type, 'error')
+  assert.match(events.at(-1).error, /connector startup failed/u)
+})
+
 test('unbind is serialized after an in-flight credential save', async () => {
   let callbacks
   let releaseSave
@@ -172,4 +247,139 @@ test('unbind is serialized after an in-flight credential save', async () => {
     'runtime:clear',
     'restart',
   ])
+})
+
+test('binding restart failure rolls back credentials, profile state, and runtime environment', async () => {
+  let callbacks
+  let restarts = 0
+  const calls = []
+  const events = []
+  const service = new QqBotBindingService({
+    credentialStore: {
+      save: async (value) => calls.push(['save', value]),
+      clear: async () => calls.push(['clear']),
+    },
+    startQrConnect: (value) => { callbacks = value; return () => {} },
+    setProfileEnabled: async (enabled) => { calls.push(['profile', enabled]); return true },
+    setRuntimeCredentials: (value) => calls.push(['runtime', value]),
+    restartRuntime: async () => {
+      restarts += 1
+      calls.push(['restart', restarts])
+      if (restarts === 1) throw new Error('new runtime failed')
+    },
+  })
+  service.on('event', (event) => events.push(event))
+
+  service.start()
+  callbacks.onSuccess([{ appId: '123456789', appSecret: 'secret' }])
+  await tick()
+  await tick()
+  await tick()
+
+  assert.deepEqual(calls.map(([name, value]) => [name, name === 'runtime' ? Boolean(value) : value]), [
+    ['save', { appId: '123456789', appSecret: 'secret' }],
+    ['profile', true],
+    ['runtime', true],
+    ['restart', 1],
+    ['runtime', false],
+    ['profile', false],
+    ['clear', undefined],
+    ['restart', 2],
+  ])
+  assert.equal(service.status().bound, false)
+  assert.equal(service.status().pending, false)
+  assert.equal(events.at(-1).type, 'error')
+  assert.match(events.at(-1).error, /new runtime failed/u)
+})
+
+test('unbind restart failure restores the previous bound state', async () => {
+  const credentials = { appId: 'abcd1234', appSecret: 'secret' }
+  let restarts = 0
+  const calls = []
+  const service = new QqBotBindingService({
+    initialCredentials: credentials,
+    credentialStore: {
+      save: async (value) => calls.push(['save', value]),
+      clear: async () => calls.push(['clear']),
+    },
+    startQrConnect: () => () => {},
+    setProfileEnabled: async (enabled) => { calls.push(['profile', enabled]); return true },
+    setRuntimeCredentials: (value) => calls.push(['runtime', value]),
+    restartRuntime: async () => {
+      restarts += 1
+      calls.push(['restart', restarts])
+      if (restarts === 1) throw new Error('unbind runtime failed')
+    },
+  })
+
+  await assert.rejects(service.unbind(), /unbind runtime failed/u)
+  assert.deepEqual(service.status(), {
+    bound: true,
+    binding: false,
+    pending: false,
+    appId: 'ab****34',
+    qrImage: undefined,
+  })
+  assert.deepEqual(calls.map(([name, value]) => [name, name === 'runtime' ? Boolean(value) : value]), [
+    ['clear', undefined],
+    ['profile', false],
+    ['runtime', false],
+    ['restart', 1],
+    ['runtime', true],
+    ['profile', true],
+    ['save', credentials],
+    ['restart', 2],
+  ])
+})
+
+test('binding reports both the original failure and a rollback failure', async () => {
+  let callbacks
+  const service = new QqBotBindingService({
+    credentialStore: {
+      save: async () => {},
+      clear: async () => { throw new Error('credential rollback failed') },
+    },
+    startQrConnect: (value) => { callbacks = value; return () => {} },
+    setProfileEnabled: async () => { throw new Error('profile enable failed') },
+    setRuntimeCredentials: () => {},
+    restartRuntime: async () => {},
+  })
+  const events = []
+  service.on('event', (event) => events.push(event))
+
+  service.start()
+  callbacks.onSuccess([{ appId: '123456789', appSecret: 'secret' }])
+  await tick()
+  await tick()
+
+  assert.equal(events.at(-1).type, 'error')
+  assert.match(events.at(-1).error, /profile enable failed/u)
+  assert.match(events.at(-1).error, /credential rollback failed/u)
+})
+
+test('a renderer event delivery failure cannot roll back a committed binding', async () => {
+  let callbacks
+  const reported = []
+  const delivered = []
+  const service = new QqBotBindingService({
+    credentialStore: { save: async () => {}, clear: async () => {} },
+    startQrConnect: (value) => { callbacks = value; return () => {} },
+    setProfileEnabled: async () => true,
+    setRuntimeCredentials: () => {},
+    restartRuntime: async () => {},
+    onEventError: (error) => reported.push(error.message),
+  })
+  service.on('event', (event) => {
+    if (event.type === 'bound') throw new Error('extension window closed')
+  })
+  service.on('event', (event) => delivered.push(event.type))
+
+  service.start()
+  callbacks.onSuccess([{ appId: '123456789', appSecret: 'secret' }])
+  await tick()
+  await tick()
+
+  assert.equal(service.status().bound, true)
+  assert.deepEqual(reported, ['extension window closed'])
+  assert.ok(delivered.includes('bound'))
 })

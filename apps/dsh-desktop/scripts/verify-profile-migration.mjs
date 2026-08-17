@@ -78,13 +78,20 @@ try {
   const migratedProfilePatch = await readFile(profilePatchPath, 'utf8')
   const migratedHomePatch = await readFile(homePatchPath, 'utf8')
   assert.doesNotMatch(migratedProfilePatch, /dsh-skin managed/u)
-  assert.doesNotMatch(migratedHomePatch, /dsh-skin managed/u)
   assert.match(migratedProfilePatch, /retained-community-row/u)
   assert.match(migratedHomePatch, /retained-home-row/u)
+  assert.match(migratedHomePatch, /dsh-skin managed/u)
+  assert.match(migratedHomePatch, /@linxin666\/dsh-client-ui-skin-qq98/u)
+  const migratedSkinAlias = JSON.parse(await readFile(
+    resolve(profileDir, 'node_modules', '@linxin666', 'dsh-client-ui-skin-qq98', 'package.json'),
+    'utf8',
+  ))
+  assert.equal(migratedSkinAlias.name, '@linxin666/dsh-client-ui-skin-qq98')
 
   await launchOnce()
   const restarted = JSON.parse(await readFile(manifestPath, 'utf8'))
   assert.deepEqual(restarted.dsh.profile.bundles, BUILTIN_BUNDLES)
+  assert.equal(await readFile(homePatchPath, 'utf8'), migratedHomePatch)
 
   // Desktop 0.1.8 could leave this file empty after the legacy skin section
   // was the only content. Verify the packaged app repairs that exact upgrade
@@ -92,7 +99,7 @@ try {
   await writeFile(homePatchPath, '')
   await launchOnce()
   assert.equal(await readFile(homePatchPath, 'utf8'), '[]\n')
-  console.log('verified aggregate migration, restart idempotency, and packaged blank-patch recovery')
+  console.log('verified aggregate migration, selected-skin preservation, restart idempotency, and packaged blank-patch recovery')
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

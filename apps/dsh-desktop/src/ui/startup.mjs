@@ -14,6 +14,14 @@ const meter = document.querySelector('#startup-progress')
 const meterFill = document.querySelector('#meter-fill')
 const progressValue = document.querySelector('#progress-value')
 const whaleCanvas = document.querySelector('#whale-canvas')
+const recoverySummary = document.querySelector('#recovery-summary')
+const recoveryTitle = document.querySelector('#recovery-title')
+const recoveryReason = document.querySelector('#recovery-reason')
+const disablePlugin = document.querySelector('#disable-plugin')
+const safeMode = document.querySelector('#safe-mode')
+const retry = document.querySelector('#retry')
+const repair = document.querySelector('#repair')
+const technicalDetails = document.querySelector('#technical-details')
 
 const copy = {
   stopped: ['正在准备本地环境', '完整 Harness 正在本地启动'],
@@ -45,12 +53,34 @@ function render(status) {
   currentState = state
   document.body.dataset.state = state
   title.textContent = heading
-  detail.textContent = message
+  const recovery = status?.recovery
+  const incident = recovery?.currentIncident
+  detail.textContent = recovery?.safeMode
+    ? '桌面版正在使用只加载内置插件的安全模式'
+    : status?.restartBlocked === 'repeated-crash'
+    ? '已停止自动重启，避免反复崩溃；请打开日志查看底层错误'
+    : message
 
   const failed = state === 'crashed'
-  errorLog.hidden = !failed
+  const identifiedPlugin = failed && incident?.identified && incident?.pluginName
+  recoverySummary.hidden = !failed || !incident
+  if (incident) {
+    recoveryTitle.textContent = identifiedPlugin
+      ? `检测到插件 ${incident.pluginName} 导致启动失败`
+      : '插件恢复中心已接管本次启动失败'
+    recoveryReason.textContent = incident.summary || '未能可靠定位故障插件，请进入安全模式。'
+  }
+  errorLog.hidden = true
   actions.hidden = !failed
-  errorLog.textContent = failed ? (status?.error || 'Unknown runtime error') : ''
+  errorLog.textContent = failed
+    ? (incident?.technicalDetails || status?.error || 'Unknown runtime error')
+    : ''
+  disablePlugin.hidden = !identifiedPlugin
+  safeMode.hidden = false
+  retry.hidden = Boolean(incident)
+  repair.hidden = Boolean(incident)
+  technicalDetails.hidden = !failed
+  technicalDetails.textContent = '查看技术详情'
 
   if (Number.isFinite(status?.previewProgress)) renderProgress(status.previewProgress)
   else if (stateChanged || progress === 0) renderProgress(initialProgressForState(state, progress))
@@ -76,6 +106,11 @@ for (const button of document.querySelectorAll('[data-action]')) {
     }
   })
 }
+
+technicalDetails.addEventListener('click', () => {
+  errorLog.hidden = !errorLog.hidden
+  technicalDetails.textContent = errorLog.hidden ? '查看技术详情' : '收起技术详情'
+})
 
 const info = await window.dshDesktop.getInfo()
 version.textContent = `DESKTOP ${info.version}`

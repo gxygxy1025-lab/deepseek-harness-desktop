@@ -1,0 +1,15 @@
+diff --git a/cordis.patch.yml b/cordis.patch.yml
+--- a/cordis.patch.yml
++++ b/cordis.patch.yml
+@@ -34,6 +34,11 @@
+     - id: ui-git-graph
+       name: '@linxin666/dsh-client-ui-git-graph'
+ 
++# supplied by DeepSeek Harness Desktop
++- insert:
++    - id: ui-mode-switcher
++      name: '@linxin666/dsh-client-ui-mode-switcher'
++
+ # from ../dsh-pet
+ - insert:
+     - id: pet

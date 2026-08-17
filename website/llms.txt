@@ -1,6 +1,6 @@
 # DeepSeek Harness Desktop
 
-> DeepSeek Harness Desktop 2.0 is a community-maintained, open-source Windows desktop distribution for DeepSeek Harness. It preserves the complete Harness Web Surface and adds a searchable Skills library, reliable queued-message continuation, bounded model API recovery, live SSH operations, sticky reasoning controls, native desktop lifecycle management, plugins, 11 skins, background updates, and mobile remote access.
+> DeepSeek Harness Desktop 2.1 is a community-maintained, open-source Windows desktop distribution for DeepSeek Harness. It preserves the complete Harness Web Surface and adds measured mainland-China update mirrors, three-layer plugin recovery, safe mode, unified skin persistence, reliable Windows lifecycle management, plugins, 11 skins, and mobile remote access.
 
 ## Canonical website
 
@@ -8,7 +8,7 @@
 
 ## Download
 
-- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.0.0-x64.exe
+- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.1.0-x64.exe
 - Latest release notes and checksums: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest
 
 ## Source and documentation
@@ -21,8 +21,8 @@
 ## Key facts
 
 - Supported systems: Windows 10 and Windows 11, x64
-- Current release: v2.0.0
-- v2.0.0 restores queued messages after cancellation, adds Skills, bounded model API recovery, sticky reasoning controls, Linux SSH monitoring, runtime-integrity diagnostics, more reliable update installation, and a particle-whale startup surface
+- Current release: v2.1.0
+- v2.1.0 adds measured mainland-China update mirrors, snapshot and safe-mode plugin recovery, unified skin persistence, reliable installer cleanup, hidden background subprocesses, and Unicode-workspace restart-loop protection
 - The bundled Skin Center includes 11 selectable skins
 - Node.js is bundled; end users do not need to install it separately
 - The project is a community edition and is not an official DeepSeek release

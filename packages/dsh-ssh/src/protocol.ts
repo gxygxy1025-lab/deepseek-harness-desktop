@@ -170,6 +170,8 @@ export type TerminalClientFrame =
 export const SSH_API_BASE = '/api/dsh-ssh' as const
 
 export const SSH_API = {
+  xtermScript: SSH_API_BASE + '/vendor/xterm.js',
+  fitAddonScript: SSH_API_BASE + '/vendor/addon-fit.js',
   hosts: SSH_API_BASE + '/hosts',
   importSshConfig: SSH_API_BASE + '/hosts/import-ssh-config',
   test: SSH_API_BASE + '/test',

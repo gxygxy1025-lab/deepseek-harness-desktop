@@ -2,9 +2,13 @@ import { execFile, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { delimiter, join } from 'node:path'
 
+import { emitBestEffort } from './best-effort-events.mjs'
+
 const READY_LINE = /^dsh web:\s+(http:\/\/\S+)/u
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
 export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000
+export const DESKTOP_PROFILE_NAME = 'desktop'
+const STABLE_RUNTIME_RESET_MS = 60_000
 
 export function validateLoopbackUrl(value) {
   let url
@@ -31,6 +35,20 @@ export function computeRestartDelay(attempt, maxAttempts = 3) {
   if (!Number.isInteger(attempt) || attempt < 0) throw new TypeError('restart attempt must be non-negative')
   if (attempt >= maxAttempts) return undefined
   return Math.min(15_000, 500 * 3 ** attempt)
+}
+
+export function formatRuntimeExit(code, signal, { platform = process.platform } = {}) {
+  if (platform === 'win32' && Number.isInteger(code)) {
+    const unsignedCode = code >>> 0
+    if (code < 0 || unsignedCode > 0x7FFF_FFFF) {
+      const signedCode = unsignedCode > 0x7FFF_FFFF ? unsignedCode - 0x1_0000_0000 : unsignedCode
+      const hexadecimalCode = unsignedCode.toString(16).toUpperCase().padStart(8, '0')
+      return `runtime exited unexpectedly with Windows code 0x${hexadecimalCode} (signed ${signedCode})`
+    }
+  }
+  if (code !== null && code !== undefined) return `runtime exited unexpectedly with code ${String(code)}`
+  if (signal) return `runtime exited unexpectedly from signal ${String(signal)}`
+  return 'runtime exited unexpectedly without an exit code'
 }
 
 export function terminateChildProcessTree(
@@ -109,6 +127,7 @@ export class DshRuntimeController extends EventEmitter {
     pathEntries = [],
     environmentProvider = () => ({}),
     preflight = () => {},
+    now = Date.now,
   }) {
     super()
     if (!cliPath || !cwd || !dshHome) throw new TypeError('cliPath, cwd, and dshHome are required')
@@ -128,12 +147,19 @@ export class DshRuntimeController extends EventEmitter {
     this.pathEntries = pathEntries
     if (typeof environmentProvider !== 'function') throw new TypeError('environmentProvider must be a function')
     if (typeof preflight !== 'function') throw new TypeError('runtime preflight must be a function')
+    if (typeof now !== 'function') throw new TypeError('runtime clock must be a function')
     this.environmentProvider = environmentProvider
     this.preflight = preflight
+    this.now = now
     this.child = undefined
     this.readyPromise = undefined
+    this.stopPromise = undefined
+    this.failedStartupCleanup = undefined
     this.restartTimer = undefined
     this.restartAttempt = 0
+    this.lastCrashFingerprint = undefined
+    this.sameCrashCount = 0
+    this.readySince = undefined
     this.manualStop = false
     this.stopResolver = undefined
     this.status = Object.freeze({ state: 'stopped', url: undefined, error: undefined })
@@ -146,14 +172,51 @@ export class DshRuntimeController extends EventEmitter {
       error: details.error,
       restartAttempt: this.restartAttempt,
       pid: this.child?.pid,
+      ...(details.restartBlocked === 'repeated-crash' ? { restartBlocked: details.restartBlocked } : {}),
     })
-    this.emit('status', this.status)
+    emitBestEffort(this, 'status', [this.status], (error) => {
+      this.#appendDiagnostic(`[observer] status observer failed: ${this.#errorMessage(error)}`)
+    })
+  }
+
+  #errorMessage(error) {
+    return String(error instanceof Error ? error.message : error).slice(0, 1_000)
+  }
+
+  #appendDiagnostic(value) {
+    try {
+      void Promise.resolve(this.logStore.append(value)).catch(() => {})
+    } catch {
+      // Diagnostics are best-effort and never own runtime lifecycle progress.
+    }
   }
 
   start({ preserveRestartAttempt = false } = {}) {
+    if (this.stopPromise) {
+      const stopping = this.stopPromise
+      return stopping.then(() => this.start({ preserveRestartAttempt }))
+    }
     if (this.status.state === 'ready') return Promise.resolve(this.status.url)
     if (this.readyPromise) return this.readyPromise
-    if (!preserveRestartAttempt) this.restartAttempt = 0
+    if (this.failedStartupCleanup) {
+      const cleanup = this.failedStartupCleanup
+      return cleanup.then(() => {
+        if (this.manualStop || ['stopping', 'stopped'].includes(this.status.state)) {
+          throw new Error('runtime start cancelled because shutdown is in progress')
+        }
+        return this.start({ preserveRestartAttempt })
+      })
+    }
+    if (!preserveRestartAttempt && this.restartTimer !== undefined) {
+      this.cancelSchedule(this.restartTimer)
+      this.restartTimer = undefined
+    }
+    if (!preserveRestartAttempt) {
+      this.restartAttempt = 0
+      this.lastCrashFingerprint = undefined
+      this.sameCrashCount = 0
+      this.readySince = undefined
+    }
     this.manualStop = false
     this.#setStatus('starting')
 
@@ -180,15 +243,16 @@ export class DshRuntimeController extends EventEmitter {
       ...process.env,
       ...additionalEnvironment,
       DSH_HOME: this.dshHome,
-      DSH_PROFILE: 'desktop',
-      DSH_SKIN_PROFILE: 'desktop',
+      DSH_PROFILE: DESKTOP_PROFILE_NAME,
+      DSH_SKIN_PROFILE: DESKTOP_PROFILE_NAME,
+      DSH_SKINS_DIR: join(this.dshHome, 'profiles', DESKTOP_PROFILE_NAME, 'node_modules', '@linxin666'),
       ELECTRON_RUN_AS_NODE: '1',
       PATH: [...this.pathEntries, process.env.PATH].filter(Boolean).join(delimiter),
     }
     try {
-      this.child = this.spawnProcess(
+      const child = this.spawnProcess(
         this.executable,
-        ['--expose-internals', this.cliPath, '--profile', 'desktop', '--port', '0'],
+        ['--expose-internals', this.cliPath, '--profile', DESKTOP_PROFILE_NAME, '--port', '0'],
         {
           cwd: this.cwd,
           env: environment,
@@ -197,6 +261,7 @@ export class DshRuntimeController extends EventEmitter {
           windowsHide: true,
         },
       )
+      this.child = child
     } catch (error) {
       this.#failBeforeReady(error)
       return readyPromise
@@ -208,27 +273,28 @@ export class DshRuntimeController extends EventEmitter {
     this.child.stdout?.on('end', () => stdout.end())
     this.child.stderr?.on('data', (chunk) => stderr.write(chunk))
     this.child.stderr?.on('end', () => stderr.end())
-    this.child.once('error', (error) => this.#handleChildError(error))
-    this.child.once('exit', (code, signal) => this.#handleExit(code, signal))
+    const child = this.child
+    child.once('error', (error) => this.#handleChildError(child, error))
+    child.once('exit', (code, signal) => this.#handleExit(child, code, signal))
     this.startupTimer = this.schedule(() => {
       if (this.status.state !== 'starting') return
       const error = new Error(`DSH runtime did not become ready within ${this.startupTimeoutMs}ms`)
       this.#failBeforeReady(error)
-      this.child?.kill('SIGKILL')
     }, this.startupTimeoutMs)
     return readyPromise
   }
 
   async #handleLine(stream, line) {
-    await this.logStore.append(`[${stream}] ${line}`)
-    this.emit('line', { stream, line })
+    this.#appendDiagnostic(`[${stream}] ${line}`)
+    emitBestEffort(this, 'line', [{ stream, line }], (error) => {
+      this.#appendDiagnostic(`[observer] line observer failed: ${this.#errorMessage(error)}`)
+    })
     if (stream !== 'stdout' || this.status.state !== 'starting') return
     let url
     try {
       url = parseDshReadyUrl(line)
     } catch (error) {
       this.#failBeforeReady(error)
-      this.child?.kill('SIGKILL')
       return
     }
     if (url === undefined) return
@@ -237,7 +303,6 @@ export class DshRuntimeController extends EventEmitter {
     } catch (error) {
       if (this.status.state === 'starting') {
         this.#failBeforeReady(error)
-        this.child?.kill('SIGKILL')
       }
       return
     }
@@ -245,6 +310,7 @@ export class DshRuntimeController extends EventEmitter {
     this.cancelSchedule(this.startupTimer)
     this.startupTimer = undefined
     this.#setStatus('ready', { url })
+    this.readySince = this.now()
     this.resolveReady?.(url)
     this.resolveReady = undefined
     this.rejectReady = undefined
@@ -259,19 +325,65 @@ export class DshRuntimeController extends EventEmitter {
     this.resolveReady = undefined
     this.rejectReady = undefined
     this.readyPromise = undefined
+    this.#terminateFailedStartupChild()
   }
 
-  #handleChildError(error) {
-    void this.logStore.append(`[process] ${error.message}`)
+  #terminateFailedStartupChild() {
+    const child = this.child
+    if (child === undefined || child.exitCode !== null || this.failedStartupCleanup) return
+
+    let resolveExit
+    const exited = new Promise((resolve) => { resolveExit = resolve })
+    const onExit = () => resolveExit()
+    child.once('exit', onExit)
+    if (child.exitCode !== null) {
+      child.off('exit', onExit)
+      resolveExit()
+    }
+
+    const forceTimer = this.schedule(() => {
+      if (child.exitCode === null) child.kill('SIGKILL')
+    }, this.shutdownTimeoutMs)
+    forceTimer?.unref?.()
+
+    let cleanup
+    cleanup = exited.finally(() => {
+      this.cancelSchedule(forceTimer)
+      if (this.failedStartupCleanup === cleanup) this.failedStartupCleanup = undefined
+    })
+    this.failedStartupCleanup = cleanup
+
+    void Promise.resolve()
+      .then(() => this.terminateProcessTree(child))
+      .catch((error) => {
+        this.#appendDiagnostic(`[process] failed-startup tree shutdown failed: ${error.message}`)
+        if (child.exitCode === null) child.kill('SIGKILL')
+      })
+  }
+
+  #handleChildError(child, error) {
+    if (this.child !== child) {
+      this.#appendDiagnostic(`[process] stale child error: ${error.message}`)
+      return
+    }
+    this.#appendDiagnostic(`[process] ${error.message}`)
     if (this.status.state === 'starting') this.#failBeforeReady(error)
   }
 
-  #handleExit(code, signal) {
+  #handleExit(child, code, signal) {
+    if (this.child !== child) {
+      this.#appendDiagnostic(`[process] stale child exited code=${String(code)} signal=${String(signal)}`)
+      return
+    }
     this.cancelSchedule(this.startupTimer)
     this.startupTimer = undefined
     const previousState = this.status.state
+    const readyDuration = previousState === 'ready' && this.readySince !== undefined
+      ? this.now() - this.readySince
+      : 0
+    this.readySince = undefined
     this.child = undefined
-    void this.logStore.append(`[process] exited code=${String(code)} signal=${String(signal)}`)
+    this.#appendDiagnostic(`[process] exited code=${String(code)} signal=${String(signal)}`)
 
     if (previousState === 'starting' && this.rejectReady) {
       this.#failBeforeReady(new Error(`DSH runtime exited before readiness with code ${String(code)}`))
@@ -282,10 +394,30 @@ export class DshRuntimeController extends EventEmitter {
       this.stopResolver = undefined
       return
     }
-    if (previousState !== 'crashed') {
-      this.#setStatus('crashed', { error: `runtime exited with code ${String(code)}` })
+
+    if (readyDuration >= STABLE_RUNTIME_RESET_MS) {
+      this.lastCrashFingerprint = undefined
+      this.sameCrashCount = 0
     }
-    if (this.autoRestart) this.#scheduleRestart()
+    const fingerprint = `code=${String(code)};signal=${String(signal)}`
+    if (fingerprint === this.lastCrashFingerprint) {
+      this.sameCrashCount += 1
+    } else {
+      this.lastCrashFingerprint = fingerprint
+      this.sameCrashCount = 1
+    }
+    const exitError = formatRuntimeExit(code, signal)
+    this.#setStatus('crashed', { error: exitError })
+    if (!this.autoRestart) return
+    if (this.sameCrashCount >= 2) {
+      this.#setStatus('crashed', {
+        error: `${exitError}. Automatic restart stopped after the same crash repeated to prevent a restart loop; open the runtime logs for details.`,
+        restartBlocked: 'repeated-crash',
+      })
+      this.#appendDiagnostic(`[process] automatic restart circuit opened for ${fingerprint}`)
+      return
+    }
+    this.#scheduleRestart()
   }
 
   #scheduleRestart() {
@@ -299,14 +431,41 @@ export class DshRuntimeController extends EventEmitter {
     }, delay)
   }
 
-  async stop() {
-    if (this.status.state === 'stopped') return
+  stop() {
+    if (this.stopPromise) return this.stopPromise
+    if (this.status.state === 'stopped') return Promise.resolve()
+    let operation
+    operation = this.#performStop().finally(() => {
+      if (this.stopPromise === operation) this.stopPromise = undefined
+    })
+    this.stopPromise = operation
+    return operation
+  }
+
+  async #performStop() {
     this.manualStop = true
     if (this.restartTimer !== undefined) {
       this.cancelSchedule(this.restartTimer)
       this.restartTimer = undefined
     }
     this.#setStatus('stopping')
+    if (this.readyPromise) {
+      const rejectReady = this.rejectReady
+      this.cancelSchedule(this.startupTimer)
+      this.startupTimer = undefined
+      this.resolveReady = undefined
+      this.rejectReady = undefined
+      this.readyPromise = undefined
+      rejectReady?.(new Error('runtime startup cancelled by stop'))
+    }
+    if (this.failedStartupCleanup) {
+      await this.failedStartupCleanup
+      if (this.child === undefined || this.child.exitCode !== null) {
+        this.child = undefined
+        if (this.status.state !== 'stopped') this.#setStatus('stopped')
+        return
+      }
+    }
     const child = this.child
     if (child === undefined || child.exitCode !== null) {
       this.child = undefined
@@ -320,7 +479,7 @@ export class DshRuntimeController extends EventEmitter {
     try {
       await this.terminateProcessTree(child)
     } catch (error) {
-      await this.logStore.append(`[process] process-tree shutdown failed: ${error.message}`)
+      this.#appendDiagnostic(`[process] process-tree shutdown failed: ${error.message}`)
       child.kill('SIGKILL')
     }
     await exited

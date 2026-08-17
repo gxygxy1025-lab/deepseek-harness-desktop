@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import {
   DesktopUpdateController,
+  UPDATE_INSTALL_LAUNCH_TIMEOUT_MS,
   formatUpdateDetails,
   normalizeReleaseNotes,
 } from '../src/updater.mjs'
@@ -28,7 +29,16 @@ class FakeUpdater extends EventEmitter {
   }
 }
 
-function createHarness({ responses = [], enabled = true } = {}) {
+function createHarness({
+  enabled = true,
+  beforeInstall,
+  onInstallFailure,
+  downloadRouter,
+  log,
+  getWindow,
+  setTimeoutFn = () => ({ unref() {} }),
+  clearTimeoutFn = () => {},
+} = {}) {
   const updater = new FakeUpdater()
   const progress = []
   const logs = []
@@ -38,21 +48,56 @@ function createHarness({ responses = [], enabled = true } = {}) {
     updater,
     enabled,
     currentVersion: '1.0.0',
-    getWindow: () => ({
+    getWindow: getWindow ?? (() => ({
       isDestroyed: () => false,
       setProgressBar: (value) => progress.push(value),
-    }),
-    log: (line) => logs.push(line),
-    beforeInstall: async () => { beforeInstallCalls += 1 },
-    setTimeoutFn: () => ({ unref() {} }),
+    })),
+    log: log ?? ((line) => logs.push(line)),
+    beforeInstall: async () => {
+      beforeInstallCalls += 1
+      await beforeInstall?.()
+    },
+    onInstallFailure,
+    downloadRouter,
+    setTimeoutFn,
     setIntervalFn: () => ({ unref() {} }),
-    clearTimeoutFn: () => {},
+    clearTimeoutFn,
     clearIntervalFn: () => {},
   })
   controller.on('status', (status) => states.push(status))
   controller.start()
   return { controller, updater, progress, logs, states, beforeInstallCalls: () => beforeInstallCalls }
 }
+
+test('download failover publishes the active source and suppresses intermediate errors', async () => {
+  let retrying = true
+  let updater
+  const downloadRouter = {
+    shouldDeferError: () => retrying,
+    async downloadUpdate(_info, { onSource }) {
+      onSource({ label: '国内镜像 fast.example' })
+      updater.emit('error', new Error('mirror connection reset'))
+      await tick()
+      retrying = false
+      onSource({ label: 'GitHub 官方' })
+      return ['downloaded.exe']
+    },
+  }
+  const harness = createHarness({ downloadRouter })
+  updater = harness.updater
+
+  await harness.controller.check()
+  updater.emit('update-available', { version: '1.1.0', releaseNotes: 'Ready.' })
+  await tick()
+  await tick()
+
+  assert.equal(harness.controller.getStatus().phase, 'downloading')
+  assert.equal(harness.controller.getStatus().source, 'GitHub 官方')
+  assert.ok(harness.logs.some((line) => line.includes('retrying another source')))
+  updater.emit('update-downloaded', { version: '1.1.0' })
+  await tick()
+  assert.equal(harness.controller.getStatus().phase, 'ready')
+})
 
 test('release notes are converted to safe readable text', () => {
   assert.equal(
@@ -122,6 +167,140 @@ test('downloaded update waits for an explicit renderer install action', async ()
   assert.equal(await harness.controller.install(), true)
   assert.equal(harness.beforeInstallCalls(), 1)
   assert.equal(harness.updater.installs, 1)
+  harness.controller.dispose()
+})
+
+test('taskbar progress failures cannot interrupt update downloads', async () => {
+  const harness = createHarness({
+    getWindow: () => ({
+      isDestroyed: () => false,
+      setProgressBar: () => { throw new Error('taskbar window closed') },
+    }),
+  })
+
+  await harness.controller.check()
+  harness.updater.emit('update-available', { version: '1.1.0', releaseNotes: 'Ready.' })
+  await tick()
+
+  assert.equal(harness.updater.downloads, 1)
+  assert.equal(harness.controller.getStatus().phase, 'downloading')
+  assert.ok(harness.logs.some((line) => line.includes('taskbar progress failed: taskbar window closed')))
+})
+
+test('update observer failures cannot change controller results or block later observers', async () => {
+  const harness = createHarness()
+  const observed = []
+  harness.controller.on('status', () => { throw new Error('renderer update send failed') })
+  harness.controller.on('status', (status) => observed.push(status.phase))
+
+  assert.equal(await harness.controller.check({ manual: true }), true)
+  assert.equal(harness.controller.getStatus().phase, 'checking')
+  harness.updater.emit('update-not-available')
+  await tick()
+
+  assert.equal(harness.controller.getStatus().phase, 'current')
+  assert.deepEqual(observed, ['checking', 'current'])
+  assert.ok(harness.logs.some((line) => line.includes('status observer failed: renderer update send failed')))
+})
+
+test('update diagnostics cannot take ownership of the update state machine', async () => {
+  const harness = createHarness({
+    log: () => { throw new Error('log destination unavailable') },
+  })
+
+  assert.equal(await harness.controller.check({ manual: true }), true)
+  harness.updater.emit('update-not-available')
+  await tick()
+
+  assert.equal(harness.controller.getStatus().phase, 'current')
+  assert.equal(harness.controller.getStatus().visible, true)
+})
+
+test('asynchronous update observer rejections become diagnostics', async () => {
+  const harness = createHarness()
+  harness.controller.on('status', async () => {
+    throw new Error('async renderer update send failed')
+  })
+
+  assert.equal(await harness.controller.check(), true)
+  await tick()
+
+  assert.equal(harness.controller.getStatus().phase, 'checking')
+  assert.ok(harness.logs.some((line) => line.includes('status observer failed: async renderer update send failed')))
+})
+
+test('concurrent install requests share one shutdown and installer launch', async () => {
+  let releaseInstall
+  const installBarrier = new Promise((resolve) => { releaseInstall = resolve })
+  const harness = createHarness({ beforeInstall: () => installBarrier })
+  await harness.controller.check()
+  harness.updater.emit('update-available', { version: '1.1.0', releaseNotes: 'Ready.' })
+  await tick()
+  harness.updater.emit('update-downloaded', { version: '1.1.0' })
+  await tick()
+
+  const first = harness.controller.install()
+  const second = harness.controller.install()
+  assert.equal(await second, false)
+  assert.equal(harness.controller.getStatus().phase, 'installing')
+  assert.equal(harness.beforeInstallCalls(), 1)
+
+  releaseInstall()
+  assert.equal(await first, true)
+  assert.equal(harness.updater.installs, 1)
+  harness.controller.dispose()
+})
+
+test('an updater error during install invokes runtime recovery exactly once', async () => {
+  let recoveries = 0
+  const harness = createHarness({
+    onInstallFailure: async () => { recoveries += 1 },
+  })
+  await harness.controller.check()
+  harness.updater.emit('update-available', { version: '1.1.0', releaseNotes: 'Ready.' })
+  await tick()
+  harness.updater.emit('update-downloaded', { version: '1.1.0' })
+  await tick()
+
+  assert.equal(await harness.controller.install(), true)
+  harness.updater.emit('error', new Error('installer launch failed'))
+  await tick()
+  harness.updater.emit('error', new Error('duplicate updater error'))
+  await tick()
+
+  assert.equal(recoveries, 1)
+  assert.equal(harness.controller.getStatus().phase, 'error')
+  assert.match(harness.controller.getStatus().message, /duplicate updater error/)
+  harness.controller.dispose()
+})
+
+test('installer launch timeout restores the runtime instead of leaving a stopped shell', async () => {
+  const timers = []
+  let recoveries = 0
+  const harness = createHarness({
+    onInstallFailure: async () => { recoveries += 1 },
+    setTimeoutFn: (callback, delay) => {
+      const timer = { callback, delay, unref() {} }
+      timers.push(timer)
+      return timer
+    },
+  })
+  await harness.controller.check()
+  harness.updater.emit('update-available', { version: '1.1.0', releaseNotes: 'Ready.' })
+  await tick()
+  harness.updater.emit('update-downloaded', { version: '1.1.0' })
+  await tick()
+  assert.equal(await harness.controller.install(), true)
+
+  const launchTimer = timers.find((timer) => timer.delay === UPDATE_INSTALL_LAUNCH_TIMEOUT_MS)
+  assert.ok(launchTimer)
+  launchTimer.callback()
+  await tick()
+
+  assert.equal(recoveries, 1)
+  assert.equal(harness.controller.getStatus().phase, 'error')
+  assert.match(harness.controller.getStatus().message, /launch timeout/)
+  harness.controller.dispose()
 })
 
 test('manual no-update result is visible while automatic errors stay hidden', async () => {

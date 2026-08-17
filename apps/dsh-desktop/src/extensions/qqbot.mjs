@@ -2,7 +2,8 @@ import { EventEmitter } from 'node:events'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import qrcode from 'qrcode'
+import { emitBestEffort } from '../best-effort-events.mjs'
+import { renderQrDataUrl } from '../optional-integrations.mjs'
 
 export const QQBOT_PACKAGE = '@tencent-connect/dsh-qqbot'
 export const QQBOT_PATCH_START = '# --- dsh-desktop qqbot (auto-generated; do not edit) ---'
@@ -142,12 +143,39 @@ export class QqBotCredentialStore {
 }
 
 export function createQrDataUrl(url) {
-  return qrcode.toDataURL(url, {
+  return renderQrDataUrl(url, {
     errorCorrectionLevel: 'M',
     margin: 2,
     width: 360,
     color: { dark: '#061017ff', light: '#ffffffff' },
   })
+}
+
+function errorMessage(error) {
+  return String(error instanceof Error ? error.message : error).slice(0, 1_000)
+}
+
+async function rollbackStateChange({ label, error, steps, restartRuntime, restartRequired }) {
+  const rollbackErrors = []
+  for (const step of [...steps].reverse()) {
+    try {
+      await step()
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError)
+    }
+  }
+  if (restartRequired) {
+    try {
+      await restartRuntime()
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError)
+    }
+  }
+  if (rollbackErrors.length === 0) return error
+  return new Error(
+    `${label} failed and rollback failed: ${errorMessage(error)}; ${rollbackErrors.map(errorMessage).join('; ')}`,
+    { cause: new AggregateError([error, ...rollbackErrors]) },
+  )
 }
 
 export class QqBotBindingService extends EventEmitter {
@@ -159,11 +187,13 @@ export class QqBotBindingService extends EventEmitter {
     setProfileEnabled,
     setRuntimeCredentials,
     restartRuntime,
+    onEventError = () => {},
   }) {
     super()
     if (!credentialStore || typeof startQrConnect !== 'function') {
       throw new TypeError('credentialStore and startQrConnect are required')
     }
+    if (typeof onEventError !== 'function') throw new TypeError('onEventError must be a function')
     this.credentials = initialCredentials ? assertCredentials(initialCredentials) : undefined
     this.credentialStore = credentialStore
     this.startQrConnect = startQrConnect
@@ -171,6 +201,7 @@ export class QqBotBindingService extends EventEmitter {
     this.setProfileEnabled = setProfileEnabled
     this.setRuntimeCredentials = setRuntimeCredentials
     this.restartRuntime = restartRuntime
+    this.onEventError = onEventError
     this.binding = false
     this.settling = false
     this.qrImage = undefined
@@ -190,7 +221,12 @@ export class QqBotBindingService extends EventEmitter {
   }
 
   #publish(type, details = {}) {
-    this.emit('event', Object.freeze({ type, ...details, status: this.status() }))
+    emitBestEffort(
+      this,
+      'event',
+      [Object.freeze({ type, ...details, status: this.status() })],
+      (error) => this.onEventError(error),
+    )
   }
 
   start() {
@@ -200,7 +236,7 @@ export class QqBotBindingService extends EventEmitter {
     const generation = ++this.generation
     const current = () => this.binding && generation === this.generation
     try {
-      this.stopQr = this.startQrConnect({
+      const connector = this.startQrConnect({
         onQrDisplayed: (url) => {
           void Promise.resolve(this.renderQr(url)).then((image) => {
             if (!current()) return
@@ -231,7 +267,26 @@ export class QqBotBindingService extends EventEmitter {
         displayQrCodeToConsole: false,
         source: 'dsh-desktop',
       })
-      this.#publish('waiting')
+      if (connector && typeof connector.then === 'function') {
+        void Promise.resolve(connector).then((stop) => {
+          if (typeof stop !== 'function') throw new TypeError('QQ Bot connector did not return a stop function')
+          if (!current()) {
+            stop()
+            return
+          }
+          this.stopQr = stop
+        }).catch((error) => {
+          if (current()) this.#fail(error)
+        })
+      } else {
+        if (typeof connector !== 'function') throw new TypeError('QQ Bot connector did not return a stop function')
+        if (!current()) {
+          connector()
+          return this.status()
+        }
+        this.stopQr = connector
+      }
+      if (current()) this.#publish('waiting')
     } catch (error) {
       this.#fail(error)
     }
@@ -239,22 +294,38 @@ export class QqBotBindingService extends EventEmitter {
   }
 
   async #complete(credentials, generation) {
+    const rollbackSteps = []
+    let restartRequired = false
     try {
       const normalized = assertCredentials(credentials)
       await this.credentialStore.save(normalized)
-      await this.setProfileEnabled(true)
+      rollbackSteps.push(() => this.credentialStore.clear())
+      const profileChanged = await this.setProfileEnabled(true)
+      if (profileChanged) {
+        restartRequired = true
+        rollbackSteps.push(() => this.setProfileEnabled(false))
+      }
       this.setRuntimeCredentials(normalized)
+      restartRequired = true
+      rollbackSteps.push(() => this.setRuntimeCredentials(undefined))
       if (generation !== this.generation) return
-      this.credentials = normalized
       this.#publish('restarting')
       await this.restartRuntime()
       if (generation === this.generation) {
+        this.credentials = normalized
         this.settling = false
         this.operationPromise = undefined
         this.#publish('bound')
       }
     } catch (error) {
-      if (generation === this.generation) this.#fail(error)
+      const restoredError = await rollbackStateChange({
+        label: 'QQ Bot binding',
+        error,
+        steps: rollbackSteps,
+        restartRuntime: this.restartRuntime,
+        restartRequired,
+      })
+      if (generation === this.generation) this.#fail(restoredError)
     }
   }
 
@@ -283,16 +354,43 @@ export class QqBotBindingService extends EventEmitter {
   }
 
   async unbind() {
+    this.settling = true
     await this.operationPromise?.catch(() => {})
+    this.settling = true
     this.cancel()
-    await this.credentialStore.clear()
-    await this.setProfileEnabled(false)
-    this.setRuntimeCredentials(undefined)
-    this.credentials = undefined
-    this.#publish('restarting')
-    await this.restartRuntime()
-    this.#publish('unbound')
-    return this.status()
+    const previousCredentials = this.credentials
+    const rollbackSteps = []
+    let restartRequired = false
+    try {
+      await this.credentialStore.clear()
+      if (previousCredentials) rollbackSteps.push(() => this.credentialStore.save(previousCredentials))
+      const profileChanged = await this.setProfileEnabled(false)
+      if (profileChanged) {
+        restartRequired = true
+        rollbackSteps.push(() => this.setProfileEnabled(true))
+      }
+      this.setRuntimeCredentials(undefined)
+      restartRequired = true
+      rollbackSteps.push(() => this.setRuntimeCredentials(previousCredentials))
+      this.#publish('restarting')
+      await this.restartRuntime()
+      this.credentials = undefined
+      this.settling = false
+      this.operationPromise = undefined
+      this.#publish('unbound')
+      return this.status()
+    } catch (error) {
+      const restoredError = await rollbackStateChange({
+        label: 'QQ Bot unbind',
+        error,
+        steps: rollbackSteps,
+        restartRuntime: this.restartRuntime,
+        restartRequired,
+      })
+      this.settling = false
+      this.operationPromise = undefined
+      throw restoredError
+    }
   }
 
   dispose() {

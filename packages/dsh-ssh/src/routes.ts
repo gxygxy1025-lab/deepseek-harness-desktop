@@ -8,11 +8,12 @@
  */
 
 import { createReadStream, createWriteStream, mkdirSync } from 'node:fs'
-import { unlink } from 'node:fs/promises'
+import { readFile, unlink } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { WebSocket, WebSocketServer } from 'ws'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { SshEngine, ShellSession } from './engine.ts'
@@ -100,6 +101,16 @@ export interface SshRoutesDeps {
   engine: SshEngine
   /** Temp dir for upload/download staging (tests inject a sandbox). */
   stagingDir?: string
+  /** Browser vendor entry paths (tests inject sandbox files). */
+  vendorFiles?: {
+    xterm: string
+    fitAddon: string
+  }
+}
+
+interface CachedVendorAsset {
+  body: Buffer
+  etag: string
 }
 
 /**
@@ -110,6 +121,12 @@ export interface SshRoutesDeps {
 export function makeRoutes(deps: SshRoutesDeps): { routes: WebRoute[]; upgrade: WebUpgradeRoute } {
   const { store, engine } = deps
   const staging = deps.stagingDir ?? join(tmpdir(), 'dsh-ssh-uploads')
+  const runtimeRequire = createRequire(import.meta.url)
+  const vendorFiles = deps.vendorFiles ?? {
+    xterm: runtimeRequire.resolve('@xterm/xterm/lib/xterm.js'),
+    fitAddon: runtimeRequire.resolve('@xterm/addon-fit/lib/addon-fit.js'),
+  }
+  const vendorCache = new Map<string, Promise<CachedVendorAsset>>()
   // The upload route stages request bodies here; it must exist before the
   // first request (a missing dir would hang the first upload forever).
   mkdirSync(staging, { recursive: true })
@@ -127,7 +144,52 @@ export function makeRoutes(deps: SshRoutesDeps): { routes: WebRoute[]; upgrade: 
     return true
   }
 
+  const readVendorAsset = (path: string): Promise<CachedVendorAsset> => {
+    const cached = vendorCache.get(path)
+    if (cached !== undefined) return cached
+    const pending = readFile(path).then(body => ({
+      body,
+      etag: `"${createHash('sha256').update(body).digest('hex')}"`,
+    }))
+    vendorCache.set(path, pending)
+    void pending.catch(() => { if (vendorCache.get(path) === pending) vendorCache.delete(path) })
+    return pending
+  }
+
+  const vendorRoute = (path: string, file: string, assetPath: string): WebRoute => ({
+    kind: 'exact',
+    path,
+    handler: async (req, res) => {
+      if (!guard(req, res, 'GET')) return
+      try {
+        const asset = await readVendorAsset(assetPath)
+        const headers = {
+          etag: asset.etag,
+          'cache-control': 'public, max-age=31536000, immutable',
+          'x-content-type-options': 'nosniff',
+          'cross-origin-resource-policy': 'same-origin',
+          'referrer-policy': 'no-referrer',
+        }
+        if (req.headers['if-none-match'] === asset.etag) {
+          res.writeHead(304, headers)
+          res.end()
+          return
+        }
+        res.writeHead(200, {
+          ...headers,
+          'content-type': 'text/javascript; charset=utf-8',
+          'content-length': String(asset.body.length),
+        })
+        res.end(asset.body)
+      } catch {
+        writeJson(res, 500, { error: `missing packaged SSH terminal asset: ${file}` })
+      }
+    },
+  })
+
   const routes: WebRoute[] = [
+    vendorRoute(SSH_API.xtermScript, 'xterm.js', vendorFiles.xterm),
+    vendorRoute(SSH_API.fitAddonScript, 'addon-fit.js', vendorFiles.fitAddon),
     // ------------------------------------------------------------ hosts
     {
       kind: 'exact',

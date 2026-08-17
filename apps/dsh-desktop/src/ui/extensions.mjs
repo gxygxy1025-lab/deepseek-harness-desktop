@@ -1,3 +1,5 @@
+import { createExtensionOperationQueue } from './extension-operation-queue.mjs'
+
 const pluginList = document.querySelector('#plugin-list')
 const communityPluginList = document.querySelector('#community-plugin-list')
 const skillList = document.querySelector('#skill-list')
@@ -14,6 +16,20 @@ const qqBotQrWait = document.querySelector('#qqbot-qr-wait')
 const qqBotAppId = document.querySelector('#qqbot-appid')
 const pluginUpdateState = document.querySelector('#plugin-update-state')
 const checkPluginUpdatesButton = document.querySelector('#check-plugin-updates')
+const refreshButton = document.querySelector('#refresh')
+const recoveryCount = document.querySelector('#recovery-count')
+const recoveryMode = document.querySelector('#recovery-mode')
+const recoveryModeLabel = document.querySelector('#recovery-mode-label')
+const recoveryIncidents = document.querySelector('#recovery-incidents')
+const recoverySnapshots = document.querySelector('#recovery-snapshots')
+
+function setOperationBusy(busy) {
+  document.body.dataset.busy = String(busy)
+  document.body.setAttribute('aria-busy', String(busy))
+  for (const button of document.querySelectorAll('button:not([role="tab"])')) button.disabled = busy
+}
+
+const extensionOperations = createExtensionOperationQueue({ onBusyChange: setOperationBusy })
 
 function escapeHtml(value) {
   const element = document.createElement('span')
@@ -96,6 +112,42 @@ function communityPluginMarkup(plugin) {
   return `<article class="community-plugin-card"><div><div class="name-row"><span class="name">${escapeHtml(plugin.name)}</span><span class="badge">社区</span><span class="badge inactive">${state}</span></div><p class="description">${escapeHtml(plugin.description)}</p><p class="community-author">作者：${escapeHtml(plugin.author)} · 第三方插件与素材由作者仓库说明负责</p></div><button type="button" class="item-action community-open" data-open-community-plugin="${escapeHtml(plugin.id)}">查看作者仓库</button></article>`
 }
 
+const recoveryResolutionLabels = Object.freeze({
+  'auto-disabled': '已自动停用',
+  'disabled-by-user': '已手动停用',
+  'safe-mode-auto': '已自动进入安全模式',
+  'safe-mode': '已进入安全模式',
+})
+
+function incidentMarkup(incident) {
+  const plugin = incident.pluginName ? `<span class="name">${escapeHtml(incident.pluginName)}</span>` : '<span class="name">未定位插件</span>'
+  const resolution = recoveryResolutionLabels[incident.resolution] ?? '待处理'
+  const actions = incident.pluginName
+    ? `<button type="button" class="item-action update" data-reenable-plugin="${escapeHtml(incident.pluginName)}">重新启用</button><button type="button" class="item-action danger" data-recovery-remove="${escapeHtml(incident.pluginName)}">卸载</button>`
+    : ''
+  const details = incident.technicalDetails
+    ? `<details class="incident-details"><summary>技术详情</summary><pre>${escapeHtml(incident.technicalDetails)}</pre></details>`
+    : ''
+  return `<article class="recovery-item"><div><div class="name-row">${plugin}<span class="badge inactive">${escapeHtml(resolution)}</span></div><p class="description">${escapeHtml(incident.summary ?? '插件启动失败')}</p><p class="recovery-time">${escapeHtml(incident.createdAt ?? '')}</p>${details}</div><div class="item-actions">${actions}</div></article>`
+}
+
+function snapshotMarkup(snapshot) {
+  return `<article class="item"><div><div class="name-row"><span class="name">${escapeHtml(snapshot.label ?? 'Profile 配置')}</span><span class="badge">${escapeHtml(snapshot.kind ?? 'snapshot')}</span></div><p class="description">${escapeHtml(snapshot.createdAt ?? '')}</p></div><button type="button" class="item-action update" data-restore-snapshot="${escapeHtml(snapshot.id)}">恢复并重启</button></article>`
+}
+
+async function refreshRecovery() {
+  const state = await window.dshDesktop.getPluginRecoveryState()
+  recoveryCount.textContent = state.incidents.length
+  recoveryMode.dataset.safe = String(state.safeMode)
+  recoveryModeLabel.textContent = state.safeMode ? '安全模式，只加载内置插件' : '正常模式'
+  recoveryIncidents.innerHTML = state.incidents.length
+    ? state.incidents.map(incidentMarkup).join('')
+    : '<p class="empty">没有记录到插件启动故障</p>'
+  recoverySnapshots.innerHTML = state.snapshots.length
+    ? state.snapshots.map(snapshotMarkup).join('')
+    : '<p class="empty">启动成功后会在这里保存最近三份可用配置</p>'
+}
+
 function renderQqBot(status, eventType) {
   const bound = Boolean(status?.bound)
   const binding = Boolean(status?.binding)
@@ -117,9 +169,11 @@ function renderQqBot(status, eventType) {
 }
 
 async function refresh() {
-  document.body.dataset.busy = 'true'
   try {
-    const inventory = await window.dshDesktop.listExtensions()
+    const [inventory] = await Promise.all([
+      window.dshDesktop.listExtensions(),
+      refreshRecovery(),
+    ])
     pluginCount.textContent = inventory.plugins.length
     skillCount.textContent = inventory.skills.length
     renderQqBot(inventory.qqbot)
@@ -128,20 +182,19 @@ async function refresh() {
       : '<p class="empty">暂无社区推荐</p>'
     renderPlugins(inventory.plugins)
     skillList.innerHTML = inventory.skills.length ? inventory.skills.map(skillMarkup).join('') : '<p class="empty">尚未发现技能</p>'
+    if (extensionOperations.busy) setOperationBusy(true)
   } catch (error) {
     notify(error.message, true)
-  } finally {
-    delete document.body.dataset.busy
   }
 }
 
 function renderPlugins(plugins) {
   pluginCount.textContent = plugins.length
   pluginList.innerHTML = plugins.length ? plugins.map(pluginMarkup).join('') : '<p class="empty">暂无插件</p>'
+  if (extensionOperations.busy) setOperationBusy(true)
 }
 
 async function checkPluginUpdates({ silent = false } = {}) {
-  checkPluginUpdatesButton.disabled = true
   pluginUpdateState.textContent = '正在检查社区插件更新…'
   try {
     const plugins = await window.dshDesktop.checkPluginUpdates()
@@ -154,49 +207,44 @@ async function checkPluginUpdates({ silent = false } = {}) {
   } catch (error) {
     pluginUpdateState.textContent = '插件更新源暂时不可用，已安装版本未改变。'
     if (!silent) notify(error.message, true)
-  } finally {
-    checkPluginUpdatesButton.disabled = false
   }
 }
 
-document.querySelector('#qqbot-bind').addEventListener('click', async (event) => {
-  event.currentTarget.disabled = true
-  try {
-    renderQqBot(await window.dshDesktop.startQqBotBinding())
-  } catch (error) {
-    notify(error.message, true)
-  } finally {
-    event.currentTarget.disabled = false
-  }
+document.querySelector('#qqbot-bind').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      renderQqBot(await window.dshDesktop.startQqBotBinding())
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
 })
 
-document.querySelector('#qqbot-cancel').addEventListener('click', async (event) => {
-  event.currentTarget.disabled = true
-  try {
-    renderQqBot(await window.dshDesktop.cancelQqBotBinding())
-  } catch (error) {
-    notify(error.message, true)
-  } finally {
-    event.currentTarget.disabled = false
-  }
+document.querySelector('#qqbot-cancel').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      renderQqBot(await window.dshDesktop.cancelQqBotBinding())
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
 })
 
-document.querySelector('#qqbot-unbind').addEventListener('click', async (event) => {
+document.querySelector('#qqbot-unbind').addEventListener('click', () => {
   if (!window.confirm('解除 QQ 机器人绑定并清除本机加密凭据？')) return
-  event.currentTarget.disabled = true
-  try {
-    renderQqBot({ bound: false, binding: false }, 'restarting')
-    renderQqBot(await window.dshDesktop.unbindQqBot())
-    notify('QQ 机器人已解绑，DSH 已重启')
-  } catch (error) {
-    notify(error.message, true)
-    await refresh()
-  } finally {
-    event.currentTarget.disabled = false
-  }
+  void extensionOperations.run(async () => {
+    try {
+      renderQqBot({ bound: false, binding: false }, 'restarting')
+      renderQqBot(await window.dshDesktop.unbindQqBot())
+      notify('QQ 机器人已解绑，DSH 已重启')
+    } catch (error) {
+      notify(error.message, true)
+      await refresh()
+    }
+  })
 })
 
-window.dshDesktop.onQqBotEvent((payload) => {
+const removeQqBotEventListener = window.dshDesktop.onQqBotEvent((payload) => {
   renderQqBot(payload.status, payload.type)
   if (payload.type === 'bound') notify('QQ 机器人绑定成功，DSH 已重启')
   if (payload.type === 'error') notify(payload.error ?? 'QQ 机器人绑定失败', true)
@@ -234,87 +282,162 @@ for (const [index, tab] of tabs.entries()) {
 
 document.querySelector('#plugin-form').addEventListener('submit', async (event) => {
   event.preventDefault()
-  const spec = new FormData(event.currentTarget).get('spec')
-  const allowUnknown = new FormData(event.currentTarget).get('allowUnknown') === 'on'
-  const button = event.currentTarget.querySelector('button')
-  button.disabled = true
-  try {
-    const result = await window.dshDesktop.installPlugin(spec, allowUnknown)
-    notify(`${result.name} 已安装，DSH 已重启`)
-    event.currentTarget.reset()
-    await refresh()
-  } catch (error) {
-    notify(error.message, true)
-  } finally {
-    button.disabled = false
-  }
+  const form = event.currentTarget
+  const data = new FormData(form)
+  const spec = data.get('spec')
+  const allowUnknown = data.get('allowUnknown') === 'on'
+  await extensionOperations.run(async () => {
+    try {
+      const result = await window.dshDesktop.installPlugin(spec, allowUnknown)
+      notify(`${result.name} 已安装，DSH 已重启`)
+      form.reset()
+      await refresh()
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
 })
+window.addEventListener('beforeunload', removeQqBotEventListener, { once: true })
 
 pluginList.addEventListener('click', async (event) => {
   const updateButton = event.target.closest('[data-update-plugin]')
   if (updateButton) {
     const allowUnknown = updateButton.dataset.updateCompatibility === 'unknown'
     if (allowUnknown && !window.confirm('该版本没有声明 Desktop/DSH 适配范围，仍要更新吗？失败时会自动回滚。')) return
-    updateButton.disabled = true
-    try {
-      const result = await window.dshDesktop.updatePlugin(updateButton.dataset.updatePlugin, allowUnknown)
-      notify(`${result.name} 已更新至 v${result.version}，DSH 已重启`)
-      await refresh()
-      await checkPluginUpdates({ silent: true })
-    } catch (error) {
-      notify(error.message, true)
-      updateButton.disabled = false
-    }
+    await extensionOperations.run(async () => {
+      try {
+        const result = await window.dshDesktop.updatePlugin(updateButton.dataset.updatePlugin, allowUnknown)
+        notify(`${result.name} 已更新至 v${result.version}，DSH 已重启`)
+        await refresh()
+        await checkPluginUpdates({ silent: true })
+      } catch (error) {
+        notify(error.message, true)
+      }
+    })
     return
   }
   const button = event.target.closest('[data-remove-plugin]')
   if (!button) return
-  button.disabled = true
-  try {
-    await window.dshDesktop.removePlugin(button.dataset.removePlugin)
-    notify(`${button.dataset.removePlugin} 已移除`)
-    await refresh()
-  } catch (error) {
-    notify(error.message, true)
-    button.disabled = false
-  }
+  await extensionOperations.run(async () => {
+    try {
+      await window.dshDesktop.removePlugin(button.dataset.removePlugin)
+      notify(`${button.dataset.removePlugin} 已移除`)
+      await refresh()
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
 })
 
 communityPluginList.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-open-community-plugin]')
   if (!button) return
-  button.disabled = true
-  try {
-    await window.dshDesktop.openCommunityPlugin(button.dataset.openCommunityPlugin)
-  } catch (error) {
-    notify(error.message, true)
-  } finally {
-    button.disabled = false
-  }
+  await extensionOperations.run(async () => {
+    try {
+      await window.dshDesktop.openCommunityPlugin(button.dataset.openCommunityPlugin)
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
 })
 
 skillList.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-open-skill]')
-  if (button) await window.dshDesktop.openSkill(button.dataset.openSkill)
+  if (!button) return
+  await extensionOperations.run(async () => {
+    try {
+      await window.dshDesktop.openSkill(button.dataset.openSkill)
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+
+recoveryIncidents.addEventListener('click', async (event) => {
+  const enableButton = event.target.closest('[data-reenable-plugin]')
+  if (enableButton) {
+    await extensionOperations.run(async () => {
+      try {
+        await window.dshDesktop.setPluginEnabled(enableButton.dataset.reenablePlugin, true)
+        notify(`${enableButton.dataset.reenablePlugin} 已重新启用，DSH 已重启`)
+        await refresh()
+      } catch (error) {
+        notify(error.message, true)
+      }
+    })
+    return
+  }
+  const removeButton = event.target.closest('[data-recovery-remove]')
+  if (!removeButton) return
+  if (!window.confirm(`卸载 ${removeButton.dataset.recoveryRemove}？聊天记录和个人设置不会被删除。`)) return
+  await extensionOperations.run(async () => {
+    try {
+      await window.dshDesktop.removePlugin(removeButton.dataset.recoveryRemove)
+      notify(`${removeButton.dataset.recoveryRemove} 已卸载`)
+      await refresh()
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+
+recoverySnapshots.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-restore-snapshot]')
+  if (!button) return
+  if (!window.confirm('恢复这份插件配置并重启 DSH？聊天记录和个人设置不会受影响。')) return
+  await extensionOperations.run(async () => {
+    try {
+      await window.dshDesktop.restorePluginSnapshot(button.dataset.restoreSnapshot)
+      notify('插件配置已恢复，DSH 已重启')
+      await refresh()
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+
+document.querySelector('#export-diagnostics').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      const result = await window.dshDesktop.exportPluginDiagnostics()
+      if (!result.canceled) notify('插件诊断包已导出')
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
 })
 
 document.querySelector('#import-skill').addEventListener('click', async () => {
-  try {
-    const result = await window.dshDesktop.importSkill()
-    if (!result.canceled) {
-      notify(`${result.skill.name} 已导入`)
-      await refresh()
+  await extensionOperations.run(async () => {
+    try {
+      const result = await window.dshDesktop.importSkill()
+      if (!result.canceled) {
+        notify(`${result.skill.name} 已导入`)
+        await refresh()
+      }
+    } catch (error) {
+      notify(error.message, true)
     }
-  } catch (error) {
-    notify(error.message, true)
-  }
+  })
 })
-document.querySelector('#open-skill-root').addEventListener('click', () => window.dshDesktop.openSkillRoot())
-checkPluginUpdatesButton.addEventListener('click', () => checkPluginUpdates())
-document.querySelector('#refresh').addEventListener('click', async () => {
-  await refresh()
-  await checkPluginUpdates({ silent: true })
+document.querySelector('#open-skill-root').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      await window.dshDesktop.openSkillRoot()
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+checkPluginUpdatesButton.addEventListener('click', () => {
+  void extensionOperations.run(() => checkPluginUpdates())
+})
+refreshButton.addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    await refresh()
+    await checkPluginUpdates({ silent: true })
+  })
 })
 
-await refresh()
-void checkPluginUpdates({ silent: true })
+await extensionOperations.run(refresh)
+void extensionOperations.run(() => checkPluginUpdates({ silent: true }))

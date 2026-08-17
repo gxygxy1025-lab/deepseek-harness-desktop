@@ -259,12 +259,16 @@ export function createUpdateSurfaceScript() {
         actions.append(later);
       } else if (phase === 'downloading') {
         title.textContent = '正在后台下载';
-        status.textContent = '新版本正在静默下载，你可以继续当前工作。已完成 ' + Math.round(percent) + '%。';
+        status.textContent = '新版本正在静默下载，你可以继续当前工作。已完成 ' + Math.round(percent) + '%。'
+          + (value.source ? ' 下载源：' + value.source + '。' : '');
         actions.append(later);
       } else if (phase === 'ready') {
         title.textContent = '新版本已准备就绪';
         status.textContent = '更新已经下载完成。重启前会安全停止本地 Harness 运行时。';
         actions.append(later, install);
+      } else if (phase === 'installing') {
+        title.textContent = '正在启动更新程序';
+        status.textContent = '正在安全停止本地 Harness 运行时并启动安装程序，请稍候。';
       } else if (phase === 'current') {
         title.textContent = '已经是最新版本';
         status.textContent = '当前桌面版无需更新。';
@@ -288,8 +292,8 @@ export function createUpdateSurfaceScript() {
     close.addEventListener('click', hide);
     mask.addEventListener('click', hide);
     later.addEventListener('click', hide);
-    recheck.addEventListener('click', () => { void api.checkForUpdates(); });
-    install.addEventListener('click', () => { install.disabled = true; void api.installUpdate().finally(() => { install.disabled = false; }); });
+    recheck.addEventListener('click', () => { void api.checkForUpdates().catch(() => {}); });
+    install.addEventListener('click', () => { install.disabled = true; void api.installUpdate().catch(() => {}).finally(() => { install.disabled = false; }); });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !root.hidden) hide(); });
     api.onUpdateStatus?.(render);
     void api.getUpdateStatus().then(render).catch(() => {});

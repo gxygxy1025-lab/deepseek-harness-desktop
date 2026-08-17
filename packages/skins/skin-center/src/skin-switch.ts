@@ -289,6 +289,23 @@ export function stripManaged(patch: string): string {
   return patch.slice(0, start) + patch.slice(end + MANAGED_END.length)
 }
 
+/** Loader ids another skin manager wrote into the shared authority section. */
+export function externalManagedSkinIds(
+  patch: string,
+  registry: Record<string, SkinSwitchEntry> = loadRegistry(),
+): string[] {
+  const start = patch.indexOf(MANAGED_START)
+  if (start === -1) return []
+  const end = patch.indexOf(MANAGED_END, start)
+  if (end === -1) throw new Error('managed skin section is unterminated; fix the harness cordis.patch.yml')
+  const owned = new Set(Object.values(registry).map(entry => entry.id))
+  const ids = new Set<string>()
+  for (const match of patch.slice(start, end).matchAll(/^\s*- id:\s*([A-Za-z0-9._/@-]+)\s*$/gm)) {
+    if (!owned.has(match[1])) ids.add(match[1])
+  }
+  return [...ids].toSorted()
+}
+
 /** YAML single-quoted scalar: a literal single quote doubles. `wiring.id` is
  * already validated before it ever reaches a registry, so only `package`
  * needs escaping here. */
@@ -303,7 +320,11 @@ function yamlSingleQuote(value: string): string {
  * @param active - skin id, or null for the official stock look.
  * @param registry - registry to render against (defaults to the repo registry).
  */
-export function renderManaged(active: string | null, registry: Record<string, SkinSwitchEntry> = loadRegistry()): string {
+export function renderManaged(
+  active: string | null,
+  registry: Record<string, SkinSwitchEntry> = loadRegistry(),
+  externalIds: Iterable<string> = [],
+): string {
   const wired = wiredNames(registry)
   const lines = [MANAGED_START]
   for (const name of Object.keys(registry)) {
@@ -312,6 +333,9 @@ export function renderManaged(active: string | null, registry: Record<string, Sk
   }
   if (active !== null && !wired.has(active)) {
     lines.push('- insert:', `    - id: ${registry[active].id}`, `      name: ${yamlSingleQuote(registry[active].pkg)}`)
+  }
+  for (const id of new Set(externalIds)) {
+    if (/^[A-Za-z0-9._/@-]+$/.test(id)) lines.push(`- id: ${id}`, '  disabled: true')
   }
   lines.push(MANAGED_END)
   return lines.join('\n')
@@ -632,6 +656,43 @@ function readPatch(patchPath: string): string {
   }
 }
 
+export interface PatchVerificationOptions {
+  read?: (filePath: string) => string
+  wait?: (delayMs: number) => void
+}
+
+function waitForVerificationRead(delayMs: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs)
+}
+
+/**
+ * Verify one completed atomic rename without confusing a transient Windows
+ * file lock with a content mismatch. Read failures receive two short retries;
+ * an exhausted read error is rethrown unchanged, while a successful read with
+ * different bytes gets the dedicated verification error.
+ */
+export function verifyPatchWrite(
+  filePath: string,
+  next: string,
+  options: PatchVerificationOptions = {},
+): void {
+  const read = options.read ?? ((path: string) => readFileSync(path, 'utf8'))
+  const wait = options.wait ?? waitForVerificationRead
+  const delays = [10, 25]
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    let actual: string
+    try {
+      actual = read(filePath)
+    } catch (error) {
+      if (attempt === delays.length) throw error
+      wait(delays[attempt] ?? 0)
+      continue
+    }
+    if (actual !== next) throw new Error(`skin state write verification failed: ${filePath}`)
+    return
+  }
+}
+
 /**
  * Atomic replace: write a sibling temp file then rename over the target, so a
  * crash mid-write can never leave a half-written boot patch and the config
@@ -875,9 +936,13 @@ export function useSkin(name: string, opts: { home?: string; profile?: string; r
     renderRegistry = registryWithProfileWiring(registry, paths.profileModulesDir, paths.profileManifestPath)
   }
 
-  const patch = stripLegacySkinRows(stripManaged(readPatch(paths.patchPath)))
-  const next = `${patch.replace(/\s+$/, '')}\n\n${renderManaged(official ? null : name, renderRegistry)}\n`
+  const currentPatch = readPatch(paths.patchPath)
+  const externalIds = externalManagedSkinIds(currentPatch, renderRegistry)
+  const strippedPatch = stripLegacySkinRows(stripManaged(currentPatch))
+  const patch = strippedPatch.trim() === '[]' ? '' : strippedPatch
+  const next = `${patch.replace(/\s+$/, '')}\n\n${renderManaged(official ? null : name, renderRegistry, externalIds)}\n`
   writePatchAtomic(paths.patchPath, next)
+  verifyPatchWrite(paths.patchPath, next)
 
   const core = official
     ? 'restored the official stock look — the config watcher applies it within seconds; refresh the page to see it.'

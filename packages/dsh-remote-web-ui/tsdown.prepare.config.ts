@@ -1,4 +1,8 @@
 import { clientBundle, mobileBundle } from '../../shared/tsdown.client.ts'
+import {
+  REMOTE_WEB_UI_CLIENT_ONLY_BUNDLE,
+  REMOTE_WEB_UI_LIB_EXTERNAL,
+} from './tsdown.config.ts'
 
 /**
  * Consumer-side build for git installs (the `prepare` script): transpile
@@ -9,6 +13,7 @@ import { clientBundle, mobileBundle } from '../../shared/tsdown.client.ts'
  * git-installed package must ship it.
  */
 export default clientBundle('@linxin666/dsh-remote-web-ui', ['src/index.ts', 'src/invariant.ts'], {
-  libExternal: [/^@deepseek-ai\/dsh-host-apiproxy/],
+  clientOnlyBundle: REMOTE_WEB_UI_CLIENT_ONLY_BUNDLE,
+  libExternal: REMOTE_WEB_UI_LIB_EXTERNAL,
   companions: [mobileBundle('@linxin666/dsh-remote-web-ui', 'src/mobile/index.tsx')],
 })

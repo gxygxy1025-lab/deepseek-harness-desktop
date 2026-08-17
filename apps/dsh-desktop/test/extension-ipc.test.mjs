@@ -191,3 +191,299 @@ test('plugin update checks stay online and exact updates use the guarded transac
   )
   unregister()
 })
+
+test('plugin mutations serialize the complete runtime downtime transaction', async () => {
+  const ipcMain = new FakeIpcMain()
+  const events = []
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  let releaseFirstStart
+  let firstStartEntered
+  const firstStartBarrier = new Promise((resolve) => { releaseFirstStart = resolve })
+  const firstStartSignal = new Promise((resolve) => { firstStartEntered = resolve })
+  let starts = 0
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: {
+      remove: async (name) => {
+        events.push(`remove:${name}`)
+        return { name, restartRequired: true }
+      },
+    },
+    controller: {
+      stop: async () => { events.push('stop') },
+      start: async () => {
+        starts += 1
+        events.push(`start-${starts}`)
+        if (starts === 1) {
+          firstStartEntered()
+          await firstStartBarrier
+        }
+      },
+    },
+    ensureProfile: async () => { events.push('ensure') },
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  const remove = ipcMain.handlers.get('extensions:plugin-remove')
+  const first = remove(undefined, '@community/first')
+  await firstStartSignal
+  const second = remove(undefined, '@community/second')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(events, ['stop', 'remove:@community/first', 'ensure', 'start-1'])
+
+  releaseFirstStart()
+  assert.deepEqual(await Promise.all([first, second]), [
+    { name: '@community/first', restartRequired: true },
+    { name: '@community/second', restartRequired: true },
+  ])
+  assert.deepEqual(events, [
+    'stop',
+    'remove:@community/first',
+    'ensure',
+    'start-1',
+    'stop',
+    'remove:@community/second',
+    'ensure',
+    'start-2',
+  ])
+  unregister()
+})
+
+test('failed plugin removal reports a runtime recovery failure', async () => {
+  const ipcMain = new FakeIpcMain()
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  const events = []
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: {
+      remove: async () => {
+        events.push('remove')
+        throw new Error('profile removal failed')
+      },
+    },
+    controller: {
+      stop: async () => { events.push('stop') },
+      start: async () => {
+        events.push('recover')
+        throw new Error('runtime recovery failed')
+      },
+    },
+    ensureProfile: async () => { events.push('ensure') },
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  await assert.rejects(
+    ipcMain.handlers.get('extensions:plugin-remove')(undefined, '@community/example'),
+    /previous runtime could not be restored.*profile removal failed.*runtime recovery failed/u,
+  )
+  assert.deepEqual(events, ['stop', 'remove', 'ensure', 'recover'])
+  unregister()
+})
+
+test('plugin removal rolls back when the updated runtime cannot start', async () => {
+  const ipcMain = new FakeIpcMain()
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  const events = []
+  let starts = 0
+  const transaction = {
+    result: { name: '@community/example', restartRequired: true },
+    commit: () => events.push('commit'),
+    rollback: async () => { events.push('rollback'); return true },
+  }
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: {
+      remove: async () => {
+        events.push('remove')
+        return transaction
+      },
+    },
+    controller: {
+      stop: async () => { events.push('stop') },
+      start: async () => {
+        starts += 1
+        events.push(`start-${starts}`)
+        if (starts === 1) throw new Error('runtime rejected removed profile')
+      },
+    },
+    ensureProfile: async () => { events.push('ensure') },
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  await assert.rejects(
+    ipcMain.handlers.get('extensions:plugin-remove')(undefined, '@community/example'),
+    /runtime rejected removed profile/u,
+  )
+  assert.deepEqual(events, [
+    'stop',
+    'remove',
+    'ensure',
+    'start-1',
+    'rollback',
+    'ensure',
+    'start-2',
+  ])
+  unregister()
+})
+
+test('extension shutdown quiesces active mutations and rejects queued work', async () => {
+  const ipcMain = new FakeIpcMain()
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  let releaseRemoval
+  let removalEntered
+  const removalBarrier = new Promise((resolve) => { releaseRemoval = resolve })
+  const removalSignal = new Promise((resolve) => { removalEntered = resolve })
+  const events = []
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: {
+      remove: async (name) => {
+        events.push(`remove:${name}`)
+        removalEntered()
+        await removalBarrier
+        return { name, restartRequired: true }
+      },
+    },
+    controller: {
+      stop: async () => { events.push('stop') },
+      start: async () => { events.push('start') },
+    },
+    ensureProfile: async () => { events.push('ensure') },
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  const remove = ipcMain.handlers.get('extensions:plugin-remove')
+  const active = remove(undefined, '@community/active')
+  await removalSignal
+  let quiesced = false
+  const quiescing = unregister.quiesce().then(() => { quiesced = true })
+  await assert.rejects(
+    remove(undefined, '@community/queued'),
+    /plugin changes are unavailable while the desktop is stopping/u,
+  )
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(quiesced, false)
+  assert.deepEqual(events, ['stop', 'remove:@community/active'])
+
+  releaseRemoval()
+  await Promise.all([active, quiescing])
+  assert.equal(quiesced, true)
+  assert.deepEqual(events, ['stop', 'remove:@community/active', 'ensure', 'start'])
+  unregister.resume()
+  await unregister()
+})
+
+test('plugin mutations are rejected while QQ Bot binding can still change the profile', async () => {
+  const ipcMain = new FakeIpcMain()
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false, binding: true, pending: false })
+  qqBotBinding.start = () => ({ binding: true })
+  qqBotBinding.cancel = () => ({ binding: false })
+  qqBotBinding.unbind = async () => ({ bound: false })
+  let stops = 0
+  let removals = 0
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: { remove: async () => { removals += 1 } },
+    controller: {
+      stop: async () => { stops += 1 },
+      start: async () => {},
+    },
+    ensureProfile: async () => {},
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  await assert.rejects(
+    ipcMain.handlers.get('extensions:plugin-remove')(undefined, '@community/example'),
+    /QQ Bot binding/u,
+  )
+  assert.equal(stops, 0)
+  assert.equal(removals, 0)
+  await unregister()
+})
+
+test('QQ Bot bind and unbind wait for plugin mutations while cancellation stays available', async () => {
+  const ipcMain = new FakeIpcMain()
+  const qqBotBinding = new EventEmitter()
+  const qqCalls = []
+  qqBotBinding.status = () => ({ bound: false, binding: false, pending: false })
+  qqBotBinding.start = () => { qqCalls.push('bind'); return { binding: true } }
+  qqBotBinding.cancel = () => { qqCalls.push('cancel'); return { binding: false } }
+  qqBotBinding.unbind = async () => { qqCalls.push('unbind'); return { bound: false } }
+  let releaseRemoval
+  let removalEntered
+  const removalBarrier = new Promise((resolve) => { releaseRemoval = resolve })
+  const removalSignal = new Promise((resolve) => { removalEntered = resolve })
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: {
+      remove: async (name) => {
+        removalEntered()
+        await removalBarrier
+        return { name, restartRequired: true }
+      },
+    },
+    controller: { stop: async () => {}, start: async () => {} },
+    ensureProfile: async () => {},
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  const removal = ipcMain.handlers.get('extensions:plugin-remove')(undefined, '@community/example')
+  await removalSignal
+  await assert.rejects(async () => ipcMain.handlers.get('extensions:qqbot-bind')(), /plugin change/u)
+  await assert.rejects(async () => ipcMain.handlers.get('extensions:qqbot-unbind')(), /plugin change/u)
+  assert.deepEqual(ipcMain.handlers.get('extensions:qqbot-cancel')(), { binding: false })
+  assert.deepEqual(qqCalls, ['cancel'])
+
+  releaseRemoval()
+  await removal
+  assert.deepEqual(ipcMain.handlers.get('extensions:qqbot-bind')(), { binding: true })
+  assert.deepEqual(qqCalls, ['cancel', 'bind'])
+  await unregister()
+})

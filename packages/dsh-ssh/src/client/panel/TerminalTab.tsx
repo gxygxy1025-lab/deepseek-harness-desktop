@@ -6,11 +6,15 @@
  * once per page load (module-level guard).
  */
 import { useEffect, useRef, useState } from 'react'
-import { Terminal, type IDisposable } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
 import type { SshApi, TerminalConnection } from '../api.ts'
 import type { SshHostSummary } from '../../protocol.ts'
 import { XTERM_CSS } from './xterm.css.ts'
+import {
+  loadXtermRuntime,
+  type XtermDisposable,
+  type XtermFitAddon,
+  type XtermTerminal,
+} from './xterm-runtime.ts'
 import { errorMessage, tt } from './helpers.ts'
 import css from './panel.module.css'
 
@@ -50,10 +54,12 @@ export function TerminalTab({ api, presetAlias, requestId }: TerminalTabProps) {
   const [alias, setAlias] = useState(presetAlias ?? '')
   const [status, setStatus] = useState<TerminalStatus>({ kind: 'idle' })
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const termRef = useRef<Terminal | null>(null)
-  const fitRef = useRef<FitAddon | null>(null)
+  const termRef = useRef<XtermTerminal | null>(null)
+  const fitRef = useRef<XtermFitAddon | null>(null)
   const connRef = useRef<TerminalConnection | null>(null)
-  const dataSubRef = useRef<IDisposable | null>(null)
+  const dataSubRef = useRef<XtermDisposable | null>(null)
+  const connectGenerationRef = useRef(0)
+  const connectPendingRef = useRef(false)
 
   useEffect(() => { ensureXtermCss() }, [])
 
@@ -77,6 +83,8 @@ export function TerminalTab({ api, presetAlias, requestId }: TerminalTabProps) {
   }, [presetAlias, requestId])
 
   const teardown = (): void => {
+    connectGenerationRef.current += 1
+    connectPendingRef.current = false
     const connection = connRef.current
     connRef.current = null
     if (connection !== null) {
@@ -115,38 +123,56 @@ export function TerminalTab({ api, presetAlias, requestId }: TerminalTabProps) {
     const target = alias
     const container = containerRef.current
     if (target === '' || container === null) return
-    if (status.kind === 'connecting' || status.kind === 'connected') return
+    if (connectPendingRef.current || status.kind === 'connecting' || status.kind === 'connected') return
     teardown()
+    connectPendingRef.current = true
+    const generation = connectGenerationRef.current
     setStatus({ kind: 'connecting' })
-    const term = new Terminal({
-      convertEol: false,
-      cursorBlink: true,
-      fontSize: 13,
-      fontFamily: 'Menlo, Consolas, "Liberation Mono", monospace',
-      theme: { background: '#0b0e14', foreground: '#d8dee9', cursor: '#a3b8d0' },
+    void loadXtermRuntime().then(({ Terminal, FitAddon }) => {
+      if (connectGenerationRef.current !== generation) return
+      connectPendingRef.current = false
+      let term: XtermTerminal | undefined
+      try {
+        term = new Terminal({
+          convertEol: false,
+          cursorBlink: true,
+          fontSize: 13,
+          fontFamily: 'Menlo, Consolas, "Liberation Mono", monospace',
+          theme: { background: '#0b0e14', foreground: '#d8dee9', cursor: '#a3b8d0' },
+        })
+        const fit = new FitAddon()
+        term.loadAddon(fit)
+        term.open(container)
+        fit.fit()
+        const connection = api.openTerminal(target, term.cols, term.rows)
+        termRef.current = term
+        fitRef.current = fit
+        connRef.current = connection
+        let settled = false
+        dataSubRef.current = term.onData(data => { connection.send(data) })
+        connection.onReady = () => {
+          if (connectGenerationRef.current === generation) setStatus({ kind: 'connected', alias: target })
+        }
+        connection.onOutput = data => { term?.write(data) }
+        connection.onExit = (code, error) => {
+          if (settled || connectGenerationRef.current !== generation || term === undefined) return
+          settled = true
+          dataSubRef.current?.dispose()
+          dataSubRef.current = null
+          term.options.disableStdin = true
+          connRef.current = null
+          // Keep the last output visible; input is now disabled.
+          setStatus({ kind: 'exited', alias: target, detail: error })
+        }
+      } catch (cause) {
+        term?.dispose()
+        if (connectGenerationRef.current === generation) setStatus({ kind: 'error', detail: errorMessage(cause) })
+      }
+    }).catch((cause) => {
+      if (connectGenerationRef.current !== generation) return
+      connectPendingRef.current = false
+      setStatus({ kind: 'error', detail: errorMessage(cause) })
     })
-    const fit = new FitAddon()
-    term.loadAddon(fit)
-    term.open(container)
-    fit.fit()
-    const connection = api.openTerminal(target, term.cols, term.rows)
-    termRef.current = term
-    fitRef.current = fit
-    connRef.current = connection
-    let settled = false
-    dataSubRef.current = term.onData(data => { connection.send(data) })
-    connection.onReady = () => { setStatus({ kind: 'connected', alias: target }) }
-    connection.onOutput = data => { term.write(data) }
-    connection.onExit = (code, error) => {
-      if (settled) return
-      settled = true
-      dataSubRef.current?.dispose()
-      dataSubRef.current = null
-      term.options.disableStdin = true
-      connRef.current = null
-      // Keep the last output visible; input is now disabled.
-      setStatus({ kind: 'exited', alias: target, detail: error })
-    }
   }
 
   const disconnect = (): void => {

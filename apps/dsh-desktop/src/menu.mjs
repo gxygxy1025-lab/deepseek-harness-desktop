@@ -1,20 +1,30 @@
 import { GITHUB_PROJECT_URL } from './community-links.mjs'
+import { runBestEffort } from './best-effort-events.mjs'
 
-export function createApplicationMenuTemplate({ app, shell, controller, openCommunity, openFeedback, openExtensions, openLogs, checkForUpdates }) {
+export function createApplicationMenuTemplate({
+  app,
+  shell,
+  controller,
+  openCommunity,
+  openFeedback,
+  openExtensions,
+  openLogs,
+  checkForUpdates,
+  onActionError = () => {},
+}) {
+  const action = (operation) => () => runBestEffort(operation, onActionError)
   return [
     {
       label: '应用 / App',
       submenu: [
-        { label: '扩展坞 / Extension Dock', accelerator: 'CmdOrCtrl+Shift+X', click: openExtensions },
-        { type: 'separator' },
         { role: 'quit', label: '退出 / Quit' },
       ],
     },
     {
       label: '运行时 / Runtime',
       submenu: [
-        { label: '重启 DSH / Restart DSH', accelerator: 'CmdOrCtrl+Shift+R', click: () => void controller.restart() },
-        { label: '打开日志 / Open Logs', click: openLogs },
+        { label: '重启 DSH / Restart DSH', accelerator: 'CmdOrCtrl+Shift+R', click: action(() => controller.restart()) },
+        { label: '打开日志 / Open Logs', click: action(openLogs) },
       ],
     },
     {
@@ -31,13 +41,19 @@ export function createApplicationMenuTemplate({ app, shell, controller, openComm
       ],
     },
     {
+      label: '工具 / Tools',
+      submenu: [
+        { label: '扩展坞 / Extension Dock', accelerator: 'CmdOrCtrl+Shift+X', click: action(openExtensions) },
+      ],
+    },
+    {
       label: '帮助 / Help',
       submenu: [
-        { label: '检查更新 / Check for Updates', click: () => void checkForUpdates({ manual: true }) },
+        { label: '检查更新 / Check for Updates', click: action(() => checkForUpdates({ manual: true })) },
         { type: 'separator' },
-        { label: '加入社群 / Join QQ Group', click: openCommunity },
-        { label: '提建议 / Suggest an Idea', click: openFeedback },
-        { label: 'GitHub 项目', click: () => void shell.openExternal(GITHUB_PROJECT_URL) },
+        { label: '加入社群 / Join QQ Group', click: action(openCommunity) },
+        { label: '提建议 / Suggest an Idea', click: action(openFeedback) },
+        { label: 'GitHub 项目', click: action(() => shell.openExternal(GITHUB_PROJECT_URL)) },
         { type: 'separator' },
         { label: `版本 / Version ${app.getVersion()}`, enabled: false },
       ],

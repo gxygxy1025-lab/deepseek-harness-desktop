@@ -35,8 +35,8 @@ export const BUILTIN_BUNDLES = Object.freeze([
 // away whenever the desktop profile is refreshed.
 export const AGGREGATED_BUNDLES = Object.freeze([
   '@linxin666/dsh-client-ui-aionui-panel',
+  '@linxin666/dsh-client-ui-community-plugins',
   '@linxin666/dsh-client-ui-git-graph',
-  '@linxin666/dsh-client-ui-mode-switcher',
   '@linxin666/dsh-client-ui-skin-center',
   '@linxin666/dsh-client-ui-task-board',
   '@linxin666/dsh-client-ui-web-ui-settings',
@@ -55,7 +55,6 @@ export const BUILTIN_SKIN_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-harbor',
   '@linxin666/dsh-client-ui-skin-miku',
   '@linxin666/dsh-client-ui-skin-minecraft',
-  '@linxin666/dsh-client-ui-skin-qq2006',
   '@linxin666/dsh-client-ui-skin-qq98',
   '@linxin666/dsh-client-ui-skin-ths',
   '@linxin666/dsh-client-ui-skin-trading',
@@ -68,6 +67,7 @@ export const BUILTIN_SKIN_PACKAGES = Object.freeze([
 // marketplace. Leaving them in dependencies lets DSH's bundle reconciler (or
 // dshmarket's client-only hot mount) load them a second time.
 export const RETIRED_MANAGED_PACKAGES = Object.freeze([
+  '@linxin666/dsh-client-ui-skin-qq2006',
   '@linxin666/dsh-web-ui-compat',
   '@vectorize-io/hindsight-coding-agents',
   ...BUILTIN_SKIN_PACKAGES,
@@ -94,6 +94,7 @@ export const WEB_UI_SETTINGS_NAMESPACES = Object.freeze([
 export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-desktop-compat',
   '@linxin666/dsh-client-ui-aionui-panel',
+  '@linxin666/dsh-client-ui-community-plugins',
   '@linxin666/dsh-client-ui-git-graph',
   '@linxin666/dsh-client-ui-mode-switcher',
   '@linxin666/dsh-client-ui-skin-center',
@@ -118,9 +119,25 @@ export const DESKTOP_SUPPORT_PACKAGES = Object.freeze([
   '@deepseek-ai/dsh-host-directory-picker-browse',
 ].toSorted())
 
+const BUNDLED_SKIN_PACKAGE_PREFIX = '@linxin666/dsh-client-ui-skin-'
+
+// Desktop-owned packages supplied to another bundle's composition instead of
+// mounted as top-level bundles. Old top-level rows must still be migrated away.
+export const DEPENDENCY_ONLY_BUNDLES = Object.freeze([
+  '@linxin666/dsh-client-ui-mode-switcher',
+].toSorted())
+
+// Compatibility dependencies for supported community plugins whose published
+// manifests omit a package that they import at runtime. Link these directly
+// into the isolated desktop profile so pnpm's strict resolution can find them.
+export const DESKTOP_PLUGIN_COMPAT_PACKAGES = Object.freeze([
+  'schemastery',
+].toSorted())
+
 export const MANAGED_RUNTIME_PACKAGES = Object.freeze([
   ...BUILTIN_RUNTIME_PACKAGES,
   ...DESKTOP_SUPPORT_PACKAGES,
+  ...DESKTOP_PLUGIN_COMPAT_PACKAGES,
 ].toSorted())
 
 // DSH rc.6 exposes these runtime modules as peers. Keep them explicit so the
@@ -215,8 +232,9 @@ export function createDesktopProfileManifest(existing = {}) {
     : [...BUILTIN_BUNDLES]
   const communityBundles = Array.isArray(existingBundles)
     ? existingBundles.filter((name) =>
-        !BUILTIN_BUNDLES.includes(name)
-        && !AGGREGATED_BUNDLES.includes(name)
+         !BUILTIN_BUNDLES.includes(name)
+         && !DEPENDENCY_ONLY_BUNDLES.includes(name)
+         && !AGGREGATED_BUNDLES.includes(name)
         && !RETIRED_MANAGED_PACKAGES.includes(name))
     : []
   const dependencies = Object.fromEntries(
@@ -330,22 +348,40 @@ async function pathExists(path) {
   }
 }
 
+async function linkTargetsSource(target, source) {
+  if (typeof source !== 'string' || source.length === 0) return false
+  try {
+    return (await realpath(target)) === (await realpath(source))
+  } catch {
+    try {
+      return resolve(dirname(target), await readlink(target)) === resolve(source)
+    } catch {
+      return false
+    }
+  }
+}
+
 async function linkManagedPackage({ packageName, profileDir, sourceDir, previous }) {
   const target = join(profileDir, 'node_modules', ...packagePathSegments(packageName))
   await mkdir(dirname(target), { recursive: true })
   if (await pathExists(target)) {
-    try {
-      if ((await realpath(target)) === (await realpath(sourceDir))) {
-        return { changed: false, record: { mode: 'link', source: sourceDir } }
-      }
-    } catch {
-      // A copied package has a different real path and is checked below.
+    if (await linkTargetsSource(target, sourceDir)) {
+      return { changed: false, record: { mode: 'link', source: sourceDir } }
     }
+    const metadata = await lstat(target)
     const installed = await readJsonIfPresent(join(target, 'package.json'))
     if (previous?.mode === 'copy' && previous.source === sourceDir && installed?.name === packageName) {
       return { changed: false, record: previous }
     }
-    throw new Error(`refusing to replace unmanaged package at ${target}`)
+    const ownedLink = previous?.mode === 'link'
+      && metadata.isSymbolicLink()
+      && await linkTargetsSource(target, previous.source)
+    const ownedCopy = previous?.mode === 'copy'
+      && metadata.isDirectory()
+      && typeof previous.source === 'string'
+      && installed?.name === packageName
+    if (!ownedLink && !ownedCopy) throw new Error(`refusing to replace unmanaged package at ${target}`)
+    await rm(target, { recursive: true, force: true })
   }
 
   try {
@@ -370,16 +406,7 @@ async function retireManagedPackage({ packageName, profileDir, previous }) {
   }
 
   if (previous.mode === 'link' && metadata.isSymbolicLink()) {
-    let owned = false
-    try {
-      owned = (await realpath(target)) === (await realpath(previous.source))
-    } catch {
-      try {
-        owned = resolve(dirname(target), await readlink(target)) === resolve(previous.source)
-      } catch {
-        owned = false
-      }
-    }
+    const owned = await linkTargetsSource(target, previous.source)
     if (!owned) return false
     await rm(target, { recursive: true, force: true })
     return true
@@ -392,6 +419,50 @@ async function retireManagedPackage({ packageName, profileDir, previous }) {
     return true
   }
   return false
+}
+
+function selectedBundledSkinPackage(managedSection) {
+  if (managedSection === undefined) return undefined
+  const matches = [...managedSection.matchAll(/^\s+name:\s*(['"])(@linxin666\/dsh-client-ui-skin-([a-z0-9-]+))\1\s*$/gmu)]
+  const selected = matches.at(-1)
+  return selected ? { packageName: selected[2], skinId: selected[3] } : undefined
+}
+
+async function resolveBundledSkinSelection({ managedSection, carrierRoot }) {
+  if (typeof carrierRoot !== 'string') return undefined
+  const selected = selectedBundledSkinPackage(managedSection)
+  if (selected === undefined || !selected.packageName.startsWith(BUNDLED_SKIN_PACKAGE_PREFIX)) return undefined
+  const { packageName, skinId } = selected
+  const sourceDir = join(carrierRoot, 'skins', skinId)
+  const sourceManifest = await readJsonIfPresent(join(sourceDir, 'package.json'))
+  return sourceManifest?.name === packageName ? { packageName, sourceDir } : undefined
+}
+
+async function ensureBundledSkinAlias({ selection, profileDir, previous }) {
+  if (selection === undefined) return { changed: false }
+  const { packageName, sourceDir } = selection
+  const target = join(profileDir, 'node_modules', ...packagePathSegments(packageName))
+  if (await pathExists(target)) {
+    if (await linkTargetsSource(target, sourceDir)) {
+      return { changed: false, packageName, record: { mode: 'link', source: sourceDir } }
+    }
+    const installed = await readJsonIfPresent(join(target, 'package.json'))
+    const metadata = await lstat(target)
+    const ownedLink = previous?.mode === 'link'
+      && metadata.isSymbolicLink()
+      && await linkTargetsSource(target, previous.source)
+    const ownedCopy = previous?.mode === 'copy'
+      && metadata.isDirectory()
+      && typeof previous.source === 'string'
+      && installed?.name === packageName
+    if (!ownedLink && !ownedCopy) {
+      if (installed?.name === packageName) return { changed: false, packageName }
+      if (!metadata.isSymbolicLink()) throw new Error(`refusing to replace unmanaged package at ${target}`)
+      await rm(target, { recursive: true, force: true })
+    }
+  }
+  const result = await linkManagedPackage({ packageName, profileDir, sourceDir, previous })
+  return { ...result, packageName }
 }
 
 export async function ensureDesktopProfile({
@@ -408,10 +479,6 @@ export async function ensureDesktopProfile({
   const recordPath = join(profileDir, '.dsh-desktop-links.json')
   const previousRecords = (await readJsonIfPresent(recordPath)) ?? {}
   const existing = await readJsonIfPresent(manifestPath)
-  const existingBundles = existing?.dsh?.profile?.bundles ?? []
-  const legacyManagedRuntime = RETIRED_MANAGED_PACKAGES.some((name) =>
-    existing?.dependencies?.[name] !== undefined
-      || (Array.isArray(existingBundles) && existingBundles.includes(name)))
   const manifest = createDesktopProfileManifest(existing)
   const activePackageRoots = new Map(packageRoots)
   const codexConnectEnabled = manifest.dsh.profile.bundles.includes('dsh-codex-connect')
@@ -438,12 +505,15 @@ export async function ensureDesktopProfile({
     throw error
   })
   const legacySkinSection = extractManagedSkinSection(existingPatch)
-  if (legacySkinSection !== undefined || legacyManagedRuntime) {
-    const resetHomePatch = stripManagedSkinSection(homePatch ?? '').trim()
-    if (homePatch !== undefined && resetHomePatch !== homePatch.trim()) {
-      homePatch = resetHomePatch ? `${resetHomePatch}\n` : ROOT_CONFIG
-      changed = (await writeIfChanged(homePatchPath, homePatch)) || changed
-    }
+  // Desktop builds before the skin center moved its selector state into the
+  // profile patch. The home patch is now the single authority: move the old
+  // section there only when no newer home-layer state exists, and never clear
+  // a section the running skin center has already written.
+  if (legacySkinSection !== undefined && extractManagedSkinSection(homePatch ?? '') === undefined) {
+    const rawPrefix = (homePatch ?? '').trim()
+    const prefix = rawPrefix === '[]' ? '' : rawPrefix
+    homePatch = prefix ? `${prefix}\n\n${legacySkinSection}\n` : `${legacySkinSection}\n`
+    changed = (await writeIfChanged(homePatchPath, homePatch)) || changed
   }
   // DSH parses an existing patch file as YAML and requires a top-level array.
   // An empty file parses as null, so repair blank files left by desktop 0.1.8
@@ -458,10 +528,16 @@ export async function ensureDesktopProfile({
   changed = (await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), WORKSPACE_CONFIG)) || changed
   changed = (await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)) || changed
 
+  const bundledSkinSelection = await resolveBundledSkinSelection({
+    managedSection: extractManagedSkinSection(homePatch ?? ''),
+    carrierRoot: activePackageRoots.get('@linxin666/dsh-skins'),
+  })
   const packagesToRetire = codexConnectEnabled
     ? RETIRED_MANAGED_PACKAGES
     : [...RETIRED_MANAGED_PACKAGES, 'dsh-codex-connect']
-  const retired = await Promise.all(packagesToRetire.map((packageName) =>
+  const retired = await Promise.all(packagesToRetire
+    .filter((packageName) => packageName !== bundledSkinSelection?.packageName)
+    .map((packageName) =>
     retireManagedPackage({
       packageName,
       profileDir,
@@ -487,6 +563,15 @@ export async function ensureDesktopProfile({
     nextRecords[packageName] = result.record
     changed = result.changed || changed
   }
+  const skinAlias = await ensureBundledSkinAlias({
+    selection: bundledSkinSelection,
+    profileDir,
+    previous: bundledSkinSelection === undefined
+      ? undefined
+      : previousRecords[bundledSkinSelection.packageName],
+  })
+  if (skinAlias.record !== undefined) nextRecords[skinAlias.packageName] = skinAlias.record
+  changed = skinAlias.changed || changed
   changed = (await writeIfChanged(recordPath, `${JSON.stringify(nextRecords, null, 2)}\n`)) || changed
 
   return { changed, manifest, profileDir }
@@ -547,6 +632,20 @@ export function resolveRuntimePackages(
   const pending = new Set([...packageNames].toSorted())
   const anchors = [initialAnchor]
   const resolved = new Map()
+
+  // Resolve the published aggregate first and prefer its dependency tree for
+  // every package that it owns. In a workspace checkout, resolving all names
+  // from this source file first would silently select older local packages
+  // instead of the release pinned by the desktop application.
+  const aggregateName = '@linxin666/dsh-web-ui-all'
+  if (pending.has(aggregateName)) {
+    const aggregateRoot = resolvePackageRoot(aggregateName, anchors)
+    if (aggregateRoot !== undefined) {
+      resolved.set(aggregateName, aggregateRoot)
+      pending.delete(aggregateName)
+      anchors.unshift(join(aggregateRoot, 'package.json'))
+    }
+  }
 
   while (pending.size > 0) {
     let madeProgress = false

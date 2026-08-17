@@ -71,7 +71,6 @@ function pkgJson(name) {
       jsdom: '29.1.1',
       lightningcss: '^1.32.0',
       tsdown: '^0.22.2',
-      'vite-tsconfig-paths': '^6.1.1',
       vitest: '^4.1.8',
       '@deepseek-ai/cordis': '^4.0.1',
     },
@@ -145,15 +144,12 @@ function tsconfigVitest() {
 }
 
 function vitestConfig() {
-  return `import tsconfigPaths from 'vite-tsconfig-paths'
-import { defineConfig } from 'vitest/config'
+  return `import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  plugins: [tsconfigPaths({
-    projects: [
-      './tsconfig.vitest.json',
-    ],
-  })],
+  resolve: {
+    tsconfigPaths: true,
+  },
   test: {
     include: ['tests/**/*.spec.{ts,tsx}'],
     pool: 'forks',

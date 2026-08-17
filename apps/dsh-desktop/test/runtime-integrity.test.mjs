@@ -30,6 +30,11 @@ test('runtime integrity includes the OpenTelemetry machine identifier reported m
   assert.ok(CRITICAL_RUNTIME_FILES.includes(machineIdPath))
 })
 
+test('desktop directly declares the telemetry package required during bootstrap', async () => {
+  const manifest = JSON.parse(await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
+  assert.equal(manifest.dependencies['@deepseek-ai/dsh-session-telemetry-otel'], '0.1.0-rc.6')
+})
+
 test('runtime integrity reports an incomplete installation and recommends reinstalling', async () => {
   const modulesRoot = await mkdtemp(join(tmpdir(), 'dsh-runtime-integrity-'))
   try {
@@ -58,4 +63,6 @@ test('package verification consumes the shared critical runtime file contract', 
   const source = await readFile(fileURLToPath(new URL('../scripts/verify-package.mjs', import.meta.url)), 'utf8')
   assert.match(source, /CRITICAL_RUNTIME_FILES/u)
   assert.match(source, /for \(const relativePath of CRITICAL_RUNTIME_FILES\)/u)
+  assert.match(source, /packaged SSH client eagerly bundles xterm/u)
+  assert.match(source, /'@xterm', 'xterm', 'lib', 'xterm\.js'/u)
 })
