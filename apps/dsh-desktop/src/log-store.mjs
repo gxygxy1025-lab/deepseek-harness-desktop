@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 const SECRET_ASSIGNMENT = /\b(NPM_TOKEN|DEEPSEEK_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|QQBOT_SECRET|APP_SECRET|APPSECRET|API_KEY|ACCESS_TOKEN|AUTH_TOKEN)=([^\s]+)/gi
 const BEARER_TOKEN = /(Authorization:\s*Bearer\s+)([^\s]+)/gi
+const DEFAULT_FILE_SYSTEM = { mkdir, readFile, rename, rm, stat, writeFile }
 
 export function sanitizeLogLine(value) {
   return String(value)
@@ -11,18 +12,18 @@ export function sanitizeLogLine(value) {
     .replaceAll('\u0000', '')
 }
 
-async function fileSize(path) {
+async function fileSize(path, fileSystem) {
   try {
-    return (await stat(path)).size
+    return (await fileSystem.stat(path)).size
   } catch (error) {
     if (error?.code === 'ENOENT') return 0
     throw error
   }
 }
 
-async function readIfPresent(path) {
+async function readIfPresent(path, fileSystem) {
   try {
-    return await readFile(path, 'utf8')
+    return await fileSystem.readFile(path, 'utf8')
   } catch (error) {
     if (error?.code === 'ENOENT') return ''
     throw error
@@ -30,7 +31,13 @@ async function readIfPresent(path) {
 }
 
 export class BoundedLogStore {
-  constructor({ directory, baseName = 'runtime.log', maxBytes = 1_048_576, maxFiles = 4 }) {
+  constructor({
+    directory,
+    baseName = 'runtime.log',
+    maxBytes = 1_048_576,
+    maxFiles = 4,
+    fileSystem = DEFAULT_FILE_SYSTEM,
+  }) {
     if (!directory) throw new TypeError('log directory is required')
     if (!Number.isInteger(maxBytes) || maxBytes < 32) throw new TypeError('maxBytes must be at least 32')
     if (!Number.isInteger(maxFiles) || maxFiles < 1) throw new TypeError('maxFiles must be positive')
@@ -38,34 +45,55 @@ export class BoundedLogStore {
     this.path = join(directory, baseName)
     this.maxBytes = maxBytes
     this.maxFiles = maxFiles
+    this.fileSystem = fileSystem
     this.queue = Promise.resolve()
+    this.directoryReady = undefined
+    this.currentSize = undefined
+    this.lastWriteError = undefined
   }
 
   append(value) {
-    const operation = this.queue.then(() => this.#append(value))
-    this.queue = operation.catch(() => {})
+    const operation = this.queue.then(() => this.#append(value)).then(
+      () => {
+        this.lastWriteError = undefined
+        return true
+      },
+      (error) => {
+        this.directoryReady = undefined
+        this.currentSize = undefined
+        this.lastWriteError = error
+        return false
+      },
+    )
+    this.queue = operation
     return operation
   }
 
   async #append(value) {
-    await mkdir(this.directory, { recursive: true })
+    this.directoryReady ??= this.fileSystem.mkdir(this.directory, { recursive: true })
+    await this.directoryReady
     let entry = Buffer.from(`${sanitizeLogLine(value).replace(/[\r\n]+$/u, '')}\n`, 'utf8')
     if (entry.byteLength > this.maxBytes) entry = entry.subarray(entry.byteLength - this.maxBytes)
-    if ((await fileSize(this.path)) + entry.byteLength > this.maxBytes) await this.#rotate()
-    await writeFile(this.path, entry, { flag: 'a' })
+    this.currentSize ??= await fileSize(this.path, this.fileSystem)
+    if (this.currentSize + entry.byteLength > this.maxBytes) {
+      await this.#rotate()
+      this.currentSize = 0
+    }
+    await this.fileSystem.writeFile(this.path, entry, { flag: 'a' })
+    this.currentSize += entry.byteLength
   }
 
   async #rotate() {
     if (this.maxFiles === 1) {
-      await writeFile(this.path, '')
+      await this.fileSystem.writeFile(this.path, '')
       return
     }
     for (let index = this.maxFiles - 1; index >= 1; index -= 1) {
       const source = index === 1 ? this.path : `${this.path}.${index - 1}`
       const destination = `${this.path}.${index}`
-      await rm(destination, { force: true })
+      await this.fileSystem.rm(destination, { force: true })
       try {
-        await rename(source, destination)
+        await this.fileSystem.rename(source, destination)
       } catch (error) {
         if (error?.code !== 'ENOENT') throw error
       }
@@ -76,9 +104,9 @@ export class BoundedLogStore {
     await this.queue
     const chunks = []
     for (let index = this.maxFiles - 1; index >= 1; index -= 1) {
-      chunks.push(await readIfPresent(`${this.path}.${index}`))
+      chunks.push(await readIfPresent(`${this.path}.${index}`, this.fileSystem))
     }
-    chunks.push(await readIfPresent(this.path))
+    chunks.push(await readIfPresent(this.path, this.fileSystem))
     return chunks
       .join('')
       .split(/\r?\n/u)

@@ -36,6 +36,12 @@ function fakeApi(): SshApi {
 }
 
 describe('TerminalTab dispose and resize cleanup', () => {
+  it('keeps xterm out of the eagerly evaluated client bundle', () => {
+    const source = readFileSync(join(process.cwd(), 'src', 'client', 'panel', 'TerminalTab.tsx'), 'utf8')
+    expect(source).not.toMatch(/from ['"]@xterm\/(?:xterm|addon-fit)['"]/)
+    expect(source).toContain('loadXtermRuntime()')
+  })
+
   it('registers a resize listener on mount and removes it on unmount', async () => {
     const addResize = vi.fn()
     const removeResize = vi.fn()

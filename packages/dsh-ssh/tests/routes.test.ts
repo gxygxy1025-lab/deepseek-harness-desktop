@@ -6,7 +6,7 @@
 
 import { createServer, request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { WebSocket } from 'ws'
@@ -84,12 +84,12 @@ let store: HostStore
 let stub: StubEngine
 const dir = mkdtempSync(join(tmpdir(), 'dsh-ssh-routes-'))
 
-function get(path: string, headers: Record<string, string> = {}): Promise<{ status: number; text: string }> {
+function get(path: string, headers: Record<string, string> = {}): Promise<{ status: number; text: string; headers: Record<string, string | string[] | undefined> }> {
   return new Promise((resolve, reject) => {
     const req = httpRequest({ host: '127.0.0.1', port, path, headers }, (res) => {
       let text = ''
       res.on('data', (chunk: Buffer) => { text += chunk.toString('utf8') })
-      res.on('end', () => resolve({ status: res.statusCode ?? 0, text }))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, text, headers: res.headers }))
     })
     req.on('error', reject)
     req.end()
@@ -99,7 +99,19 @@ function get(path: string, headers: Record<string, string> = {}): Promise<{ stat
 beforeAll(async () => {
   store = new HostStore(join(dir, 'hosts.json'))
   stub = new StubEngine()
-  const { routes, upgrade } = makeRoutes({ store, engine: engine(stub), stagingDir: join(dir, 'staging') })
+  const vendorDir = join(dir, 'vendor')
+  mkdirSync(vendorDir, { recursive: true })
+  writeFileSync(join(vendorDir, 'xterm.js'), 'globalThis.Terminal = class Terminal {}', 'utf8')
+  writeFileSync(join(vendorDir, 'addon-fit.js'), 'globalThis.FitAddon = { FitAddon: class FitAddon {} }', 'utf8')
+  const { routes, upgrade } = makeRoutes({
+    store,
+    engine: engine(stub),
+    stagingDir: join(dir, 'staging'),
+    vendorFiles: {
+      xterm: join(vendorDir, 'xterm.js'),
+      fitAddon: join(vendorDir, 'addon-fit.js'),
+    },
+  })
   server = createServer((req, res) => {
     const rawPath = new URL(req.url ?? '/', 'http://x').pathname
     const route = routes.find(r => r.kind === 'exact' && r.path === rawPath)
@@ -128,6 +140,24 @@ afterAll(async () => {
 })
 
 describe('loopback fence', () => {
+  it('serves immutable same-origin xterm assets with validators', async () => {
+    const first = await get(SSH_API.xtermScript)
+    expect(first.status).toBe(200)
+    expect(first.text).toContain('class Terminal')
+    expect(first.headers['content-type']).toBe('text/javascript; charset=utf-8')
+    expect(first.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+    expect(first.headers['x-content-type-options']).toBe('nosniff')
+    expect(first.headers.etag).toMatch(/^"[a-f0-9]{64}"$/)
+
+    const cached = await get(SSH_API.xtermScript, { 'if-none-match': String(first.headers.etag) })
+    expect(cached.status).toBe(304)
+    expect(cached.text).toBe('')
+
+    const fit = await get(SSH_API.fitAddonScript)
+    expect(fit.status).toBe(200)
+    expect(fit.text).toContain('class FitAddon')
+  })
+
   it('rejects cross-site requests with 403', async () => {
     const result = await get(SSH_API.hosts, { 'sec-fetch-site': 'cross-site' })
     expect(result.status).toBe(403)

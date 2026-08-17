@@ -10,6 +10,7 @@
 import { clientBundle } from '../../shared/tsdown.client.ts'
 
 export default clientBundle('@linxin666/dsh-ssh', ['src/index.ts', 'src/invariant.ts'], {
+  libOnlyBundle: ['cosmokit', 'schemastery'],
   libExternal: [
     '@deepseek-ai/dsh-client-locale',
     '@deepseek-ai/dsh-client-runtime',

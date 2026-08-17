@@ -5,12 +5,15 @@ import {
   createQueueRecoveryScheduler,
   normalizeCancellationDecision,
 } from './recovery.ts'
+import { DesktopSkinStateService } from './skin-state.ts'
 
 export const name = 'desktop-compat'
 export const inject = ['tools']
 
 /** Install Desktop-only compatibility behavior through public DSH hooks. */
 export function apply(ctx: Context): void {
+  new DesktopSkinStateService(ctx)
+
   const scheduleRecovery = createQueueRecoveryScheduler(queueMicrotask, (error) => {
     const detail = error instanceof Error ? error.message : String(error)
     ctx.logger?.warn?.(`dsh-desktop-compat: queued turn recovery failed: ${detail}`)
@@ -32,3 +35,12 @@ export {
   normalizeCancellationDecision,
   recoverQueuedTurns,
 } from './recovery.ts'
+
+export {
+  DesktopSkinStateService,
+  DesktopSkinStateStore,
+  SKIN_STATE_END,
+  SKIN_STATE_START,
+  type DesktopSkinStateFace,
+  type SkinLoaderEntry,
+} from './skin-state.ts'

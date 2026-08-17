@@ -282,10 +282,10 @@ describe("runUpdate", () => {
   /** Dispatch one fake child per spawned command for fallback-chain tests. */
   function dispatchFake(spawns: Readonly<Record<string, FakeChild>>) {
     const order: string[] = []
-    const argo: Array<{ command: string; args: unknown }> = []
-    const spawnImpl = ((command: string, args: unknown, _options: unknown) => {
+    const argo: Array<{ command: string; args: unknown; options: unknown }> = []
+    const spawnImpl = ((command: string, args: unknown, options: unknown) => {
       order.push(command)
-      argo.push({ command, args })
+      argo.push({ command, args, options })
       const child = spawns[command]
       if (child === undefined) throw new Error("unexpected command: " + command)
       return child
@@ -379,7 +379,7 @@ describe("runUpdate", () => {
     expect(result.errorCode).toBe("timeout")
     vi.useRealTimers()
   })
-  it("routes .cmd shims through the shell on win32", async () => {
+  it("routes .cmd shims through a hidden shell on win32", async () => {
     const optionsSeen: unknown[] = []
     const child = new FakeChild(0)
     const spawnImpl = ((_command: string, _args: unknown[], options: unknown) => {
@@ -389,7 +389,7 @@ describe("runUpdate", () => {
     const promise = runUpdate({ profileDir: "/p", packages: ["a"], spawnImpl, platform: "win32" })
     child.run(0)
     await promise
-    expect(optionsSeen[0]).toMatchObject({ shell: true })
+    expect(optionsSeen[0]).toMatchObject({ shell: true, windowsHide: true })
   })
   it("keeps POSIX spawns shell-free", async () => {
     const optionsSeen: unknown[] = []
@@ -479,6 +479,7 @@ describe("runUpdate", () => {
     expect(order).toEqual(["pnpm", "corepack", "taskkill"])
     const killed = argo.find(entry => entry.command === "taskkill")
     expect(killed?.args).toEqual(["/pid", "4242", "/t", "/f"])
+    expect(killed?.options).toMatchObject({ stdio: "ignore", windowsHide: true })
     // The killed corepack's late close must not spawn a third candidate.
     corepack.run(null)
     expect(order).toEqual(["pnpm", "corepack", "taskkill"])

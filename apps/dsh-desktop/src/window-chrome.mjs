@@ -91,15 +91,23 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
     linear-gradient(90deg, transparent 54%, rgba(255, 255, 255, 0.025) 72%, transparent 90%);
 }
 
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menus {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+#${WINDOW_CHROME_ID} .dsh-window-chrome-tools,
 #${WINDOW_CHROME_ID} .dsh-window-chrome-help {
   -webkit-app-region: no-drag;
   position: relative;
   z-index: 2;
-  margin-left: auto;
   font: 12px/1.4 system-ui, "Microsoft YaHei UI", sans-serif;
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-button {
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button {
   height: 28px;
   padding: 0 10px;
   border: 1px solid rgba(173, 230, 244, 0.16);
@@ -109,23 +117,25 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
   cursor: pointer;
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-button:hover,
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-button[aria-expanded="true"] {
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button:hover,
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button[aria-expanded="true"] {
   border-color: rgba(173, 230, 244, 0.32);
   background: rgba(255, 255, 255, 0.11);
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-button:focus-visible,
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-item:focus-visible {
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button:focus-visible,
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-item:focus-visible {
   outline: 2px solid #72d9f1;
   outline-offset: 1px;
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-menu {
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-popup {
   position: absolute;
   top: 31px;
   right: 0;
-  width: 214px;
+  width: max-content;
+  min-width: 214px;
+  max-width: calc(100vw - 20px);
   padding: 6px;
   border: 1px solid rgba(173, 230, 244, 0.2);
   border-radius: 10px;
@@ -134,12 +144,15 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
   color: #e7f7fb;
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-menu[hidden] {
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-popup[hidden] {
   display: none;
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-item {
-  display: block;
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
   width: 100%;
   padding: 8px 10px;
   border: 0;
@@ -151,15 +164,25 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
   text-align: left;
 }
 
-#${WINDOW_CHROME_ID} .dsh-window-chrome-help-item:hover {
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-shortcut {
+  color: rgba(215, 239, 245, 0.62);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+#${WINDOW_CHROME_ID} .dsh-window-chrome-menu-item:hover {
   background: rgba(114, 217, 241, 0.12);
 }
 
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-help-menu {
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-popup {
   border-color: rgba(51, 65, 85, 0.16);
   background: rgba(250, 252, 255, 0.98);
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
   color: #172033;
+}
+
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-shortcut {
+  color: rgba(23, 32, 51, 0.58);
 }
 
 html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} {
@@ -168,14 +191,14 @@ html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} {
   backdrop-filter: none;
 }
 
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-help-button {
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button {
   border-color: rgba(0, 0, 0, 0.1);
   color: #0f1115;
   background: transparent;
 }
 
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-help-button:hover,
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-help-button[aria-expanded="true"] {
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button:hover,
+html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button[aria-expanded="true"] {
   border-color: rgba(0, 0, 0, 0.14);
   background: #ebeff2;
 }
@@ -202,66 +225,103 @@ export function windowChromeBrowserOptions() {
   }
 }
 
-export function createWindowChromeScript({ showHelpMenu = false } = {}) {
+export function createWindowChromeScript({ showHelpMenu = false, showToolsMenu = false } = {}) {
   const data = JSON.stringify({
     id: WINDOW_CHROME_ID,
     showHelpMenu: Boolean(showHelpMenu),
+    showToolsMenu: Boolean(showToolsMenu),
   })
   return `(() => {
     const data = ${data};
     document.getElementById(data.id)?.remove();
     const chrome = document.createElement('div');
     chrome.id = data.id;
-    if (data.showHelpMenu && typeof window.dshDesktop?.helpAction === 'function') {
-      const help = document.createElement('div');
-      help.className = 'dsh-window-chrome-help';
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'dsh-window-chrome-help-button';
-      button.textContent = '帮助';
-      button.setAttribute('aria-haspopup', 'menu');
-      button.setAttribute('aria-expanded', 'false');
-      const menu = document.createElement('div');
-      menu.className = 'dsh-window-chrome-help-menu';
-      menu.setAttribute('role', 'menu');
-      menu.hidden = true;
-      const closeMenu = ({ restoreFocus = false } = {}) => {
-        menu.hidden = true;
-        button.setAttribute('aria-expanded', 'false');
-        if (restoreFocus) button.focus();
+    const canShowTools = data.showToolsMenu && typeof window.dshDesktop?.toolAction === 'function';
+    const canShowHelp = data.showHelpMenu && typeof window.dshDesktop?.helpAction === 'function';
+    if (canShowTools || canShowHelp) {
+      const menus = document.createElement('div');
+      menus.className = 'dsh-window-chrome-menus';
+      const states = [];
+      const closeMenus = ({ restoreFocus = false } = {}) => {
+        const active = states.find((state) => !state.menu.hidden);
+        for (const state of states) {
+          state.menu.hidden = true;
+          state.button.setAttribute('aria-expanded', 'false');
+        }
+        if (restoreFocus) active?.button.focus();
       };
-      const entries = [
-        { label: '加入社群', action: 'community' },
-        { label: '提交建议', action: 'feedback' },
-        { label: 'GitHub 项目', action: 'project' },
-        { label: '检查更新', action: 'updates' },
-      ];
-      for (const entry of entries) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'dsh-window-chrome-help-item';
-        item.setAttribute('role', 'menuitem');
-        item.textContent = entry.label;
-        item.addEventListener('click', () => {
-          closeMenu();
-          void Promise.resolve(window.dshDesktop.helpAction(entry.action)).catch(() => {});
+      const addMenu = ({ kind, label, entries, invoke }) => {
+        const root = document.createElement('div');
+        root.className = 'dsh-window-chrome-' + kind;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dsh-window-chrome-menu-button';
+        button.textContent = label;
+        button.setAttribute('aria-haspopup', 'menu');
+        button.setAttribute('aria-expanded', 'false');
+        const menu = document.createElement('div');
+        menu.className = 'dsh-window-chrome-menu-popup';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', label);
+        menu.hidden = true;
+        const state = { button, menu };
+        states.push(state);
+        for (const entry of entries) {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'dsh-window-chrome-menu-item';
+          item.setAttribute('role', 'menuitem');
+          item.setAttribute('aria-label', entry.label);
+          const itemLabel = document.createElement('span');
+          itemLabel.textContent = entry.label;
+          item.append(itemLabel);
+          if (entry.shortcut) {
+            const shortcut = document.createElement('span');
+            shortcut.className = 'dsh-window-chrome-menu-shortcut';
+            shortcut.setAttribute('aria-hidden', 'true');
+            shortcut.textContent = entry.shortcut;
+            item.append(shortcut);
+          }
+          item.addEventListener('click', () => {
+            closeMenus();
+            void Promise.resolve(invoke(entry.action)).catch(() => {});
+          });
+          menu.append(item);
+        }
+        button.addEventListener('click', () => {
+          const open = menu.hidden;
+          closeMenus();
+          menu.hidden = !open;
+          button.setAttribute('aria-expanded', String(open));
+          if (open) menu.querySelector('[role="menuitem"]')?.focus();
         });
-        menu.append(item);
-      }
-      button.addEventListener('click', () => {
-        const open = menu.hidden;
-        menu.hidden = !open;
-        button.setAttribute('aria-expanded', String(open));
-        if (open) menu.querySelector('[role="menuitem"]')?.focus();
+        root.append(button, menu);
+        menus.append(root);
+      };
+      if (canShowTools) addMenu({
+        kind: 'tools',
+        label: '工具 / Tools',
+        entries: [{ label: '扩展坞 / Extension Dock', action: 'extensions', shortcut: 'Ctrl+Shift+X' }],
+        invoke: (action) => window.dshDesktop.toolAction(action),
+      });
+      if (canShowHelp) addMenu({
+        kind: 'help',
+        label: '帮助 / Help',
+        entries: [
+          { label: '加入社群', action: 'community' },
+          { label: '提交建议', action: 'feedback' },
+          { label: 'GitHub 项目', action: 'project' },
+          { label: '检查更新', action: 'updates' },
+        ],
+        invoke: (action) => window.dshDesktop.helpAction(action),
       });
       document.addEventListener('pointerdown', (event) => {
-        if (!help.contains(event.target)) closeMenu();
+        if (!menus.contains(event.target)) closeMenus();
       });
       document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !menu.hidden) closeMenu({ restoreFocus: true });
+        if (event.key === 'Escape') closeMenus({ restoreFocus: true });
       });
-      help.append(button, menu);
-      chrome.append(help);
+      chrome.append(menus);
     }
     document.documentElement.dataset.dshDesktopWindowChrome = 'true';
     document.body.prepend(chrome);
@@ -308,16 +368,16 @@ export function createWindowChromeScript({ showHelpMenu = false } = {}) {
   })()`
 }
 
-export async function applyWindowChrome({ webContents, iconDataUrl, showHelpMenu = false }) {
+export async function applyWindowChrome({ webContents, iconDataUrl, showHelpMenu = false, showToolsMenu = false }) {
   if (!webContents || webContents.isDestroyed?.()) return false
   await webContents.insertCSS(WINDOW_CHROME_CSS, { cssOrigin: 'author' })
-  return webContents.executeJavaScript(createWindowChromeScript({ iconDataUrl, showHelpMenu }), true)
+  return webContents.executeJavaScript(createWindowChromeScript({ iconDataUrl, showHelpMenu, showToolsMenu }), true)
 }
 
-export function installWindowChrome({ browserWindow, iconDataUrl, showHelpMenu = false, onError = () => {} }) {
+export function installWindowChrome({ browserWindow, iconDataUrl, showHelpMenu = false, showToolsMenu = false, onError = () => {} }) {
   const { webContents } = browserWindow
   const apply = () => {
-    void applyWindowChrome({ webContents, iconDataUrl, showHelpMenu }).catch(onError)
+    void applyWindowChrome({ webContents, iconDataUrl, showHelpMenu, showToolsMenu }).catch(onError)
   }
   webContents.on('did-finish-load', apply)
   return () => webContents.removeListener('did-finish-load', apply)

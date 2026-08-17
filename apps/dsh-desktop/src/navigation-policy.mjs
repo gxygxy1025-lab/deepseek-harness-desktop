@@ -1,3 +1,5 @@
+import { runBestEffort } from './best-effort-events.mjs'
+
 export function classifyNavigation(target, runtimeOrigin) {
   let url
   try {
@@ -20,27 +22,27 @@ function closePopupSoon(browserWindow) {
   })
 }
 
-function installOAuthPopupPolicy({ browserWindow, openExternal }) {
+function installOAuthPopupPolicy({ browserWindow, openExternal, onError }) {
   const popupContents = browserWindow.webContents
   popupContents.on('will-navigate', (event, target) => {
     if (isOAuthPopupBootstrap(target)) return
     event.preventDefault()
-    if (classifyNavigation(target) === 'external') void openExternal(target)
+    if (classifyNavigation(target) === 'external') runBestEffort(() => openExternal(target), onError)
     closePopupSoon(browserWindow)
   })
   popupContents.on('will-attach-webview', (event) => event.preventDefault())
   popupContents.setWindowOpenHandler(({ url }) => {
-    if (classifyNavigation(url) === 'external') void openExternal(url)
+    if (classifyNavigation(url) === 'external') runBestEffort(() => openExternal(url), onError)
     return { action: 'deny' }
   })
 }
 
-export function installNavigationPolicy({ webContents, getRuntimeOrigin, openExternal }) {
+export function installNavigationPolicy({ webContents, getRuntimeOrigin, openExternal, onError = () => {} }) {
   webContents.on('will-navigate', (event, target) => {
     const decision = classifyNavigation(target, getRuntimeOrigin())
     if (decision === 'allow') return
     event.preventDefault()
-    if (decision === 'external') void openExternal(target)
+    if (decision === 'external') runBestEffort(() => openExternal(target), onError)
   })
   webContents.on('will-attach-webview', (event) => event.preventDefault())
   webContents.setWindowOpenHandler(({ url }) => {
@@ -58,7 +60,7 @@ export function installNavigationPolicy({ webContents, getRuntimeOrigin, openExt
         },
       }
     }
-    if (classifyNavigation(url, getRuntimeOrigin()) === 'external') void openExternal(url)
+    if (classifyNavigation(url, getRuntimeOrigin()) === 'external') runBestEffort(() => openExternal(url), onError)
     return { action: 'deny' }
   })
   webContents.on('did-create-window', (browserWindow, details) => {
@@ -66,6 +68,6 @@ export function installNavigationPolicy({ webContents, getRuntimeOrigin, openExt
       browserWindow.close()
       return
     }
-    installOAuthPopupPolicy({ browserWindow, openExternal })
+    installOAuthPopupPolicy({ browserWindow, openExternal, onError })
   })
 }

@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -24,7 +24,11 @@ const requiredPackages = [
   'semver',
   '@tencent-connect/qqbot-connector',
   '@tencent-connect/qqbot-nodejs',
+  '@xterm/addon-fit',
+  '@xterm/xterm',
   'qrcode',
+  'ssh2',
+  'ws',
   ...MANAGED_RUNTIME_PACKAGES,
 ]
 
@@ -51,6 +55,22 @@ const petRoot = join(unpackedModules, ...packagePathSegments('@linxin666/dsh-pet
 await access(join(petRoot, 'lib', 'client.js'))
 await access(join(petRoot, 'assets', 'whale', 'pet.json'))
 await access(join(petRoot, 'assets', 'whale', 'spritesheet.webp'))
+const sshRoot = join(unpackedModules, ...packagePathSegments('@linxin666/dsh-ssh'))
+const sshClientPath = join(sshRoot, 'lib', 'client.js')
+const sshClient = await readFile(sshClientPath, 'utf8')
+const sshClientBytes = (await stat(sshClientPath)).size
+if (sshClientBytes > 250_000 || sshClient.includes('CoreBrowserTerminal')) {
+  throw new Error(`packaged SSH client eagerly bundles xterm (${sshClientBytes} bytes)`)
+}
+await access(join(unpackedModules, '@xterm', 'xterm', 'lib', 'xterm.js'))
+await access(join(unpackedModules, '@xterm', 'addon-fit', 'lib', 'addon-fit.js'))
+const aggregatePatch = await readFile(
+  join(unpackedModules, '@linxin666', 'dsh-web-ui-all', 'cordis.patch.yml'),
+  'utf8',
+)
+if (!/- id: ui-mode-switcher\s+name: '@linxin666\/dsh-client-ui-mode-switcher'/u.test(aggregatePatch)) {
+  throw new Error('packaged web UI aggregate is missing the Desktop mode switcher')
+}
 const apiProxyBundle = await readFile(
   join(unpackedModules, '@deepseek-ai', 'dsh-host-apiproxy', 'lib', 'index.js'),
   'utf8',

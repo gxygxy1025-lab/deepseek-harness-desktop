@@ -34,7 +34,7 @@ test('window chrome uses a native overlay with a compact caption area', () => {
   assert.match(WINDOW_CHROME_CSS, /backdrop-filter: blur\(26px\) saturate\(145%\)/)
   assert.match(WINDOW_CHROME_CSS, /dsh-desktop-window-chrome::before/)
   assert.doesNotMatch(WINDOW_CHROME_CSS, /dsh-window-chrome-icon/)
-  assert.match(WINDOW_CHROME_CSS, /dsh-window-chrome-help/)
+  assert.match(WINDOW_CHROME_CSS, /dsh-window-chrome-menus/)
   assert.match(WINDOW_CHROME_CSS, /-webkit-app-region: no-drag/)
 })
 
@@ -43,6 +43,7 @@ test('window chrome script keeps child-window caption areas visually quiet', () 
     iconDataUrl: 'data:image/png;base64,application-icon',
   })
   assert.match(script, /"showHelpMenu":false/)
+  assert.match(script, /"showToolsMenu":false/)
   assert.doesNotMatch(script, /document\.createElement\('img'\)/)
   assert.doesNotMatch(script, /dsh-window-chrome-icon/)
   assert.match(script, /MutationObserver/)
@@ -51,10 +52,15 @@ test('window chrome script keeps child-window caption areas visually quiet', () 
   assert.doesNotMatch(script, /LOCAL SURFACE|dsh-window-chrome-title|dsh-window-chrome-context/)
 })
 
-test('main window chrome exposes an accessible Help dropdown with fixed actions', () => {
-  const script = createWindowChromeScript({ showHelpMenu: true })
+test('main window chrome exposes accessible Tools and Help dropdowns with fixed actions', () => {
+  const script = createWindowChromeScript({ showHelpMenu: true, showToolsMenu: true })
   assert.match(script, /"showHelpMenu":true/)
-  assert.match(script, /帮助/)
+  assert.match(script, /"showToolsMenu":true/)
+  assert.match(script, /工具 \/ Tools/)
+  assert.match(script, /扩展坞 \/ Extension Dock/)
+  assert.match(script, /action: 'extensions'/)
+  assert.match(script, /window\.dshDesktop\.toolAction/)
+  assert.match(script, /帮助 \/ Help/)
   for (const [label, action] of [
     ['加入社群', 'community'],
     ['提交建议', 'feedback'],
@@ -93,12 +99,14 @@ test('window chrome applies CSS before mounting the main-window Help surface', a
     webContents,
     iconDataUrl: 'data:image/png;base64,icon',
     showHelpMenu: true,
+    showToolsMenu: true,
   }), true)
   assert.equal(calls[0][0], 'css')
   assert.deepEqual(calls[0][2], { cssOrigin: 'author' })
   assert.equal(calls[1][0], 'script')
   assert.equal(calls[1][2], true)
   assert.match(calls[1][1], /"showHelpMenu":true/)
+  assert.match(calls[1][1], /"showToolsMenu":true/)
 })
 
 test('window chrome follows page navigations and can be detached', () => {

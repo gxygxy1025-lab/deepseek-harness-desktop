@@ -6,6 +6,28 @@
 
 English: No changes yet.
 
+## 2.1.0 - 2026-08-17
+
+中文：
+
+- 自动更新加入国内 GitHub Release 镜像测速与故障切换，版本元数据仍来自 GitHub，安装包继续按 `latest.yml` 的 SHA-512 校验。
+- 新增插件三层容灾：变更前快照、故障插件一次性自动隔离、连续失败后的安全模式，以及不依赖 DSH 插件系统的独立恢复入口。
+- 统一皮肤中心、插件市场和桌面宿主的持久化口径，修复依赖层主题切换、旧禁用状态迁移、Windows 写后校验和 bundle 接线互相覆盖的问题。
+- 修复升级时旧进程未退出、安装器无法删除旧文件、隐藏 PowerShell 窗口打断操作，以及中文或非系统盘工作区失败后重复重启的问题。
+- 工具菜单新增扩展坞入口；扩展操作全程串行化，市场安装和更新统一交给桌面 PluginManager，失败可恢复旧清单、锁文件和运行时。
+- 补齐内置主题依赖并升级内置插件组合，收紧共享构建配置、SDK source map 过滤、运行时依赖和打包完整性门禁。
+- 加强窗口状态、日志、下载目标、QQ Bot、导航、运行时停止与重启、可选集成加载等 Electron 副作用隔离，并加入打包启动性能测量。
+
+English:
+
+- Added measured mainland-China GitHub Release mirrors with automatic fallback while keeping GitHub metadata and `latest.yml` SHA-512 verification authoritative.
+- Added three-layer plugin resilience: pre-mutation snapshots, one-shot culprit isolation, safe mode after repeated failures, and an independent recovery surface that does not depend on the DSH plugin runtime.
+- Unified Skin Center, marketplace, and Desktop persistence semantics, fixing dependency-only theme activation, legacy disabled-state migration, Windows post-write verification, and competing bundle wiring.
+- Fixed update installation when stale processes hold old files, hidden PowerShell windows stealing focus, and repeated restart loops after failures in Unicode or non-system-drive workspaces.
+- Exposed Extension Dock from the Tools menu, serialized extension mutations end to end, and routed marketplace install and update operations through Desktop PluginManager with manifest, lockfile, and runtime rollback.
+- Completed missing built-in theme dependencies and refreshed the bundled plugin set while tightening shared build configuration, SDK source-map filtering, runtime dependency checks, and package integrity gates.
+- Isolated Electron side effects across window state, logs, download destinations, QQ Bot, navigation, runtime stop/restart, and optional integrations, with packaged-startup measurements added to release validation.
+
 ## 2.0.0 - 2026-08-16
 
 中文：

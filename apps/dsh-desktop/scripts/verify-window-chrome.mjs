@@ -7,11 +7,14 @@ import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
 import { _electron as electron } from 'playwright'
 
+import { parseStartupTimings } from './startup-metrics.mjs'
+import { SECONDARY_WINDOW_PARTITION } from '../src/electron-app.mjs'
+
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const screenshotArgument = process.argv.find((argument) => argument.toLowerCase().endsWith('.png'))
 const screenshot = screenshotArgument ? resolve(screenshotArgument) : undefined
 const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
-const runtimeReadyTimeoutMs = packagedExecutable ? 120_000 : 60_000
+const runtimeReadyTimeoutMs = packagedExecutable || process.env.CI ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-window-chrome-e2e-'))
 let electronApp
 
@@ -43,24 +46,28 @@ try {
     console.error(`window chrome missing at ${page.url()}: ${(await page.locator('body').innerText()).slice(0, 1_000)}`)
     throw error
   }
+  await page.waitForSelector('style[data-plugin="@linxin666/dsh-client-ui-mode-switcher"]', {
+    state: 'attached',
+    timeout: runtimeReadyTimeoutMs,
+  })
   const state = await page.evaluate(() => ({
     chromeCount: document.querySelectorAll('#dsh-desktop-window-chrome').length,
     chromeText: document.querySelector('#dsh-desktop-window-chrome')?.textContent,
     backdropFilter: getComputedStyle(document.querySelector('#dsh-desktop-window-chrome')).backdropFilter,
     iconCount: document.querySelectorAll('.dsh-window-chrome-icon').length,
-    helpRight: document.querySelector('.dsh-window-chrome-help')?.getBoundingClientRect().right,
+    menusRight: document.querySelector('.dsh-window-chrome-menus')?.getBoundingClientRect().right,
     paddingTop: getComputedStyle(document.body).paddingTop,
     theme: document.documentElement.dataset.dshDesktopChromeTheme,
     url: location.origin,
   }))
-  assert.equal(state.chromeText, '帮助加入社群提交建议GitHub 项目检查更新')
+  assert.equal(state.chromeText, '工具 / Tools扩展坞 / Extension DockCtrl+Shift+X帮助 / Help加入社群提交建议GitHub 项目检查更新')
   assert.equal(state.theme, 'light')
   assert.equal(state.backdropFilter, 'none')
   assert.equal(state.iconCount, 0)
   const viewportWidth = await page.evaluate(() => innerWidth)
   assert.ok(
-    Number(state.helpRight) <= viewportWidth - 139,
-    `Help control overlaps the native caption area: ${JSON.stringify({ helpRight: state.helpRight, viewportWidth })}`,
+    Number(state.menusRight) <= viewportWidth - 139,
+    `Top menus overlap the native caption area: ${JSON.stringify({ menusRight: state.menusRight, viewportWidth })}`,
   )
   assert.equal(state.paddingTop, '32px')
   assert.equal(state.chromeCount, 1)
@@ -98,10 +105,41 @@ try {
     popup?.close()
     return allowed
   }), true)
-  const helpButton = page.getByRole('button', { name: '帮助' })
+  const toolsButton = page.getByRole('button', { name: '工具 / Tools', exact: true })
+  await toolsButton.click()
+  assert.equal(await toolsButton.getAttribute('aria-expanded'), 'true')
+  const toolsMenu = page.getByRole('menu', { name: '工具 / Tools' })
+  await toolsMenu.waitFor({ state: 'visible' })
+  assert.deepEqual(await toolsMenu.getByRole('menuitem').allTextContents(), [
+    '扩展坞 / Extension DockCtrl+Shift+X',
+  ])
+  if (screenshot) await page.screenshot({ path: screenshot })
+  const extensionPagePromise = electronApp.waitForEvent('window')
+  await toolsMenu.getByRole('menuitem', { name: '扩展坞 / Extension Dock' }).click()
+  const extensionPage = await extensionPagePromise
+  await extensionPage.waitForURL(/extensions\.html/u)
+  await extensionPage.getByRole('heading', { name: '扩展坞' }).waitFor({ state: 'visible' })
+  const extensionSession = await electronApp.evaluate(({ BrowserWindow, session }, partition) => {
+    const windows = BrowserWindow.getAllWindows()
+    const main = windows.find((window) => window.webContents.getURL().startsWith('http://127.0.0.1:'))
+    const secondary = windows.find((window) => window.webContents.getURL().includes('extensions.html'))
+    return {
+      distinct: Boolean(main && secondary && main.webContents.session !== secondary.webContents.session),
+      mainUsesDefault: main?.webContents.session === session.defaultSession,
+      secondaryUsesExpected: secondary?.webContents.session === session.fromPartition(partition),
+    }
+  }, SECONDARY_WINDOW_PARTITION)
+  assert.deepEqual(extensionSession, {
+    distinct: true,
+    mainUsesDefault: true,
+    secondaryUsesExpected: true,
+  })
+  await extensionPage.close()
+
+  const helpButton = page.getByRole('button', { name: '帮助 / Help', exact: true })
   await helpButton.click()
   assert.equal(await helpButton.getAttribute('aria-expanded'), 'true')
-  const helpMenu = page.getByRole('menu')
+  const helpMenu = page.getByRole('menu', { name: '帮助 / Help' })
   await helpMenu.waitFor({ state: 'visible' })
   assert.deepEqual(await helpMenu.getByRole('menuitem').allTextContents(), [
     '加入社群',
@@ -114,13 +152,32 @@ try {
   assert.ok(helpMenuBounds && helpMenuBounds.x >= 0 && helpMenuBounds.y >= 32)
   assert.ok(helpMenuBounds.x + helpMenuBounds.width <= viewport.width)
   assert.ok(helpMenuBounds.y + helpMenuBounds.height <= viewport.height)
-  if (screenshot) await page.screenshot({ path: screenshot })
   const communityPagePromise = electronApp.waitForEvent('window')
-  await helpMenu.getByRole('menuitem', { name: '加入社群' }).click()
+  assert.deepEqual(await page.evaluate(() => Promise.all([
+    window.dshDesktop.helpAction('community'),
+    window.dshDesktop.helpAction('community'),
+  ])), [true, true])
   const communityPage = await communityPagePromise
   await communityPage.waitForURL(/community\.html/u)
   await communityPage.locator('#community-qr[src^="data:image/png;base64,"]').waitFor({ state: 'visible' })
-  assert.equal(await communityPage.getByRole('button', { name: '帮助' }).count(), 0)
+  assert.equal(electronApp.windows().filter((window) => window.url().includes('community.html')).length, 1)
+  assert.equal(await communityPage.getByRole('button', { name: '帮助 / Help' }).count(), 0)
+  assert.equal(await communityPage.getByRole('button', { name: '工具 / Tools' }).count(), 0)
+  const communitySession = await electronApp.evaluate(({ BrowserWindow, session }, partition) => {
+    const windows = BrowserWindow.getAllWindows()
+    const main = windows.find((window) => window.webContents.getURL().startsWith('http://127.0.0.1:'))
+    const secondary = windows.find((window) => window.webContents.getURL().includes('community.html'))
+    return {
+      distinct: Boolean(main && secondary && main.webContents.session !== secondary.webContents.session),
+      mainUsesDefault: main?.webContents.session === session.defaultSession,
+      secondaryUsesExpected: secondary?.webContents.session === session.fromPartition(partition),
+    }
+  }, SECONDARY_WINDOW_PARTITION)
+  assert.deepEqual(communitySession, {
+    distinct: true,
+    mainUsesDefault: true,
+    secondaryUsesExpected: true,
+  })
   await communityPage.close()
   await page.evaluate(() => {
     document.body.removeAttribute('data-ds-dark-theme')
@@ -154,6 +211,8 @@ try {
   const nativeWindowState = await electronApp.evaluate(({ app, BrowserWindow, Menu, nativeImage }) => {
     const window = BrowserWindow.getAllWindows()[0]
     const helpMenu = Menu.getApplicationMenu()?.items.find((item) => item.label.includes('Help'))
+    const toolsMenu = Menu.getApplicationMenu()?.items.find((item) => item.label.includes('Tools'))
+    const extensionDockMenu = toolsMenu?.submenu?.items.find((item) => item.label.includes('Extension Dock'))
     const updateMenu = helpMenu?.submenu?.items.find((item) => item.label.includes('Check for Updates'))
     const packagedIcon = app.isPackaged
       ? nativeImage.createFromPath(`${process.resourcesPath}\\app-icon.png`)
@@ -162,6 +221,7 @@ try {
       appName: app.getName(),
       closable: window.isClosable(),
       hasUpdateMenu: Boolean(updateMenu),
+      hasExtensionDockMenu: Boolean(extensionDockMenu),
       packagedIconValid: packagedIcon ? !packagedIcon.isEmpty() : true,
       maximizable: window.isMaximizable(),
       menuBarVisible: window.isMenuBarVisible(),
@@ -172,6 +232,7 @@ try {
     appName: 'DeepSeek Harness Desktop',
     closable: true,
     hasUpdateMenu: true,
+    hasExtensionDockMenu: true,
     packagedIconValid: true,
     maximizable: true,
     menuBarVisible: false,
@@ -180,6 +241,9 @@ try {
   const pnpmShim = await readFile(resolve(temporary, 'user-data', 'runtime-bin', 'pnpm.cmd'), 'utf8')
   assert.match(pnpmShim, /ELECTRON_RUN_AS_NODE=1/u)
   assert.match(pnpmShim, /pnpm\.(?:mjs|cjs)/u)
+  const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8')
+  const startupTimings = parseStartupTimings(runtimeLog)
+  console.log(`startup timings ${JSON.stringify(startupTimings)}`)
   console.log(`verified runtime window chrome at ${state.url}`)
 } finally {
   await electronApp?.close()

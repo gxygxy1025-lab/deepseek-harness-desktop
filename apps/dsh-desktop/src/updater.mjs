@@ -1,7 +1,10 @@
 import { EventEmitter } from 'node:events'
 
+import { emitBestEffort } from './best-effort-events.mjs'
+
 export const UPDATE_STARTUP_DELAY_MS = 15_000
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+export const UPDATE_INSTALL_LAUNCH_TIMEOUT_MS = 10_000
 
 const MAX_RELEASE_NOTES_LENGTH = 7_000
 
@@ -66,6 +69,9 @@ export class DesktopUpdateController extends EventEmitter {
     enabled,
     log = () => {},
     beforeInstall = async () => {},
+    onInstallFailure = async () => {},
+    downloadRouter,
+    installLaunchTimeoutMs = UPDATE_INSTALL_LAUNCH_TIMEOUT_MS,
     setTimeoutFn = setTimeout,
     setIntervalFn = setInterval,
     clearTimeoutFn = clearTimeout,
@@ -78,16 +84,21 @@ export class DesktopUpdateController extends EventEmitter {
     this.enabled = Boolean(enabled && updater)
     this.log = log
     this.beforeInstall = beforeInstall
+    this.onInstallFailure = onInstallFailure
+    this.downloadRouter = downloadRouter
+    this.installLaunchTimeoutMs = installLaunchTimeoutMs
     this.setTimeoutFn = setTimeoutFn
     this.setIntervalFn = setIntervalFn
     this.clearTimeoutFn = clearTimeoutFn
     this.clearIntervalFn = clearIntervalFn
     this.checking = false
     this.downloading = false
+    this.installing = false
     this.manualCheck = false
     this.started = false
     this.startupTimer = undefined
     this.intervalTimer = undefined
+    this.installTimer = undefined
     this.listeners = []
     this.status = Object.freeze({ phase: 'idle', currentVersion, visible: false })
   }
@@ -113,9 +124,12 @@ export class DesktopUpdateController extends EventEmitter {
   dispose() {
     if (this.startupTimer) this.clearTimeoutFn(this.startupTimer)
     if (this.intervalTimer) this.clearIntervalFn(this.intervalTimer)
+    if (this.installTimer) this.clearTimeoutFn(this.installTimer)
     for (const [event, listener] of this.listeners) this.updater?.removeListener(event, listener)
     this.listeners = []
     this.started = false
+    this.installing = false
+    this.installTimer = undefined
     this.#setProgress(-1)
   }
 
@@ -124,14 +138,14 @@ export class DesktopUpdateController extends EventEmitter {
       if (manual) this.#publish({ phase: 'unavailable', visible: true })
       return false
     }
-    if (this.checking || this.downloading) {
+    if (this.checking || this.downloading || this.installing) {
       if (manual) this.#publish({ ...this.status, visible: true })
       return false
     }
     this.checking = true
     this.manualCheck = manual
     this.#publish({ phase: 'checking', visible: manual })
-    this.log(`[updater] checking from ${this.currentVersion}`)
+    this.#appendDiagnostic(`[updater] checking from ${this.currentVersion}`)
     try {
       await this.updater.checkForUpdates()
       return true
@@ -150,7 +164,7 @@ export class DesktopUpdateController extends EventEmitter {
     if (this.downloading) return
     this.checking = false
     this.manualCheck = false
-    this.log(`[updater] version ${info?.version || 'unknown'} is available`)
+    this.#appendDiagnostic(`[updater] version ${info?.version || 'unknown'} is available`)
     this.downloading = true
     this.#publish({
       phase: 'downloading',
@@ -162,7 +176,12 @@ export class DesktopUpdateController extends EventEmitter {
     })
     this.#setProgress(0)
     try {
-      await this.updater.downloadUpdate()
+      const onSource = (source) => {
+        const label = typeof source?.label === 'string' ? source.label.slice(0, 160) : undefined
+        this.#publish({ ...this.status, phase: 'downloading', source: label })
+      }
+      if (this.downloadRouter) await this.downloadRouter.downloadUpdate(info, { onSource })
+      else await this.updater.downloadUpdate()
     } catch (error) {
       if (this.downloading) await this.#handleError(error, true)
     }
@@ -172,7 +191,7 @@ export class DesktopUpdateController extends EventEmitter {
     const manual = this.manualCheck
     this.checking = false
     this.manualCheck = false
-    this.log(`[updater] ${this.currentVersion} is up to date`)
+    this.#appendDiagnostic(`[updater] ${this.currentVersion} is up to date`)
     this.#publish({ phase: 'current', visible: manual })
   }
 
@@ -187,7 +206,7 @@ export class DesktopUpdateController extends EventEmitter {
   async #handleDownloaded(info) {
     this.downloading = false
     this.#setProgress(-1)
-    this.log(`[updater] version ${info?.version || 'unknown'} downloaded`)
+    this.#appendDiagnostic(`[updater] version ${info?.version || 'unknown'} downloaded`)
     this.#publish({
       ...this.status,
       phase: 'ready',
@@ -197,10 +216,18 @@ export class DesktopUpdateController extends EventEmitter {
   }
 
   async install() {
-    if (!this.enabled || this.status.phase !== 'ready') return false
+    if (!this.enabled || this.status.phase !== 'ready' || this.installing) return false
+    this.installing = true
+    this.#publish({ ...this.status, phase: 'installing', visible: true })
     try {
       await this.beforeInstall()
+      if (!this.installing) return false
       this.updater.quitAndInstall(false, true)
+      if (!this.installing) return false
+      this.installTimer = this.setTimeoutFn(() => {
+        void this.#handleError(new Error('update installer did not start before the launch timeout'), true)
+      }, this.installLaunchTimeoutMs)
+      this.installTimer?.unref?.()
       return true
     } catch (error) {
       await this.#handleError(error, true)
@@ -209,14 +236,29 @@ export class DesktopUpdateController extends EventEmitter {
   }
 
   async #handleError(error, forceVisible = false) {
-    const shouldShow = forceVisible || this.manualCheck || this.downloading
+    if (this.downloading && this.downloadRouter?.shouldDeferError?.(error)) {
+      this.#appendDiagnostic(`[updater] ${asErrorMessage(error)}; retrying another source`)
+      return
+    }
+    const recoverInstall = this.installing
+    this.installing = false
+    if (this.installTimer) this.clearTimeoutFn(this.installTimer)
+    this.installTimer = undefined
+    const shouldShow = forceVisible || recoverInstall || this.manualCheck || this.downloading
     this.checking = false
     this.manualCheck = false
     this.downloading = false
     this.#setProgress(-1)
     const message = asErrorMessage(error)
-    this.log(`[updater] ${message}`)
+    this.#appendDiagnostic(`[updater] ${message}`)
     this.#publish({ phase: 'error', message, visible: shouldShow })
+    if (recoverInstall) {
+      try {
+        await this.onInstallFailure(error)
+      } catch (recoveryError) {
+        this.#appendDiagnostic(`[updater] install recovery failed: ${asErrorMessage(recoveryError)}`)
+      }
+    }
   }
 
   getStatus() {
@@ -225,12 +267,27 @@ export class DesktopUpdateController extends EventEmitter {
 
   #publish(status) {
     this.status = Object.freeze({ currentVersion: this.currentVersion, ...status })
-    this.emit('status', this.getStatus())
+    emitBestEffort(this, 'status', [this.getStatus()], (error) => {
+      this.#appendDiagnostic(`[updater] status observer failed: ${asErrorMessage(error).slice(0, 1_000)}`)
+    })
+  }
+
+  #appendDiagnostic(line) {
+    try {
+      const result = this.log(line)
+      if (result && typeof result.catch === 'function') void result.catch(() => {})
+    } catch {
+      // Diagnostics are best-effort and never own update lifecycle progress.
+    }
   }
 
   #setProgress(value) {
-    const window = this.getWindow?.()
-    if (window && !window.isDestroyed?.()) window.setProgressBar?.(value)
+    try {
+      const window = this.getWindow?.()
+      if (window && !window.isDestroyed?.()) window.setProgressBar?.(value)
+    } catch (error) {
+      this.#appendDiagnostic(`[updater] taskbar progress failed: ${asErrorMessage(error).slice(0, 1_000)}`)
+    }
   }
 
 }

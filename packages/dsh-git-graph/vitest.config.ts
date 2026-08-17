@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config'
+import { suppressMissingPublishedSdkSourceMapWarnings } from '../../shared/vitest-sdk.ts'
 
 export default defineConfig({
+  plugins: [suppressMissingPublishedSdkSourceMapWarnings()],
   test: {
     include: ['tests/**/*.spec.{ts,tsx}'],
     // Real git subprocesses can exceed Vitest's 5s default under a busy

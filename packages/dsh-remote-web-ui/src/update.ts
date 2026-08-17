@@ -415,7 +415,7 @@ export function runUpdate(deps: UpdateRunDeps): Promise<UpdateRunResult> {
     const spawnOptions: Record<string, unknown> = {
       cwd: deps.profileDir,
       stdio: ['ignore', 'pipe', 'pipe'],
-      ...(platform === 'win32' ? { shell: true } : {}),
+      ...(platform === 'win32' ? { shell: true, windowsHide: true } : {}),
     }
     // Ordered fallback chain: each is tried only when the previous one is
     // missing on PATH (ENOENT on the spawn error event, never on close).
@@ -456,7 +456,10 @@ export function runUpdate(deps: UpdateRunDeps): Promise<UpdateRunResult> {
         const pid = (currentChild as { pid?: number } | undefined)?.pid
         if (pid !== undefined && pid > 0) {
           try {
-            spawnImpl('taskkill', ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore' })
+            spawnImpl('taskkill', ['/pid', String(pid), '/t', '/f'], {
+              stdio: 'ignore',
+              windowsHide: true,
+            })
           } catch {
             // Best-effort kill; fall through to the timeout result.
           }

@@ -15,7 +15,7 @@ const displays = [
 test('window state preserves visible geometry and clamps size', () => {
   assert.deepEqual(
     normalizeWindowState({ x: 2000, y: 30, width: 300, height: 200, maximized: true }, displays),
-    { x: 2000, y: 30, width: 900, height: 640, maximized: true },
+    { x: 2000, y: 30, width: 720, height: 540, maximized: true },
   )
 })
 
@@ -37,6 +37,36 @@ test('window state save is a no-op after the Electron window is destroyed', asyn
     const save = attachWindowStatePersistence(window, statePath)
     await save()
     await assert.rejects(readFile(statePath, 'utf8'), (error) => error?.code === 'ENOENT')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('window close persists the final geometry before BrowserWindow destruction', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-window-state-close-'))
+  const statePath = join(root, 'window-state.json')
+  const window = new EventEmitter()
+  let destroyed = false
+  let bounds = { x: 80, y: 60, width: 960, height: 700 }
+  window.isDestroyed = () => destroyed
+  window.getNormalBounds = () => ({ ...bounds })
+  window.isMaximized = () => false
+  try {
+    const save = attachWindowStatePersistence(window, statePath)
+    window.emit('resize')
+    bounds = { x: 120, y: 90, width: 720, height: 540 }
+    window.emit('close')
+    destroyed = true
+    window.emit('closed')
+
+    await save()
+    assert.deepEqual(JSON.parse(await readFile(statePath, 'utf8')), {
+      x: 120,
+      y: 90,
+      width: 720,
+      height: 540,
+      maximized: false,
+    })
   } finally {
     await rm(root, { recursive: true, force: true })
   }

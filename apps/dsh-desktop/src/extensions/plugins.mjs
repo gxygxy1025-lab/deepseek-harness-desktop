@@ -207,6 +207,7 @@ export class PluginManager {
     executable = process.execPath,
     registry = new PluginRegistry(),
     hostCompatibility,
+    beforeMutation = async () => {},
   }) {
     this.profileDir = profileDir
     this.pnpmCli = pnpmCli
@@ -214,6 +215,8 @@ export class PluginManager {
     this.executable = executable
     this.registry = registry
     this.hostCompatibility = hostCompatibility
+    if (typeof beforeMutation !== 'function') throw new TypeError('beforeMutation must be a function')
+    this.beforeMutation = beforeMutation
     this.updateStates = new Map()
     this.queue = Promise.resolve()
   }
@@ -227,6 +230,27 @@ export class PluginManager {
   async inventory() {
     await this.queue
     return this.#inventoryNow()
+  }
+
+  captureSnapshot() {
+    return this.#enqueue(() => captureProfileSnapshot(this.profileDir))
+  }
+
+  restoreSnapshot(snapshot, { reason = 'manual-restore' } = {}) {
+    if (
+      snapshot === null
+      || typeof snapshot !== 'object'
+      || typeof snapshot.manifest !== 'string'
+      || (snapshot.lock !== undefined && typeof snapshot.lock !== 'string')
+    ) {
+      throw new TypeError('invalid plugin profile snapshot')
+    }
+    return this.#enqueue(async () => {
+      await this.beforeMutation({ type: 'restore', reason })
+      await this.#restoreProfileSnapshot(snapshot)
+      this.updateStates.clear()
+      return true
+    })
   }
 
   async #inventoryNow(manifest = undefined) {
@@ -350,6 +374,7 @@ export class PluginManager {
     }
     return this.#enqueue(async () => {
       if (PROTECTED_PACKAGES.has(prepared.name)) throw new Error(`${prepared.name} is a built-in desktop plugin`)
+      await this.beforeMutation({ type: 'install', name: prepared.name, version: prepared.version })
       const snapshot = await captureProfileSnapshot(this.profileDir)
       const previous = await readInstalledManifest(this.profileDir, prepared.name)
       try {
@@ -434,6 +459,7 @@ export class PluginManager {
         disabled.push(Object.freeze({ name, reasons: compatibility.reasons }))
       }
       if (disabled.length === 0) return Object.freeze({ changed: false, disabled: Object.freeze([]) })
+      await this.beforeMutation({ type: 'compatibility-disable', names: disabled.map((item) => item.name) })
       manifest.dsh = { ...(manifest.dsh ?? {}), profile: { bundles: [...bundles] } }
       await writeManifest(this.profileDir, manifest)
       return Object.freeze({ changed: true, disabled: Object.freeze(disabled) })
@@ -444,6 +470,7 @@ export class PluginManager {
     const parsed = validatePluginSpec(rawSpec)
     if (PROTECTED_PACKAGES.has(parsed.name)) throw new Error(`${parsed.name} is a built-in desktop plugin`)
     return this.#enqueue(async () => {
+      await this.beforeMutation({ type: 'install', name: parsed.name })
       const previous = await readFile(join(this.profileDir, 'package.json'), 'utf8')
       let added = false
       try {
@@ -488,18 +515,193 @@ export class PluginManager {
       const { name } = validatePluginSpec(rawName)
       if (name !== rawName) throw new TypeError('plugin removal requires a package name without a version')
       if (PROTECTED_PACKAGES.has(name)) throw new Error(`${name} is a built-in desktop plugin and cannot be removed`)
-      await this.runner({
-        pnpmCli: this.pnpmCli,
-        profileDir: this.profileDir,
-        executable: this.executable,
-        args: ['remove', name],
-      })
+      await this.beforeMutation({ type: 'remove', name })
+      const snapshot = await captureProfileSnapshot(this.profileDir)
+      try {
+        await this.runner({
+          pnpmCli: this.pnpmCli,
+          profileDir: this.profileDir,
+          executable: this.executable,
+          args: ['remove', name],
+        })
+        const manifest = await readManifest(this.profileDir)
+        if (manifest.dependencies) delete manifest.dependencies[name]
+        const profile = manifest.dsh?.profile ?? {}
+        manifest.dsh = {
+          ...(manifest.dsh ?? {}),
+          profile: {
+            ...profile,
+            bundles: (profile.bundles ?? []).filter((bundle) => bundle !== name),
+          },
+        }
+        await writeManifest(this.profileDir, manifest)
+        this.updateStates.delete(name)
+
+        let active = true
+        const rollback = () => this.#enqueue(async () => {
+          if (!active) return false
+          active = false
+          await this.#restoreProfileSnapshot(snapshot)
+          this.updateStates.delete(name)
+          return true
+        })
+        const transaction = {
+          result: Object.freeze({ name, restartRequired: true }),
+          commit() {
+            if (!active) return false
+            active = false
+            return true
+          },
+          rollback,
+        }
+        return Object.freeze(transaction)
+      } catch (error) {
+        try {
+          await this.#restoreProfileSnapshot(snapshot)
+        } catch (rollbackError) {
+          throw new Error(
+            `plugin removal failed and rollback failed: ${String(error?.message ?? error).slice(0, 1_000)}; ${String(rollbackError?.message ?? rollbackError).slice(0, 1_000)}`,
+            { cause: new AggregateError([error, rollbackError]) },
+          )
+        }
+        throw new Error(
+          `plugin removal failed and was rolled back: ${String(error?.message ?? error).slice(0, 1_000)}`,
+          { cause: error },
+        )
+      }
+    })
+  }
+
+  setEnabled(rawName, enabled, { dependencySpec } = {}) {
+    return this.#enqueue(async () => {
+      const { name } = validatePluginSpec(rawName)
+      if (name !== rawName || typeof enabled !== 'boolean') {
+        throw new TypeError('plugin enablement requires a package name and boolean state')
+      }
+      if (!enabled && PROTECTED_PACKAGES.has(name)) {
+        throw new Error(`${name} is a built-in desktop plugin and cannot be disabled`)
+      }
       const manifest = await readManifest(this.profileDir)
-      if (manifest.dependencies) delete manifest.dependencies[name]
-      manifest.dsh.profile.bundles = (manifest.dsh?.profile?.bundles ?? []).filter((bundle) => bundle !== name)
+      const dependencies = manifest.dependencies ?? {}
+      const installedSpec = dependencies[name]
+      if (installedSpec === undefined && (!enabled || typeof dependencySpec !== 'string' || dependencySpec.length === 0)) {
+        throw new Error(`${name} is not installed in the desktop profile`)
+      }
+      if (enabled) {
+        const installed = await readInstalledManifest(this.profileDir, name)
+        if (typeof installed?.dsh?.bundle?.patch !== 'string') throw new Error(`${name} is not a DSH bundle package`)
+        const compatibility = await this.#assess(installed)
+        if (compatibility.status === 'incompatible') {
+          throw compatibilityError(
+            `${name} is incompatible with this desktop runtime`,
+            'plugin-incompatible',
+            compatibility,
+          )
+        }
+      }
+      const profile = manifest.dsh?.profile ?? {}
+      const bundles = new Set(profile.bundles ?? [])
+      const bundleWasEnabled = bundles.has(name)
+      const removedDependencySpec = !enabled && !bundleWasEnabled ? installedSpec : undefined
+      const changed = enabled
+        ? !bundleWasEnabled || installedSpec === undefined
+        : bundleWasEnabled || removedDependencySpec !== undefined
+      if (!changed) {
+        return Object.freeze({
+          result: Object.freeze({ name, enabled, changed: false, restartRequired: false }),
+          commit: () => false,
+          rollback: async () => false,
+        })
+      }
+      await this.beforeMutation({ type: enabled ? 'enable' : 'disable', name })
+      const snapshot = await captureProfileSnapshot(this.profileDir)
+      if (enabled) {
+        dependencies[name] = installedSpec ?? dependencySpec
+        bundles.add(name)
+      } else {
+        bundles.delete(name)
+        if (!bundleWasEnabled) delete dependencies[name]
+      }
+      manifest.dependencies = dependencies
+      manifest.dsh = { ...(manifest.dsh ?? {}), profile: { ...profile, bundles: [...bundles] } }
       await writeManifest(this.profileDir, manifest)
-      this.updateStates.delete(name)
-      return { name, restartRequired: true }
+
+      let active = true
+      return Object.freeze({
+        result: Object.freeze({
+          name,
+          enabled,
+          changed: true,
+          restartRequired: true,
+          ...(removedDependencySpec ? { dependencySpec: removedDependencySpec } : {}),
+        }),
+        commit() {
+          if (!active) return false
+          active = false
+          return true
+        },
+        rollback: () => this.#enqueue(async () => {
+          if (!active) return false
+          active = false
+          await this.#restoreProfileSnapshot(snapshot)
+          return true
+        }),
+      })
+    })
+  }
+
+  enterSafeMode() {
+    return this.#enqueue(async () => {
+      const manifest = await readManifest(this.profileDir)
+      const profile = manifest.dsh?.profile ?? {}
+      const bundles = [...new Set(profile.bundles ?? [])]
+      const disabledDependencies = Object.fromEntries(
+        Object.entries(manifest.dependencies ?? {}).filter(([name]) => !PROTECTED_PACKAGES.has(name)),
+      )
+      const disabled = [...new Set([
+        ...bundles.filter((name) => !PROTECTED_PACKAGES.has(name)),
+        ...Object.keys(disabledDependencies),
+      ])].toSorted()
+      if (disabled.length === 0) {
+        return Object.freeze({
+          result: Object.freeze({
+            disabled: Object.freeze([]),
+            disabledDependencies: Object.freeze({}),
+            changed: false,
+            restartRequired: false,
+          }),
+          commit: () => false,
+          rollback: async () => false,
+        })
+      }
+      await this.beforeMutation({ type: 'safe-mode', names: disabled })
+      const snapshot = await captureProfileSnapshot(this.profileDir)
+      manifest.dsh = {
+        ...(manifest.dsh ?? {}),
+        profile: { ...profile, bundles: bundles.filter((name) => PROTECTED_PACKAGES.has(name)) },
+      }
+      for (const name of Object.keys(disabledDependencies)) delete manifest.dependencies[name]
+      await writeManifest(this.profileDir, manifest)
+      let active = true
+      return Object.freeze({
+        result: Object.freeze({
+          disabled: Object.freeze(disabled),
+          disabledDependencies: Object.freeze(disabledDependencies),
+          changed: true,
+          restartRequired: true,
+        }),
+        commit() {
+          if (!active) return false
+          active = false
+          return true
+        },
+        rollback: () => this.#enqueue(async () => {
+          if (!active) return false
+          active = false
+          await this.#restoreProfileSnapshot(snapshot)
+          return true
+        }),
+      })
     })
   }
 }

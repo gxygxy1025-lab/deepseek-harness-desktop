@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 
-const MIN_WIDTH = 900
-const MIN_HEIGHT = 640
+const MIN_WIDTH = 720
+const MIN_HEIGHT = 540
 const DEFAULT_WIDTH = 1280
 const DEFAULT_HEIGHT = 820
 
@@ -54,19 +54,40 @@ export async function loadWindowState(path, displays) {
 
 export function attachWindowStatePersistence(window, path) {
   let timer
-  const save = async () => {
-    if (window.isDestroyed?.() === true) return
+  let writeQueue = Promise.resolve()
+  let latestWrite = writeQueue
+
+  const capture = () => {
+    if (window.isDestroyed?.() === true) return undefined
     const bounds = window.getNormalBounds()
-    await writeFile(path, `${JSON.stringify({ ...bounds, maximized: window.isMaximized() }, null, 2)}\n`)
+    return `${JSON.stringify({ ...bounds, maximized: window.isMaximized() }, null, 2)}\n`
+  }
+  const persist = (content) => {
+    if (content === undefined) return latestWrite
+    const operation = writeQueue.then(() => writeFile(path, content))
+    writeQueue = operation.catch(() => {})
+    latestWrite = operation
+    return operation
+  }
+  const save = () => persist(capture())
+  const saveFromEvent = () => {
+    void save().catch(() => {
+      // Explicit lifecycle saves report failures; event-driven saves must not
+      // create an unhandled rejection while the window is moving or closing.
+    })
   }
   const schedule = () => {
     clearTimeout(timer)
-    timer = setTimeout(() => void save(), 250)
+    timer = setTimeout(saveFromEvent, 250)
   }
   window.on('resize', schedule)
   window.on('move', schedule)
   window.on('maximize', schedule)
   window.on('unmaximize', schedule)
+  window.on('close', () => {
+    clearTimeout(timer)
+    saveFromEvent()
+  })
   window.on('closed', () => clearTimeout(timer))
   return save
 }

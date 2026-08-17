@@ -20,6 +20,10 @@ test('update surface is an accessible Harness-themed dialog driven by desktop up
   assert.match(script, /installUpdate/)
   assert.match(script, /稍后/)
   assert.match(script, /重启并安装/)
+  assert.match(script, /正在启动更新程序/)
+  assert.match(script, /下载源.*value\.source/u)
+  assert.match(script, /checkForUpdates\(\)\.catch\(\(\) => \{\}\)/u)
+  assert.match(script, /installUpdate\(\)\.catch\(\(\) => \{\}\)\.finally/u)
 })
 
 test('update surface applies CSS before mounting and follows navigation', async () => {

@@ -191,6 +191,30 @@ h1 {
   line-height: 1.5;
 }
 
+.recovery-summary {
+  margin-top: 14px;
+  padding: 13px 15px;
+  border: 1px solid rgba(101, 204, 226, 0.22);
+  border-radius: 11px;
+  background: rgba(6, 35, 48, 0.7);
+}
+
+.recovery-summary h2 {
+  margin: 0;
+  color: #eafcff;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.recovery-summary p {
+  margin: 6px 0 0;
+  color: #b7cbd3;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.recovery-summary .data-safety { color: #7fd9ca; }
+
 pre {
   max-height: 112px;
   margin: 14px 0 0;

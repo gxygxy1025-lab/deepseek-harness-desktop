@@ -63,3 +63,22 @@ test('navigation policy hands the Codex OAuth bootstrap to the system browser', 
   assert.equal(closed, true)
   assert.deepEqual(popupOpenHandler({ url: 'javascript:alert(1)' }), { action: 'deny' })
 })
+
+test('navigation policy reports external browser rejection without leaking it', async () => {
+  const errors = []
+  let windowOpenHandler
+  const webContents = {
+    on: () => {},
+    setWindowOpenHandler: (handler) => { windowOpenHandler = handler },
+  }
+  installNavigationPolicy({
+    webContents,
+    getRuntimeOrigin: () => undefined,
+    openExternal: async () => { throw new Error('browser unavailable') },
+    onError: (error) => errors.push(error.message),
+  })
+
+  assert.deepEqual(windowOpenHandler({ url: 'https://example.com' }), { action: 'deny' })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(errors, ['browser unavailable'])
+})

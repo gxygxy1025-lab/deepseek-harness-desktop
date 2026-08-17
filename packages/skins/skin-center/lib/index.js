@@ -226,6 +226,17 @@ function stripManaged(patch) {
 	if (end === -1) throw new Error("managed skin section is unterminated; fix the harness cordis.patch.yml");
 	return patch.slice(0, start) + patch.slice(end + 30);
 }
+/** Loader ids another skin manager wrote into the shared authority section. */
+function externalManagedSkinIds(patch, registry = loadRegistry()) {
+	const start = patch.indexOf(MANAGED_START);
+	if (start === -1) return [];
+	const end = patch.indexOf(MANAGED_END, start);
+	if (end === -1) throw new Error("managed skin section is unterminated; fix the harness cordis.patch.yml");
+	const owned = new Set(Object.values(registry).map((entry) => entry.id));
+	const ids = /* @__PURE__ */ new Set();
+	for (const match of patch.slice(start, end).matchAll(/^\s*- id:\s*([A-Za-z0-9._/@-]+)\s*$/gm)) if (!owned.has(match[1])) ids.add(match[1]);
+	return [...ids].toSorted();
+}
 /** YAML single-quoted scalar: a literal single quote doubles. `wiring.id` is
 * already validated before it ever reaches a registry, so only `package`
 * needs escaping here. */
@@ -239,7 +250,7 @@ function yamlSingleQuote(value) {
 * @param active - skin id, or null for the official stock look.
 * @param registry - registry to render against (defaults to the repo registry).
 */
-function renderManaged(active, registry = loadRegistry()) {
+function renderManaged(active, registry = loadRegistry(), externalIds = []) {
 	const wired = wiredNames(registry);
 	const lines = [MANAGED_START];
 	for (const name of Object.keys(registry)) {
@@ -247,6 +258,7 @@ function renderManaged(active, registry = loadRegistry()) {
 		lines.push(`- id: ${registry[name].id}`, "  disabled: true");
 	}
 	if (active !== null && !wired.has(active)) lines.push("- insert:", `    - id: ${registry[active].id}`, `      name: ${yamlSingleQuote(registry[active].pkg)}`);
+	for (const id of new Set(externalIds)) if (/^[A-Za-z0-9._/@-]+$/.test(id)) lines.push(`- id: ${id}`, "  disabled: true");
 	lines.push(MANAGED_END);
 	return lines.join("\n");
 }
@@ -512,6 +524,32 @@ function readPatch(patchPath) {
 		return "";
 	}
 }
+function waitForVerificationRead(delayMs) {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+}
+/**
+* Verify one completed atomic rename without confusing a transient Windows
+* file lock with a content mismatch. Read failures receive two short retries;
+* an exhausted read error is rethrown unchanged, while a successful read with
+* different bytes gets the dedicated verification error.
+*/
+function verifyPatchWrite(filePath, next, options = {}) {
+	const read = options.read ?? ((path) => readFileSync(path, "utf8"));
+	const wait = options.wait ?? waitForVerificationRead;
+	const delays = [10, 25];
+	for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+		let actual;
+		try {
+			actual = read(filePath);
+		} catch (error) {
+			if (attempt === delays.length) throw error;
+			wait(delays[attempt] ?? 0);
+			continue;
+		}
+		if (actual !== next) throw new Error(`skin state write verification failed: ${filePath}`);
+		return;
+	}
+}
 /**
 * Atomic replace: write a sibling temp file then rename over the target, so a
 * crash mid-write can never leave a half-written boot patch and the config
@@ -706,8 +744,12 @@ function useSkin(name, opts = {}) {
 		if (problem !== null) throw new Error(problem);
 		renderRegistry = registryWithProfileWiring(registry, paths.profileModulesDir, paths.profileManifestPath);
 	}
-	const next = `${stripLegacySkinRows(stripManaged(readPatch(paths.patchPath))).replace(/\s+$/, "")}\n\n${renderManaged(official ? null : name, renderRegistry)}\n`;
+	const currentPatch = readPatch(paths.patchPath);
+	const externalIds = externalManagedSkinIds(currentPatch, renderRegistry);
+	const strippedPatch = stripLegacySkinRows(stripManaged(currentPatch));
+	const next = `${(strippedPatch.trim() === "[]" ? "" : strippedPatch).replace(/\s+$/, "")}\n\n${renderManaged(official ? null : name, renderRegistry, externalIds)}\n`;
 	writePatchAtomic(paths.patchPath, next);
+	verifyPatchWrite(paths.patchPath, next);
 	return official ? "restored the official stock look — the config watcher applies it within seconds; refresh the page to see it." : `skin switched to "${name}" — the config watcher applies it within seconds; refresh the page (or the manifest re-fetches) to see it.`;
 }
 /**

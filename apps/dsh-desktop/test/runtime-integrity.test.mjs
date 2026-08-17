@@ -58,4 +58,6 @@ test('package verification consumes the shared critical runtime file contract', 
   const source = await readFile(fileURLToPath(new URL('../scripts/verify-package.mjs', import.meta.url)), 'utf8')
   assert.match(source, /CRITICAL_RUNTIME_FILES/u)
   assert.match(source, /for \(const relativePath of CRITICAL_RUNTIME_FILES\)/u)
+  assert.match(source, /packaged SSH client eagerly bundles xterm/u)
+  assert.match(source, /'@xterm', 'xterm', 'lib', 'xterm\.js'/u)
 })

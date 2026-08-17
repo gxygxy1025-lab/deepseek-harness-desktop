@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
 
 import {
   DEFAULT_STARTUP_TIMEOUT_MS,
+  DESKTOP_PROFILE_NAME,
   DshRuntimeController,
   computeRestartDelay,
+  formatRuntimeExit,
   parseDshReadyUrl,
   probeHttpReady,
   terminateChildProcessTree,
@@ -96,12 +99,14 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   const child = new FakeChild()
   const logLines = []
   const states = []
+  let childArguments
   let childEnvironment
   const controller = new DshRuntimeController({
     cliPath: 'dsh-bin.js',
     cwd: process.cwd(),
     dshHome: 'C:\\isolated-home',
-    spawnProcess: (_executable, _arguments, options) => {
+    spawnProcess: (_executable, arguments_, options) => {
+      childArguments = arguments_
       childEnvironment = options.env
       return child
     },
@@ -119,8 +124,13 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   assert.equal(controller.status.state, 'ready')
   assert.deepEqual(states.slice(0, 2), ['starting', 'ready'])
   assert.ok(logLines.some((line) => line.includes('booting')))
-  assert.equal(childEnvironment.DSH_PROFILE, 'desktop')
-  assert.equal(childEnvironment.DSH_SKIN_PROFILE, 'desktop')
+  assert.equal(childEnvironment.DSH_PROFILE, DESKTOP_PROFILE_NAME)
+  assert.equal(childEnvironment.DSH_SKIN_PROFILE, DESKTOP_PROFILE_NAME)
+  assert.equal(childArguments[childArguments.indexOf('--profile') + 1], DESKTOP_PROFILE_NAME)
+  assert.equal(
+    childEnvironment.DSH_SKINS_DIR,
+    join('C:\\isolated-home', 'profiles', DESKTOP_PROFILE_NAME, 'node_modules', '@linxin666'),
+  )
   assert.equal(childEnvironment.QQBOT_APPID, 'desktop-app')
   assert.equal(childEnvironment.QQBOT_SECRET, 'runtime-only')
   assert.ok(childEnvironment.PATH.startsWith(`C:\\desktop-runtime-bin${process.platform === 'win32' ? ';' : ':'}`))
@@ -128,6 +138,189 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   await controller.stop()
   assert.equal(controller.status.state, 'stopped')
   assert.equal(child.killed, true)
+})
+
+test('large Windows runtime exit codes are rendered as actionable diagnostics', () => {
+  assert.equal(
+    formatRuntimeExit(4_294_930_438, null, { platform: 'win32' }),
+    'runtime exited unexpectedly with Windows code 0xFFFF7006 (signed -36858)',
+  )
+  assert.equal(
+    formatRuntimeExit(null, 'SIGTERM', { platform: 'linux' }),
+    'runtime exited unexpectedly from signal SIGTERM',
+  )
+})
+
+test('identical runtime crashes stop automatic restart after one retry', async () => {
+  const children = [new FakeChild(), new FakeChild()]
+  const scheduled = []
+  const cancelled = new Set()
+  let spawns = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    autoRestart: true,
+    spawnProcess: () => children[spawns++],
+    logStore: { append: async () => {} },
+    probeReady: async () => {},
+    schedule: (callback, delay) => {
+      const timer = { callback, delay }
+      scheduled.push(timer)
+      return timer
+    },
+    cancelSchedule: (timer) => cancelled.add(timer),
+    startupTimeoutMs: 2_000,
+  })
+
+  const firstReady = controller.start()
+  children[0].stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+  await firstReady
+  children[0].exitCode = 4_294_930_438
+  children[0].emit('exit', 4_294_930_438, null)
+  assert.equal(controller.status.state, 'restarting')
+
+  const firstRestart = scheduled.find((timer) => timer.delay === 500 && !cancelled.has(timer))
+  assert.ok(firstRestart)
+  firstRestart.callback()
+  await new Promise((resolve) => setImmediate(resolve))
+  children[1].stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(controller.status.state, 'ready')
+
+  children[1].exitCode = 4_294_930_438
+  children[1].emit('exit', 4_294_930_438, null)
+  assert.equal(controller.status.state, 'crashed')
+  assert.equal(controller.status.restartBlocked, 'repeated-crash')
+  assert.match(controller.status.error, /automatic restart stopped/iu)
+  assert.match(controller.status.error, /0xFFFF7006/u)
+  assert.equal(spawns, 2)
+  assert.equal(scheduled.filter((timer) => timer.delay === 1_500 && !cancelled.has(timer)).length, 0)
+})
+
+test('a stable runtime resets the repeated-crash circuit', async () => {
+  const children = [new FakeChild(), new FakeChild()]
+  const scheduled = []
+  let now = 0
+  let spawns = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    autoRestart: true,
+    spawnProcess: () => children[spawns++],
+    logStore: { append: async () => {} },
+    probeReady: async () => {},
+    now: () => now,
+    schedule: (callback, delay) => {
+      const timer = { callback, delay }
+      scheduled.push(timer)
+      return timer
+    },
+    cancelSchedule: () => {},
+    startupTimeoutMs: 2_000,
+  })
+
+  const firstReady = controller.start()
+  children[0].stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+  await firstReady
+  children[0].exitCode = 1
+  children[0].emit('exit', 1, null)
+  scheduled.find((timer) => timer.delay === 500).callback()
+  await new Promise((resolve) => setImmediate(resolve))
+  children[1].stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  now = 60_000
+  children[1].exitCode = 1
+  children[1].emit('exit', 1, null)
+  assert.equal(controller.status.state, 'restarting')
+  assert.equal(controller.status.restartBlocked, undefined)
+  assert.equal(scheduled.some((timer) => timer.delay === 1_500), true)
+})
+
+test('runtime readiness does not wait for queued diagnostic log writes', async () => {
+  const child = new FakeChild()
+  let releaseLog
+  const blockedLog = new Promise((resolve) => { releaseLog = resolve })
+  let probes = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => child,
+    logStore: { append: () => blockedLog },
+    probeReady: async () => { probes += 1 },
+    startupTimeoutMs: 2_000,
+  })
+
+  const ready = controller.start()
+  try {
+    child.stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(probes, 1)
+    assert.equal(await ready, 'http://127.0.0.1:43125/')
+  } finally {
+    releaseLog()
+    await controller.stop()
+  }
+})
+
+test('runtime observer failures cannot interrupt startup or later observers', async () => {
+  const child = new FakeChild()
+  const diagnostics = []
+  const states = []
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => child,
+    logStore: { append: async (line) => diagnostics.push(line) },
+    probeReady: async () => {},
+    startupTimeoutMs: 2_000,
+  })
+  controller.once('status', () => { throw new Error('renderer status send failed') })
+  controller.on('status', (status) => states.push(status.state))
+  controller.on('line', () => { throw new Error('line observer failed') })
+
+  const ready = controller.start()
+  child.stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+
+  assert.equal(await ready, 'http://127.0.0.1:43125/')
+  assert.deepEqual(states.slice(0, 2), ['starting', 'ready'])
+  assert.equal(
+    diagnostics.filter((line) => line.includes('status observer failed: renderer status send failed')).length,
+    1,
+  )
+  assert.ok(diagnostics.some((line) => line.includes('line observer failed: line observer failed')))
+  await controller.stop()
+})
+
+test('failed-startup force cleanup does not wait for diagnostic log persistence', async () => {
+  const child = new FakeChild()
+  let releaseLog
+  const blockedLog = new Promise((resolve) => { releaseLog = resolve })
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => child,
+    logStore: { append: () => blockedLog },
+    terminateProcessTree: async () => { throw new Error('taskkill unavailable') },
+    startupTimeoutMs: 2_000,
+    shutdownTimeoutMs: 10_000,
+  })
+
+  try {
+    const ready = controller.start()
+    child.stdout.write('dsh web: http://example.com:43125\r\n')
+    await assert.rejects(ready, /loopback HTTP/u)
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(child.killed, true)
+  } finally {
+    releaseLog()
+    if (child.exitCode === null) child.kill()
+  }
 })
 
 test('controller rejects startup when the child exits before readiness', async () => {
@@ -145,6 +338,190 @@ test('controller rejects startup when the child exits before readiness', async (
   child.emit('exit', 1, null)
   await assert.rejects(ready, /before readiness/)
   assert.equal(controller.status.state, 'crashed')
+})
+
+test('retry waits for the failed startup process tree to exit before spawning a replacement', async () => {
+  const children = [new FakeChild(), new FakeChild()]
+  let spawnCalls = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => children[spawnCalls++],
+    logStore: { append: async () => {} },
+    probeReady: async () => {},
+    terminateProcessTree: async (child) => {
+      if (child === children[1]) child.kill()
+    },
+    startupTimeoutMs: 2_000,
+    shutdownTimeoutMs: 10_000,
+  })
+
+  let first
+  let retry
+  try {
+    first = controller.start()
+    children[0].stdout.write('dsh web: http://example.com:43125\r\n')
+    await assert.rejects(first, /loopback HTTP/u)
+
+    retry = controller.start()
+    const duplicateRetry = controller.start()
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(spawnCalls, 1)
+
+    children[0].exitCode = 1
+    children[0].emit('exit', 1, null)
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(spawnCalls, 2)
+
+    children[1].stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+    assert.equal(await retry, 'http://127.0.0.1:43125/')
+    assert.equal(await duplicateRetry, 'http://127.0.0.1:43125/')
+    await controller.stop()
+  } finally {
+    for (const child of children) {
+      if (child.exitCode === null) child.kill()
+    }
+    await Promise.allSettled([first, retry].filter(Boolean))
+  }
+})
+
+test('stop joins an in-flight failed-startup cleanup instead of terminating the tree twice', async () => {
+  const child = new FakeChild()
+  let spawns = 0
+  let terminations = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => {
+      spawns += 1
+      return child
+    },
+    logStore: { append: async () => {} },
+    terminateProcessTree: async () => { terminations += 1 },
+    startupTimeoutMs: 2_000,
+    shutdownTimeoutMs: 10_000,
+  })
+
+  let stopped
+  let retry
+  try {
+    const ready = controller.start()
+    child.stdout.write('dsh web: http://example.com:43125\r\n')
+    await assert.rejects(ready, /loopback HTTP/u)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    retry = controller.start()
+    stopped = controller.stop()
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(terminations, 1)
+    assert.equal(controller.status.state, 'stopping')
+
+    child.exitCode = 1
+    child.emit('exit', 1, null)
+    await stopped
+    await assert.rejects(retry, /cancelled because shutdown is in progress/u)
+    assert.equal(spawns, 1)
+    assert.equal(controller.status.state, 'stopped')
+  } finally {
+    if (child.exitCode === null) child.kill()
+    await Promise.allSettled([stopped, retry].filter(Boolean))
+  }
+})
+
+test('concurrent stops coalesce and a start during stopping waits for the old child exit', async () => {
+  const children = [new FakeChild(), new FakeChild()]
+  let spawns = 0
+  let terminations = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => children[spawns++],
+    logStore: { append: async () => {} },
+    probeReady: async () => {},
+    terminateProcessTree: async (child) => {
+      terminations += 1
+      if (child === children[1]) child.kill()
+    },
+    schedule: (callback, delay) => {
+      const timer = setTimeout(callback, delay)
+      timer.unref()
+      return timer
+    },
+    cancelSchedule: clearTimeout,
+    startupTimeoutMs: 2_000,
+    shutdownTimeoutMs: 10_000,
+  })
+
+  const initial = controller.start()
+  const initialCancelled = assert.rejects(initial, /startup cancelled by stop/u)
+  let firstStop
+  let secondStop
+  let queuedStart
+  try {
+    firstStop = controller.stop()
+    secondStop = controller.stop()
+    queuedStart = controller.start()
+    await new Promise((resolve) => setImmediate(resolve))
+
+    assert.equal(firstStop, secondStop)
+    assert.equal(terminations, 1)
+    assert.equal(spawns, 1)
+    await initialCancelled
+
+    children[0].exitCode = 0
+    children[0].emit('exit', 0, 'SIGTERM')
+    await Promise.all([firstStop, secondStop])
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(spawns, 2)
+
+    children[1].stdout.write('dsh web: http://127.0.0.1:43125\r\n')
+    assert.equal(await queuedStart, 'http://127.0.0.1:43125/')
+    await controller.stop()
+  } finally {
+    for (const child of children) {
+      if (child.exitCode === null) child.kill()
+    }
+  }
+})
+
+test('startup timeout terminates the complete runtime tree with a bounded force fallback', async () => {
+  const child = new FakeChild()
+  const scheduled = []
+  const cancelled = []
+  const terminated = []
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    spawnProcess: () => child,
+    logStore: { append: async () => {} },
+    startupTimeoutMs: 2_000,
+    shutdownTimeoutMs: 500,
+    schedule: (callback, delay) => {
+      const timer = { callback, delay }
+      scheduled.push(timer)
+      return timer
+    },
+    cancelSchedule: (timer) => cancelled.push(timer),
+    terminateProcessTree: async (target) => terminated.push(target),
+  })
+
+  const ready = controller.start()
+  assert.equal(scheduled[0].delay, 2_000)
+  scheduled[0].callback()
+  await assert.rejects(ready, /did not become ready/u)
+  await Promise.resolve()
+
+  assert.deepEqual(terminated, [child])
+  assert.equal(scheduled[1].delay, 500)
+  assert.equal(child.killed, false)
+  scheduled[1].callback()
+  assert.equal(child.killed, true)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.ok(cancelled.includes(scheduled[1]))
 })
 
 test('controller fails preflight without spawning or scheduling an automatic restart', async () => {

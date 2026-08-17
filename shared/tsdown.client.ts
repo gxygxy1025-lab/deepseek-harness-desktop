@@ -99,14 +99,14 @@ export function clientBundle(
   libEntry: readonly string[],
   options: ClientBundleOptions = {},
 ): BuildFaceConfig {
-  const lib = clientLibraryConfig(id, libEntry, options.lib, options.libExternal)
+  const lib = clientLibraryConfig(id, libEntry, options.lib, options.libExternal, options.libOnlyBundle)
   return ({ env }) => {
     const face = buildFace(env?.DSH_BUILD_FACE)
     // Host-only plugins (no src/client entry) skip the browser face entirely.
     const hasClient = existsSync(resolvePath(process.cwd(), 'src/client/index.ts'))
     const client = hasClient ? clientConfig(id, face === undefined
       ? 'src/client/index.ts'
-      : 'lib/types/client/index.js') : undefined
+      : 'lib/types/client/index.js', options.clientOnlyBundle) : undefined
     const node = [lib, ...(options.companions ?? [])]
     if (face === 'host') return options.hostPhase === true ? node : [SKIP_WORKSPACE_BUILD]
     if (face === 'client') return options.hostPhase === true ? (client ? [client] : []) : (client ? [...node, client] : node)
@@ -136,8 +136,17 @@ export function mobileBundle(id: string, entry: string): UserConfig {
     sourcemap: true,
     clean: false,
     // Fully self-contained: no externals, no module table.
-    external: [],
-    noExternal: [/.*/],
+    deps: {
+      neverBundle: [],
+      alwaysBundle: [/.*/],
+      onlyBundle: [
+        'react',
+        'scheduler',
+        'react-dom',
+        'zod',
+        '@deepseek-ai/dsh-host-apiproxy',
+      ],
+    },
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
@@ -173,6 +182,10 @@ interface ClientBundleOptions {
   readonly lib?: UserConfig
   /** Extra Node-side externals (in addition to the default cordis entry). */
   readonly libExternal?: readonly (string | RegExp)[]
+  /** Reviewed packages that the Node-side library may inline. Defaults to none. */
+  readonly libOnlyBundle?: readonly (string | RegExp)[]
+  /** Reviewed packages that the browser client may inline. Defaults to none. */
+  readonly clientOnlyBundle?: readonly (string | RegExp)[]
 }
 
 type BuildFace = 'host' | 'client' | undefined
@@ -189,7 +202,9 @@ function clientLibraryConfig(
   libEntry: readonly string[],
   overrides: UserConfig = {},
   extraExternal: readonly (string | RegExp)[] = [],
+  onlyBundle: readonly (string | RegExp)[] = [],
 ): UserConfig {
+  const { deps: overrideDeps, ...restOverrides } = overrides
   return {
     name: id,
     entry: [...libEntry],
@@ -204,12 +219,20 @@ function clientLibraryConfig(
     // from this repo's install; its built declarations carry .ts-suffixed
     // relative imports rolldown cannot follow, so the import must stay
     // external (the same stance as the peer APIs above).
-    external: ['@deepseek-ai/cordis', ...extraExternal],
-    ...overrides,
+    deps: {
+      neverBundle: ['@deepseek-ai/cordis', ...extraExternal],
+      onlyBundle: [...onlyBundle],
+      ...overrideDeps,
+    },
+    ...restOverrides,
   }
 }
 
-function clientConfig(id: string, entry: string): UserConfig {
+function clientConfig(
+  id: string,
+  entry: string,
+  onlyBundle: readonly (string | RegExp)[] = [],
+): UserConfig {
   return {
     name: `${id}/client`,
     entry: { client: entry },
@@ -225,7 +248,16 @@ function clientConfig(id: string, entry: string): UserConfig {
     // must carry the TS/TSX mapping consumed by browser profiling tools.
     sourcemap: true,
     clean: false,
-    external: [...CLIENT_EXTERNALS],
+    deps: {
+      neverBundle: [...CLIENT_EXTERNALS],
+      onlyBundle: [...onlyBundle],
+      // tsdown auto-externalizes package dependencies; anything NOT in the
+      // loader module table must inline instead (wire/type layers, zod, clsx —
+      // every non-shared dep). A require() the table cannot answer is a
+      // guaranteed runtime throw, so the rule is the table list itself: no
+      // opinion for table entries (neverBundle above wins), bundle everything else.
+      alwaysBundle: (id: string) => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
+    },
     // Browser bundles inline node-idiom deps (zustand/immer read
     // process.env.NODE_ENV; zustand's esm build also probes
     // import.meta.env.MODE, which a CJS output cannot carry — rolldown flags
@@ -241,12 +273,6 @@ function clientConfig(id: string, entry: string): UserConfig {
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
     },
-    // tsdown auto-externalizes package dependencies; anything NOT in the
-    // loader module table must inline instead (wire/type layers, zod, clsx —
-    // every non-shared dep). A require() the table cannot answer is a
-    // guaranteed runtime throw, so the rule is the table list itself: no
-    // opinion for table entries (external above wins), bundle everything else.
-    noExternal: (id: string) => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
     plugins: [{
       // Bundle purity gate (build-time mirror of the module-edge rules):
       // platform seed entries stay external, inline-safe wire layers inline,
@@ -257,7 +283,7 @@ function clientConfig(id: string, entry: string): UserConfig {
       name: 'dsh-client-bundle-purity',
       resolveId(source: string) {
         if (!source.startsWith('@deepseek-ai/')) return null
-        if (CLIENT_EXTERNALS.includes(source)) return null // platform module: external wins
+        if (CLIENT_EXTERNALS.includes(source)) return null // platform module: neverBundle wins
         if (INLINE_SAFE.test(source) || GENERATED_REMOTE.test(source)) return null // wire contribution: inline is the point
         throw new Error(
           `client bundle purity: "${source}" is not a platform module (CLIENT_EXTERNALS), an inline-safe wire layer, or a generated /remote contribution — `

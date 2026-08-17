@@ -26,6 +26,7 @@
     "core/**/*.ts",
     "types/**/*.d.ts",
     "core/**/*.ts",
+    "vitest-sdk.ts",
     "tests/**/*.ts",
     "tests/**/*.tsx"
   ]

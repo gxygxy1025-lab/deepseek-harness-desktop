@@ -36,8 +36,44 @@ import {
   resolveSkinsDir,
   findScopedAnchor,
   listSkinDirCandidates,
+  verifyPatchWrite,
   type SkinSwitchEntry,
 } from '../src/skin-switch.ts'
+
+describe('atomic patch verification', () => {
+  it('retries transient read errors and accepts the persisted content', () => {
+    const transient = Object.assign(new Error('temporarily locked'), { code: 'EPERM' })
+    const waits: number[] = []
+    let reads = 0
+
+    expect(() => verifyPatchWrite('/patch.yml', 'next', {
+      read: () => {
+        reads += 1
+        if (reads < 3) throw transient
+        return 'next'
+      },
+      wait: (delayMs) => waits.push(delayMs),
+    })).not.toThrow()
+    expect(reads).toBe(3)
+    expect(waits).toEqual([10, 25])
+  })
+
+  it('rethrows the filesystem error when every verification read fails', () => {
+    const locked = Object.assign(new Error('still locked'), { code: 'EPERM' })
+
+    expect(() => verifyPatchWrite('/patch.yml', 'next', {
+      read: () => { throw locked },
+      wait: () => {},
+    })).toThrow(locked)
+  })
+
+  it('reports content mismatch only after a successful read', () => {
+    expect(() => verifyPatchWrite('/patch.yml', 'next', {
+      read: () => 'different',
+      wait: () => {},
+    })).toThrow('skin state write verification failed: /patch.yml')
+  })
+})
 
 /** A throwaway HOME with an empty .dsh dir; removed after all tests. */
 let home: string
@@ -398,6 +434,29 @@ describe('useSkin / currentSkin against a throwaway HOME', () => {
     }
     expect(after).not.toContain('- insert:')
     expect(currentSkin(undefined, { home: h })).toBe('none')
+  })
+
+  it('switching through skin center disables market-managed themes in the shared section', () => {
+    const h = fakeHome()
+    const patch = patchPath(h)
+    writeFileSync(patch, `- id: retained\n\n${MANAGED_START}\n- id: dsh-liquid-glass\n  disabled: false\n- id: ui-skin-qq98\n  disabled: true\n${MANAGED_END}\n`)
+
+    useSkin('official', { home: h })
+
+    const after = readFileSync(patch, 'utf8')
+    expect(after).toContain('- id: retained')
+    expect(after).toContain('- id: dsh-liquid-glass\n  disabled: true')
+    expect(after.match(/dsh-liquid-glass/g)).toHaveLength(1)
+  })
+
+  it('replaces an empty YAML root list on the first switch', () => {
+    const h = fakeHome()
+    const patch = patchPath(h)
+    writeFileSync(patch, '[]\n')
+
+    useSkin('official', { home: h, registry: miniRegistry() })
+
+    expect(readFileSync(patch, 'utf8')).not.toContain('[]')
   })
 
   it.skipIf(process.platform === 'win32')('useSkin preserves the permission bits of an existing patch file (0600 stays 0600)', () => {

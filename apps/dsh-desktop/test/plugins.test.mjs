@@ -268,6 +268,85 @@ test('failed prepared mutation rolls itself back before returning an error', asy
   }
 })
 
+test('failed removal restores a partially changed manifest and lockfile', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-remove-rollback-'))
+  const packageName = '@community/example'
+  const manifestPath = join(profileDir, 'package.json')
+  const lockPath = join(profileDir, 'pnpm-lock.yaml')
+  const oldManifest = {
+    name: 'dsh-profile-desktop',
+    private: true,
+    dependencies: { [packageName]: '1.2.3' },
+    dsh: { profile: { bundles: [...BUILTIN_BUNDLES, packageName] } },
+  }
+  const calls = []
+  try {
+    await writeFile(manifestPath, `${JSON.stringify(oldManifest, null, 2)}\n`)
+    await writeFile(lockPath, 'old-lock\n')
+    const runner = async ({ args }) => {
+      calls.push(args)
+      if (args[0] !== 'remove') return
+      const changed = JSON.parse(await readFile(manifestPath, 'utf8'))
+      delete changed.dependencies[packageName]
+      await writeFile(manifestPath, `${JSON.stringify(changed, null, 2)}\n`)
+      await writeFile(lockPath, 'partial-lock\n')
+      throw new Error('pnpm failed after changing profile inputs')
+    }
+    const manager = new PluginManager({ profileDir, runner, pnpmCli: 'pnpm.mjs' })
+
+    await assert.rejects(manager.remove(packageName), /rolled back/u)
+    assert.deepEqual(JSON.parse(await readFile(manifestPath, 'utf8')), oldManifest)
+    assert.equal(await readFile(lockPath, 'utf8'), 'old-lock\n')
+    assert.deepEqual(calls, [
+      ['remove', packageName],
+      ['install', '--offline', '--frozen-lockfile'],
+    ])
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('successful removal remains reversible until the desktop commits it', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-remove-transaction-'))
+  const packageName = '@community/example'
+  const manifestPath = join(profileDir, 'package.json')
+  const lockPath = join(profileDir, 'pnpm-lock.yaml')
+  const oldManifest = {
+    name: 'dsh-profile-desktop',
+    private: true,
+    dependencies: { [packageName]: '1.2.3' },
+    dsh: { profile: { bundles: [...BUILTIN_BUNDLES, packageName] } },
+  }
+  const calls = []
+  try {
+    await writeFile(manifestPath, `${JSON.stringify(oldManifest, null, 2)}\n`)
+    await writeFile(lockPath, 'old-lock\n')
+    const runner = async ({ args }) => {
+      calls.push(args)
+      if (args[0] !== 'remove') return
+      const changed = JSON.parse(await readFile(manifestPath, 'utf8'))
+      delete changed.dependencies[packageName]
+      await writeFile(manifestPath, `${JSON.stringify(changed, null, 2)}\n`)
+      await writeFile(lockPath, 'new-lock\n')
+    }
+    const manager = new PluginManager({ profileDir, runner, pnpmCli: 'pnpm.mjs' })
+
+    const transaction = await manager.remove(packageName)
+    assert.deepEqual(transaction.result, { name: packageName, restartRequired: true })
+    assert.equal(JSON.parse(await readFile(manifestPath, 'utf8')).dependencies[packageName], undefined)
+    assert.equal(await transaction.rollback(), true)
+    assert.deepEqual(JSON.parse(await readFile(manifestPath, 'utf8')), oldManifest)
+    assert.equal(await readFile(lockPath, 'utf8'), 'old-lock\n')
+    assert.equal(await transaction.rollback(), false)
+    assert.deepEqual(calls, [
+      ['remove', packageName],
+      ['install', '--offline', '--frozen-lockfile'],
+    ])
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
 test('startup reconciliation disables explicit incompatibilities and preserves unknown plugins', async () => {
   const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-reconcile-'))
   const incompatible = '@community/incompatible'
@@ -307,6 +386,84 @@ test('startup reconciliation disables explicit incompatibilities and preserves u
     assert.equal(manifest.dsh.profile.bundles.includes(incompatible), false)
     assert.equal(manifest.dsh.profile.bundles.includes(unknown), true)
     assert.equal((await manager.reconcileCompatibility()).changed, false)
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('plugin manager disables community bundles without uninstalling and can enter safe mode', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-safe-mode-'))
+  const first = '@community/first'
+  const second = '@community/second'
+  const mutationEvents = []
+  try {
+    await writeFile(join(profileDir, 'package.json'), `${JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: { [first]: '1.0.0', [second]: '1.0.0' },
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES, first, second] } },
+    }, null, 2)}\n`)
+    const manager = new PluginManager({
+      profileDir,
+      pnpmCli: 'pnpm.mjs',
+      runner: async () => {},
+      beforeMutation: async (event) => { mutationEvents.push(event) },
+    })
+
+    const disabled = await manager.setEnabled(first, false)
+    assert.equal(disabled.result.changed, true)
+    disabled.commit()
+    let manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.equal(manifest.dependencies[first], '1.0.0')
+    assert.equal(manifest.dsh.profile.bundles.includes(first), false)
+
+    const safeMode = await manager.enterSafeMode()
+    assert.deepEqual(safeMode.result.disabled, [first, second])
+    safeMode.commit()
+    manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.deepEqual(manifest.dsh.profile.bundles, BUILTIN_BUNDLES)
+    assert.equal(manifest.dependencies[first], undefined)
+    assert.equal(manifest.dependencies[second], undefined)
+    assert.deepEqual(safeMode.result.disabledDependencies, {
+      [first]: '1.0.0',
+      [second]: '1.0.0',
+    })
+    assert.deepEqual(mutationEvents.map((event) => event.type), ['disable', 'safe-mode'])
+    await assert.rejects(manager.setEnabled(BUILTIN_BUNDLES[0], false), /built-in/u)
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('dependency-only legacy plugins can be isolated without deleting files and re-enabled', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-legacy-dependency-'))
+  const name = '@community/legacy-market-theme'
+  const packageRoot = join(profileDir, 'node_modules', ...name.split('/'))
+  try {
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+      name,
+      version: '1.0.0',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }))
+    await writeFile(join(profileDir, 'package.json'), `${JSON.stringify({
+      name: 'dsh-profile-desktop',
+      dependencies: { [name]: '1.0.0' },
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }, null, 2)}\n`)
+    const manager = new PluginManager({ profileDir, pnpmCli: 'pnpm.mjs', runner: async () => {} })
+    const disabled = await manager.setEnabled(name, false)
+    disabled.commit()
+    assert.equal(disabled.result.dependencySpec, '1.0.0')
+    let manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.equal(manifest.dependencies[name], undefined)
+    assert.equal(JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')).name, name)
+
+    const enabled = await manager.setEnabled(name, true, { dependencySpec: disabled.result.dependencySpec })
+    enabled.commit()
+    manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.equal(manifest.dependencies[name], '1.0.0')
+    assert.equal(manifest.dsh.profile.bundles.includes(name), true)
   } finally {
     await rm(profileDir, { recursive: true, force: true })
   }
