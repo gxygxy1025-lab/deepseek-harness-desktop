@@ -35,8 +35,11 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /DeepSeek Harness Desktop\.exe/u)
   assert.match(cleanup, /StartsWith\(\$resourcePrefix, \$comparison\)/u)
   assert.match(cleanup, /Get-ChildItem -LiteralPath \$resourceRoot -Recurse -File -Filter '\*\.exe'/u)
-  assert.match(cleanup, /Get-Process -Name \$candidateNames -ErrorAction SilentlyContinue/u)
-  assert.match(cleanup, /\$process\.Path/u)
+  assert.match(cleanup, /Get-CimInstance Win32_Process -Filter \$filter -ErrorAction Stop/u)
+  assert.match(cleanup, /ExecutablePath = '\$wqlPath'/u)
+  assert.match(cleanup, /\$process\.ExecutablePath/u)
+  assert.match(cleanup, /ProcessId = \$process\.ProcessId/u)
+  assert.doesNotMatch(cleanup, /Get-CimInstance Win32_Process(?:\s|\r?\n)+(?!-Filter)/u)
   assert.match(cleanup, /Sort-Object[\s\S]*Descending/u)
   assert.match(cleanup, /for \(\$attempt = 0; \$attempt -lt \$maxAttempts/u)
   assert.match(cleanup, /Start-Sleep -Milliseconds/u)
@@ -51,12 +54,13 @@ test('Windows installer preflight terminates exact-path app and resource process
   timeout: 15_000,
 }, async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-cleanup-'))
-  const executable = join(temporary, 'DeepSeek Harness Desktop.exe')
-  const resourceExecutable = join(temporary, 'resources', 'bin', 'dsh-runtime-helper.exe')
+  const installDirectory = join(temporary, "用户's Desktop")
+  const executable = join(installDirectory, 'DeepSeek Harness Desktop.exe')
+  const resourceExecutable = join(installDirectory, 'resources', 'bin', 'dsh-runtime-helper.exe')
   const systemPing = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'PING.EXE')
   const ownedProcesses = []
   try {
-    await mkdir(join(temporary, 'resources', 'bin'), { recursive: true })
+    await mkdir(join(installDirectory, 'resources', 'bin'), { recursive: true })
     await copyFile(systemPing, executable)
     await copyFile(systemPing, resourceExecutable)
     for (const target of [executable, resourceExecutable]) {
@@ -80,7 +84,7 @@ test('Windows installer preflight terminates exact-path app and resource process
         '-File',
         join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
         '-InstallDirectory',
-        temporary,
+        installDirectory,
       ],
       { timeout: 5_000, windowsHide: true },
     )

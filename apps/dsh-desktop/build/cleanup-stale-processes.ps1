@@ -22,18 +22,30 @@ try {
 
   $resourcePrefix = "$resourceRoot\"
   $comparison = [System.StringComparison]::OrdinalIgnoreCase
-  $candidateNames = @([System.IO.Path]::GetFileNameWithoutExtension($mainExecutable))
+  $candidatePaths = @($mainExecutable)
   if (Test-Path -LiteralPath $resourceRoot -PathType Container) {
-    $candidateNames += @(Get-ChildItem -LiteralPath $resourceRoot -Recurse -File -Filter '*.exe' -ErrorAction SilentlyContinue | ForEach-Object {
-      [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+    $candidatePaths += @(Get-ChildItem -LiteralPath $resourceRoot -Recurse -File -Filter '*.exe' -ErrorAction SilentlyContinue | ForEach-Object {
+      [System.IO.Path]::GetFullPath($_.FullName)
     })
   }
-  $candidateNames = @($candidateNames | Sort-Object -Unique)
+  $candidatePaths = @($candidatePaths | Sort-Object -Unique)
+  $wqlClauses = @(foreach ($candidatePath in $candidatePaths) {
+    $wqlPath = $candidatePath.Replace('\', '\\').Replace("'", "\'")
+    "ExecutablePath = '$wqlPath'"
+  })
   function Get-OwnedProcesses {
-    @(foreach ($process in Get-Process -Name $candidateNames -ErrorAction SilentlyContinue) {
-      try {
-        $path = $process.Path
-      } catch {
+    # Keep every WMI query path-filtered. Broad process enumeration can stall on
+    # protected processes or endpoint-security hooks during an installer update.
+    $processes = @()
+    $chunkSize = 16
+    for ($offset = 0; $offset -lt $wqlClauses.Count; $offset += $chunkSize) {
+      $last = [Math]::Min($offset + $chunkSize - 1, $wqlClauses.Count - 1)
+      $filter = @($wqlClauses[$offset..$last]) -join ' OR '
+      $processes += @(Get-CimInstance Win32_Process -Filter $filter -ErrorAction Stop)
+    }
+    @(foreach ($process in $processes) {
+      $path = $process.ExecutablePath
+      if (-not $path) {
         continue
       }
       if ($path -and (
@@ -41,7 +53,7 @@ try {
         $path.StartsWith($resourcePrefix, $comparison)
       )) {
         [pscustomobject]@{
-          ProcessId = $process.Id
+          ProcessId = $process.ProcessId
           ExecutablePath = $path
           ResourceChild = $path.StartsWith($resourcePrefix, $comparison)
         }
