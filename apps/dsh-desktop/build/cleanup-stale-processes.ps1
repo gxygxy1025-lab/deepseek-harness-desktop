@@ -9,8 +9,8 @@ $retryDelayMs = 250
 
 try {
   $installInputRoot = [System.IO.Path]::GetFullPath($InstallDirectory).TrimEnd([char[]]@('\', '/'))
-  # Get-Item expands an 8.3 path such as RUNNER~1 before it is compared with
-  # Win32_Process.ExecutablePath, which reports the canonical long path.
+  # Keep the provider-resolved spelling as well as the caller's spelling. The
+  # native canonicalizer below expands every 8.3 segment before comparison.
   $installRoot = (Get-Item -LiteralPath $InstallDirectory -ErrorAction Stop).FullName.TrimEnd([char[]]@('\', '/'))
   $volumeRoot = [System.IO.Path]::GetPathRoot($installRoot).TrimEnd([char[]]@('\', '/'))
   if ([string]::IsNullOrWhiteSpace($installRoot) -or $installRoot -eq $volumeRoot) {
@@ -34,15 +34,6 @@ try {
     })
   }
   $candidatePaths = @($candidatePaths | Sort-Object -Unique)
-  $candidatePathSet = [System.Collections.Generic.HashSet[string]]::new(
-    [System.StringComparer]::OrdinalIgnoreCase
-  )
-  foreach ($candidatePath in $candidatePaths) {
-    [void] $candidatePathSet.Add($candidatePath)
-    $relativePath = $candidatePath.Substring($installRoot.Length).TrimStart([char[]]@('\', '/'))
-    [void] $candidatePathSet.Add((Join-Path $installInputRoot $relativePath))
-  }
-
   if (-not ('DshInstaller.ProcessPath' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -73,6 +64,38 @@ namespace DshInstaller
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool CloseHandle(IntPtr handle);
 
+        [DllImport("kernel32.dll", EntryPoint = "GetLongPathNameW", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint GetLongPathName(
+            string shortPath,
+            StringBuilder longPath,
+            uint bufferLength);
+
+        public static string Canonicalize(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path))
+            {
+                return path;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = System.IO.Path.GetFullPath(path);
+            }
+            catch
+            {
+                return path;
+            }
+
+            StringBuilder longPath = new StringBuilder(32768);
+            uint size = GetLongPathName(fullPath, longPath, (uint) longPath.Capacity);
+            if (size == 0 || size >= longPath.Capacity)
+            {
+                return fullPath;
+            }
+            return longPath.ToString();
+        }
+
         public static string TryGet(uint processId)
         {
             IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
@@ -101,15 +124,40 @@ namespace DshInstaller
 '@
   }
 
+  $canonicalResourceRoot = [DshInstaller.ProcessPath]::Canonicalize($resourceRoot).TrimEnd([char[]]@('\', '/'))
+  $canonicalResourcePrefix = "$canonicalResourceRoot\"
+  $candidatePathSet = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+  foreach ($candidatePath in $candidatePaths) {
+    $relativePath = $candidatePath.Substring($installRoot.Length).TrimStart([char[]]@('\', '/'))
+    $inputCandidatePath = Join-Path $installInputRoot $relativePath
+    foreach ($pathVariant in @(
+      $candidatePath,
+      $inputCandidatePath,
+      [DshInstaller.ProcessPath]::Canonicalize($candidatePath),
+      [DshInstaller.ProcessPath]::Canonicalize($inputCandidatePath)
+    )) {
+      if (-not [string]::IsNullOrWhiteSpace($pathVariant)) {
+        [void] $candidatePathSet.Add($pathVariant)
+      }
+    }
+  }
+
   function Get-OwnedProcesses {
     # QueryFullProcessImageName uses a bounded native call and avoids both WMI
     # enumeration and the blocking MainModule/Path property on protected tasks.
     @(foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
       $path = [DshInstaller.ProcessPath]::TryGet([uint32] $process.Id)
-      if ($path -and $candidatePathSet.Contains($path)) {
+      if (-not $path) {
+        continue
+      }
+      $canonicalPath = [DshInstaller.ProcessPath]::Canonicalize($path)
+      if ($candidatePathSet.Contains($path) -or $candidatePathSet.Contains($canonicalPath)) {
         $resourceChild = (
           $path.StartsWith($resourcePrefix, $comparison) -or
-          $path.StartsWith($resourceInputPrefix, $comparison)
+          $path.StartsWith($resourceInputPrefix, $comparison) -or
+          $canonicalPath.StartsWith($canonicalResourcePrefix, $comparison)
         )
         [pscustomobject]@{
           ProcessId = $process.Id
