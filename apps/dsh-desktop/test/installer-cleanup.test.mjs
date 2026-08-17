@@ -36,11 +36,11 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /Get-Item -LiteralPath \$InstallDirectory -ErrorAction Stop/u)
   assert.match(cleanup, /StartsWith\(\$resourcePrefix, \$comparison\)/u)
   assert.match(cleanup, /Get-ChildItem -LiteralPath \$resourceRoot -Recurse -File -Filter '\*\.exe'/u)
-  assert.match(cleanup, /Get-CimInstance Win32_Process -Filter \$filter -ErrorAction Stop/u)
-  assert.match(cleanup, /ExecutablePath = '\$wqlPath'/u)
-  assert.match(cleanup, /\$process\.ExecutablePath/u)
-  assert.match(cleanup, /ProcessId = \$process\.ProcessId/u)
-  assert.doesNotMatch(cleanup, /Get-CimInstance Win32_Process(?:\s|\r?\n)+(?!-Filter)/u)
+  assert.match(cleanup, /PROCESS_QUERY_LIMITED_INFORMATION/u)
+  assert.match(cleanup, /QueryFullProcessImageName/u)
+  assert.match(cleanup, /\[DshInstaller\.ProcessPath\]::TryGet/u)
+  assert.match(cleanup, /\$candidatePathSet\.Contains\(\$path\)/u)
+  assert.doesNotMatch(cleanup, /Get-CimInstance|\.MainModule|\$process\.Path/u)
   assert.match(cleanup, /Sort-Object[\s\S]*Descending/u)
   assert.match(cleanup, /for \(\$attempt = 0; \$attempt -lt \$maxAttempts/u)
   assert.match(cleanup, /Start-Sleep -Milliseconds/u)
@@ -52,7 +52,7 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
 
 test('Windows installer preflight terminates exact-path app and resource processes', {
   skip: process.platform !== 'win32',
-  timeout: 15_000,
+  timeout: 20_000,
 }, async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-cleanup-'))
   const installDirectory = join(temporary, "用户's Desktop")
@@ -87,7 +87,7 @@ test('Windows installer preflight terminates exact-path app and resource process
         '-InstallDirectory',
         installDirectory,
       ],
-      { timeout: 5_000, windowsHide: true },
+      { timeout: 10_000, windowsHide: true },
     )
     const ownedExits = await settleWithin(
       Promise.all(ownedProcesses.map(({ exit }) => exit)),

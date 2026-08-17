@@ -31,31 +31,79 @@ try {
     })
   }
   $candidatePaths = @($candidatePaths | Sort-Object -Unique)
-  $wqlClauses = @(foreach ($candidatePath in $candidatePaths) {
-    $wqlPath = $candidatePath.Replace('\', '\\').Replace("'", "\'")
-    "ExecutablePath = '$wqlPath'"
-  })
-  function Get-OwnedProcesses {
-    # Keep every WMI query path-filtered. Broad process enumeration can stall on
-    # protected processes or endpoint-security hooks during an installer update.
-    $processes = @()
-    $chunkSize = 16
-    for ($offset = 0; $offset -lt $wqlClauses.Count; $offset += $chunkSize) {
-      $last = [Math]::Min($offset + $chunkSize - 1, $wqlClauses.Count - 1)
-      $filter = @($wqlClauses[$offset..$last]) -join ' OR '
-      $processes += @(Get-CimInstance Win32_Process -Filter $filter -ErrorAction Stop)
+  $candidatePathSet = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+  foreach ($candidatePath in $candidatePaths) {
+    [void] $candidatePathSet.Add($candidatePath)
+  }
+
+  if (-not ('DshInstaller.ProcessPath' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace DshInstaller
+{
+    public static class ProcessPath
+    {
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(
+            uint processAccess,
+            bool inheritHandle,
+            uint processId);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool QueryFullProcessImageName(
+            IntPtr process,
+            uint flags,
+            StringBuilder executablePath,
+            ref uint size);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        public static string TryGet(uint processId)
+        {
+            IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+            if (process == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            try
+            {
+                StringBuilder executablePath = new StringBuilder(32768);
+                uint size = (uint) executablePath.Capacity;
+                if (!QueryFullProcessImageName(process, 0, executablePath, ref size))
+                {
+                    return null;
+                }
+                return executablePath.ToString();
+            }
+            finally
+            {
+                CloseHandle(process);
+            }
+        }
     }
-    @(foreach ($process in $processes) {
-      $path = $process.ExecutablePath
-      if (-not $path) {
-        continue
-      }
-      if ($path -and (
-        $path.Equals($mainExecutable, $comparison) -or
-        $path.StartsWith($resourcePrefix, $comparison)
-      )) {
+}
+'@
+  }
+
+  function Get-OwnedProcesses {
+    # QueryFullProcessImageName uses a bounded native call and avoids both WMI
+    # enumeration and the blocking MainModule/Path property on protected tasks.
+    @(foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
+      $path = [DshInstaller.ProcessPath]::TryGet([uint32] $process.Id)
+      if ($path -and $candidatePathSet.Contains($path)) {
         [pscustomobject]@{
-          ProcessId = $process.ProcessId
+          ProcessId = $process.Id
           ExecutablePath = $path
           ResourceChild = $path.StartsWith($resourcePrefix, $comparison)
         }
