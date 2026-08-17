@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const deprecatedProperty = /^\s*(?:external|noExternal)\s*:/mu
@@ -32,4 +32,14 @@ test('tsdown configs do not opt out of bundled dependency validation', async () 
     if (/onlyBundle\s*:\s*false/u.test(source)) violations.push(relative(repositoryRoot, path))
   }
   assert.deepEqual(violations, [])
+})
+
+test('remote web UI prepare build preserves reviewed dependency boundaries', async () => {
+  const packageRoot = join(repositoryRoot, 'packages', 'dsh-remote-web-ui')
+  const production = await import(pathToFileURL(join(packageRoot, 'tsdown.config.ts')).href)
+  const prepare = await import(pathToFileURL(join(packageRoot, 'tsdown.prepare.config.ts')).href)
+  const [library] = prepare.default({ env: {} })
+
+  assert.ok(library.deps.neverBundle.includes('@deepseek-ai/dsh-settings'))
+  assert.deepEqual(production.REMOTE_WEB_UI_CLIENT_ONLY_BUNDLE, ['clsx', 'qrcode.react'])
 })
