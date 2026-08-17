@@ -23,25 +23,30 @@ try {
   $resourcePrefix = "$resourceRoot\"
   $comparison = [System.StringComparison]::OrdinalIgnoreCase
   function Get-OwnedProcesses {
-    @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop | Where-Object {
-      $path = $_.ExecutablePath
-      $path -and (
+    @(foreach ($process in Get-Process -ErrorAction Stop) {
+      try {
+        $path = $process.Path
+      } catch {
+        continue
+      }
+      if ($path -and (
         $path.Equals($mainExecutable, $comparison) -or
         $path.StartsWith($resourcePrefix, $comparison)
-      )
+      )) {
+        [pscustomobject]@{
+          ProcessId = $process.Id
+          ExecutablePath = $path
+          ResourceChild = $path.StartsWith($resourcePrefix, $comparison)
+        }
+      }
     })
   }
 
-  function Get-OwnedProcessDepth($process, $byId) {
-    $depth = 0
-    $cursor = $process
-    $visited = @{}
-    while ($byId.ContainsKey([int] $cursor.ParentProcessId) -and -not $visited.ContainsKey([int] $cursor.ProcessId)) {
-      $visited[[int] $cursor.ProcessId] = $true
-      $cursor = $byId[[int] $cursor.ParentProcessId]
-      $depth += 1
+  function Get-OwnedProcessPriority($process) {
+    if ($process.ResourceChild) {
+      return 1
     }
-    $depth
+    0
   }
 
   for ($attempt = 0; $attempt -lt $maxAttempts; $attempt += 1) {
@@ -50,12 +55,8 @@ try {
       exit 0
     }
 
-    $byId = @{}
-    foreach ($target in $targets) {
-      $byId[[int] $target.ProcessId] = $target
-    }
     $ordered = $targets | Sort-Object @{
-      Expression = { Get-OwnedProcessDepth $_ $byId }
+      Expression = { Get-OwnedProcessPriority $_ }
       Descending = $true
     }
     foreach ($target in $ordered) {

@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { promisify } from 'node:util'
 
 const desktopRoot = join(import.meta.dirname, '..')
+const execFileAsync = promisify(execFile)
 
 test('NSIS preflight cleans only stale processes owned by the previous install', async () => {
   const config = await readFile(join(desktopRoot, 'electron-builder.yml'), 'utf8')
@@ -18,7 +20,8 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(include, /cleanup-stale-processes\.ps1/u)
   assert.match(cleanup, /DeepSeek Harness Desktop\.exe/u)
   assert.match(cleanup, /StartsWith\(\$resourcePrefix, \$comparison\)/u)
-  assert.match(cleanup, /GetCimInstance|Get-CimInstance/u)
+  assert.match(cleanup, /Get-Process -ErrorAction Stop/u)
+  assert.match(cleanup, /\$process\.Path/u)
   assert.match(cleanup, /Sort-Object[\s\S]*Descending/u)
   assert.match(cleanup, /for \(\$attempt = 0; \$attempt -lt \$maxAttempts/u)
   assert.match(cleanup, /Start-Sleep -Milliseconds/u)
@@ -43,7 +46,7 @@ test('Windows installer preflight terminates an exact-path owned process', {
     })
     await once(ownedProcess, 'spawn')
     const ownedExit = once(ownedProcess, 'exit')
-    const cleanupProcess = spawn(
+    await execFileAsync(
       'powershell.exe',
       [
         '-NoLogo',
@@ -56,10 +59,8 @@ test('Windows installer preflight terminates an exact-path owned process', {
         '-InstallDirectory',
         temporary,
       ],
-      { windowsHide: true, stdio: 'ignore' },
+      { timeout: 10_000, windowsHide: true },
     )
-    const [cleanupExitCode] = await once(cleanupProcess, 'exit')
-    assert.equal(cleanupExitCode, 0)
     const [ownedExitCode] = await ownedExit
     assert.notEqual(ownedExitCode, 0)
   } finally {
