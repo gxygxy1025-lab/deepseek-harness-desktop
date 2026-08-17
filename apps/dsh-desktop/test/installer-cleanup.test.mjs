@@ -39,20 +39,22 @@ test('Windows installer preflight terminates exact-path app and resource process
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-cleanup-'))
   const executable = join(temporary, 'DeepSeek Harness Desktop.exe')
   const resourceExecutable = join(temporary, 'resources', 'bin', 'dsh-runtime-helper.exe')
+  const systemPing = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'PING.EXE')
   const ownedProcesses = []
   try {
     await mkdir(join(temporary, 'resources', 'bin'), { recursive: true })
-    await copyFile(process.execPath, executable)
-    await copyFile(process.execPath, resourceExecutable)
+    await copyFile(systemPing, executable)
+    await copyFile(systemPing, resourceExecutable)
     for (const target of [executable, resourceExecutable]) {
-      const process = spawn(target, ['-e', 'setInterval(() => {}, 1000)'], {
+      const child = spawn(target, ['-t', '127.0.0.1'], {
         windowsHide: true,
         stdio: 'ignore',
       })
-      ownedProcesses.push(process)
-      await once(process, 'spawn')
+      const exit = once(child, 'exit')
+      ownedProcesses.push({ child, exit })
+      await once(child, 'spawn')
+      assert.equal(child.exitCode, null)
     }
-    const ownedExits = ownedProcesses.map((process) => once(process, 'exit'))
     await execFileAsync(
       'powershell.exe',
       [
@@ -68,12 +70,12 @@ test('Windows installer preflight terminates exact-path app and resource process
       ],
       { timeout: 10_000, windowsHide: true },
     )
-    for (const [ownedExitCode] of await Promise.all(ownedExits)) {
+    for (const [ownedExitCode] of await Promise.all(ownedProcesses.map(({ exit }) => exit))) {
       assert.notEqual(ownedExitCode, 0)
     }
   } finally {
-    for (const process of ownedProcesses) {
-      if (process.exitCode === null) process.kill('SIGKILL')
+    for (const { child } of ownedProcesses) {
+      if (child.exitCode === null) child.kill('SIGKILL')
     }
     await rm(temporary, { recursive: true, force: true })
   }
