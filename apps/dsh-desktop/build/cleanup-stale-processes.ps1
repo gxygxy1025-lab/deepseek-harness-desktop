@@ -8,6 +8,7 @@ $maxAttempts = 8
 $retryDelayMs = 250
 
 try {
+  $installInputRoot = [System.IO.Path]::GetFullPath($InstallDirectory).TrimEnd([char[]]@('\', '/'))
   # Get-Item expands an 8.3 path such as RUNNER~1 before it is compared with
   # Win32_Process.ExecutablePath, which reports the canonical long path.
   $installRoot = (Get-Item -LiteralPath $InstallDirectory -ErrorAction Stop).FullName.TrimEnd([char[]]@('\', '/'))
@@ -18,11 +19,13 @@ try {
 
   $mainExecutable = Join-Path $installRoot 'DeepSeek Harness Desktop.exe'
   $resourceRoot = Join-Path $installRoot 'resources'
+  $resourceInputRoot = Join-Path $installInputRoot 'resources'
   if (-not (Test-Path -LiteralPath $mainExecutable -PathType Leaf)) {
     exit 0
   }
 
   $resourcePrefix = "$resourceRoot\"
+  $resourceInputPrefix = "$resourceInputRoot\"
   $comparison = [System.StringComparison]::OrdinalIgnoreCase
   $candidatePaths = @($mainExecutable)
   if (Test-Path -LiteralPath $resourceRoot -PathType Container) {
@@ -36,6 +39,8 @@ try {
   )
   foreach ($candidatePath in $candidatePaths) {
     [void] $candidatePathSet.Add($candidatePath)
+    $relativePath = $candidatePath.Substring($installRoot.Length).TrimStart([char[]]@('\', '/'))
+    [void] $candidatePathSet.Add((Join-Path $installInputRoot $relativePath))
   }
 
   if (-not ('DshInstaller.ProcessPath' -as [type])) {
@@ -102,10 +107,14 @@ namespace DshInstaller
     @(foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
       $path = [DshInstaller.ProcessPath]::TryGet([uint32] $process.Id)
       if ($path -and $candidatePathSet.Contains($path)) {
+        $resourceChild = (
+          $path.StartsWith($resourcePrefix, $comparison) -or
+          $path.StartsWith($resourceInputPrefix, $comparison)
+        )
         [pscustomobject]@{
           ProcessId = $process.Id
           ExecutablePath = $path
-          ResourceChild = $path.StartsWith($resourcePrefix, $comparison)
+          ResourceChild = $resourceChild
         }
       }
     })

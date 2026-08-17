@@ -24,6 +24,35 @@ async function settleWithin(promise, timeoutMs, message) {
   }
 }
 
+async function describeWindowsProcesses(ownedProcesses) {
+  const traceCommand = [
+    "$rows = foreach ($processId in ($env:DSH_TRACE_PIDS -split ',')) {",
+    '  $dotnet = Get-Process -Id ([int] $processId) -ErrorAction SilentlyContinue',
+    '  $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue',
+    '  [pscustomobject]@{ ProcessId = $processId; ProcessName = $dotnet.ProcessName; DotNetPath = $dotnet.Path; CimName = $cim.Name; CimPath = $cim.ExecutablePath }',
+    '}',
+    '$rows | ConvertTo-Json -Compress',
+  ].join('; ')
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      'powershell.exe',
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', traceCommand],
+      {
+        env: {
+          ...process.env,
+          DSH_TRACE_PIDS: ownedProcesses.map(({ child }) => child.pid).join(','),
+        },
+        timeout: 5_000,
+        windowsHide: true,
+      },
+    )
+    const expected = ownedProcesses.map(({ child }) => child.spawnfile).join(' | ')
+    return `expected=${expected}; observed=${stdout.trim() || '<empty>'}; stderr=${stderr.trim() || '<empty>'}`
+  } catch (error) {
+    return `process trace unavailable: ${error.message}`
+  }
+}
+
 test('NSIS preflight cleans only stale processes owned by the previous install', async () => {
   const config = await readFile(join(desktopRoot, 'electron-builder.yml'), 'utf8')
   const include = await readFile(join(desktopRoot, 'build', 'installer.nsh'), 'utf8')
@@ -89,11 +118,17 @@ test('Windows installer preflight terminates exact-path app and resource process
       ],
       { timeout: 10_000, windowsHide: true },
     )
-    const ownedExits = await settleWithin(
-      Promise.all(ownedProcesses.map(({ exit }) => exit)),
-      3_000,
-      'installer cleanup returned without terminating every owned process',
-    )
+    let ownedExits
+    try {
+      ownedExits = await settleWithin(
+        Promise.all(ownedProcesses.map(({ exit }) => exit)),
+        3_000,
+        'installer cleanup returned without terminating every owned process',
+      )
+    } catch (error) {
+      const trace = await describeWindowsProcesses(ownedProcesses)
+      throw new Error(`${error.message}; ${trace}`)
+    }
     for (const [ownedExitCode] of ownedExits) {
       assert.notEqual(ownedExitCode, 0)
     }
