@@ -8,7 +8,9 @@ $maxAttempts = 8
 $retryDelayMs = 250
 
 try {
-  $installRoot = [System.IO.Path]::GetFullPath($InstallDirectory).TrimEnd([char[]]@('\', '/'))
+  # Get-Item expands an 8.3 path such as RUNNER~1 before it is compared with
+  # Win32_Process.ExecutablePath, which reports the canonical long path.
+  $installRoot = (Get-Item -LiteralPath $InstallDirectory -ErrorAction Stop).FullName.TrimEnd([char[]]@('\', '/'))
   $volumeRoot = [System.IO.Path]::GetPathRoot($installRoot).TrimEnd([char[]]@('\', '/'))
   if ([string]::IsNullOrWhiteSpace($installRoot) -or $installRoot -eq $volumeRoot) {
     exit 0

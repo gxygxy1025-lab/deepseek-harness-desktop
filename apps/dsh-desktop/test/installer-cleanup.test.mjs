@@ -33,6 +33,7 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(include, /customInit/u)
   assert.match(include, /cleanup-stale-processes\.ps1/u)
   assert.match(cleanup, /DeepSeek Harness Desktop\.exe/u)
+  assert.match(cleanup, /Get-Item -LiteralPath \$InstallDirectory -ErrorAction Stop/u)
   assert.match(cleanup, /StartsWith\(\$resourcePrefix, \$comparison\)/u)
   assert.match(cleanup, /Get-ChildItem -LiteralPath \$resourceRoot -Recurse -File -Filter '\*\.exe'/u)
   assert.match(cleanup, /Get-CimInstance Win32_Process -Filter \$filter -ErrorAction Stop/u)
