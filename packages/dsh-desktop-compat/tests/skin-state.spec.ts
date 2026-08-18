@@ -83,6 +83,36 @@ describe('desktop skin state', () => {
     expect(content).toContain('- id: liquid-glass\n  disabled: true')
   })
 
+  it('drops a bare empty list even when comments surround it', () => {
+    const { patch, store } = fixture()
+    writeFileSync(
+      patch,
+      '# cleaned by an earlier tool\n# keep this note\n[]\n',
+    )
+
+    store.migrateLegacy(['dsh-liquid-glass'], [])
+
+    const content = readFileSync(patch, 'utf8')
+    expect(content).not.toContain('[]')
+    expect(content).toContain('# cleaned by an earlier tool')
+    expect(content).toContain('# keep this note')
+    expect(content).toContain('- id: liquid-glass\n  disabled: true')
+    // The managed section must be the only root value: comments are fine,
+    // but a second YAML document (the bare `[]`) must not survive.
+    expect(content).toMatch(/^\S/u)
+  })
+
+  it('preserves unrelated non-empty outside content', () => {
+    const { patch, store } = fixture()
+    writeFileSync(patch, '- id: retained\n  disabled: false\n')
+
+    store.activateBundleTheme('dsh-liquid-glass', ['dsh-liquid-glass', 'dsh-solarized'], [])
+
+    const content = readFileSync(patch, 'utf8')
+    expect(content).toContain('- id: retained\n  disabled: false')
+    expect(content).toContain('- id: liquid-glass\n  disabled: false')
+  })
+
   it('refuses to persist a non-bundle skin through the market channel', () => {
     const { store } = fixture()
     expect(() => store.activateBundleTheme('@linxin666/dsh-ui-skin-qq98', [], [])).toThrow('not wired through the active profile')

@@ -81,7 +81,17 @@ function replaceSection(text: string, section: string): string {
   const rawOutside = bounds === null
     ? text.trim()
     : `${text.slice(0, bounds.start)}${text.slice(bounds.end)}`.trim()
-  const outside = rawOutside === '[]' ? '' : rawOutside
+  // A `[]` empty YAML list is a placeholder left by earlier cleanups or
+  // other tools. It is not a patch the user owns: keep any surrounding
+  // comments but drop the bare list so the managed section stays the single
+  // root value of the file (otherwise the file holds two YAML documents and
+  // dsh fails to parse it).
+  const withoutEmptyList = rawOutside
+    .split(/\r?\n/u)
+    .filter(line => !/^[ \t]*\[\]$/u.test(line))
+    .join('\n')
+    .trim()
+  const outside = withoutEmptyList
   return outside ? `${outside}\n\n${section}\n` : `${section}\n`
 }
 
