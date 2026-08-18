@@ -7,6 +7,7 @@ const api = Object.freeze({
   helpAction: (action) => ipcRenderer.invoke('desktop:help-action', action),
   toolAction: (action) => ipcRenderer.invoke('desktop:tool-action', action),
   setWindowChromeTheme: (theme) => ipcRenderer.invoke('desktop:window-chrome-theme', theme),
+  claimStarPrompt: () => ipcRenderer.invoke('desktop:star-prompt-claim'),
   getUpdateStatus: () => ipcRenderer.invoke('desktop:update-status'),
   checkForUpdates: () => ipcRenderer.invoke('desktop:update-check'),
   installUpdate: () => ipcRenderer.invoke('desktop:update-install'),

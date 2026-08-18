@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>DeepSeek Harness Desktop 2.1.0 发布海报</title>
+  <style>
+    :root {
+      --ink: #f4f8ff;
+      --muted: #9fb4d4;
+      --cyan: #53d9ff;
+      --blue: #2678ff;
+      --violet: #8f7bff;
+      --line: rgba(121, 194, 255, 0.22);
+      --panel: rgba(8, 26, 58, 0.72);
+      --poster-scale: 1;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #02050b;
+    }
+
+    body {
+      display: grid;
+      place-items: start center;
+      overflow: auto;
+      color: var(--ink);
+      font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    }
+
+    .poster-shell {
+      width: calc(1080px * var(--poster-scale));
+      height: calc(1920px * var(--poster-scale));
+    }
+
+    .poster {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      transform: scale(var(--poster-scale));
+      transform-origin: left top;
+      isolation: isolate;
+      background:
+        radial-gradient(circle at 87% 20%, rgba(52, 150, 255, 0.27), transparent 26%),
+        radial-gradient(circle at 12% 61%, rgba(69, 35, 176, 0.2), transparent 28%),
+        radial-gradient(circle at 50% 102%, rgba(30, 174, 255, 0.25), transparent 32%),
+        linear-gradient(150deg, #020611 0%, #04112a 45%, #020711 100%);
+    }
+
+    .poster::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -3;
+      opacity: 0.38;
+      background-image:
+        linear-gradient(rgba(79, 150, 255, 0.085) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79, 150, 255, 0.085) 1px, transparent 1px);
+      background-size: 72px 72px;
+      mask-image: linear-gradient(to bottom, transparent 2%, #000 18%, #000 82%, transparent 98%);
+    }
+
+    .poster::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      border: 1px solid rgba(113, 205, 255, 0.24);
+      box-shadow: inset 0 0 120px rgba(14, 93, 210, 0.18);
+    }
+
+    .ambient {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      opacity: 0.7;
+      background:
+        radial-gradient(circle at 12% 10%, #9ce9ff 0 2px, transparent 3px),
+        radial-gradient(circle at 68% 7%, #63bcff 0 1.5px, transparent 2.5px),
+        radial-gradient(circle at 92% 48%, #9ce9ff 0 2px, transparent 3px),
+        radial-gradient(circle at 7% 73%, #6d8dff 0 1.5px, transparent 2.5px),
+        radial-gradient(circle at 74% 66%, #5fe6ff 0 1.5px, transparent 2.5px),
+        radial-gradient(circle at 45% 31%, #e5f8ff 0 1px, transparent 2px);
+    }
+
+    .ambient::before,
+    .ambient::after {
+      content: "";
+      position: absolute;
+      width: 760px;
+      height: 760px;
+      border: 1px solid rgba(73, 174, 255, 0.16);
+      border-radius: 50%;
+      transform: rotate(-16deg);
+    }
+
+    .ambient::before { right: -330px; top: 102px; }
+    .ambient::after { left: -420px; bottom: -340px; }
+
+    .content {
+      position: relative;
+      height: 100%;
+      padding: 54px 64px 42px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: Bahnschrift, "DIN Alternate", sans-serif;
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .brand-mark {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border: 2px solid var(--cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 18px rgba(83, 217, 255, 0.75);
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      inset: 7px 4px;
+      border-top: 2px solid var(--cyan);
+      border-radius: 50%;
+      transform: rotate(-16deg);
+    }
+
+    .brand-mark::after {
+      inset: 13px 7px 5px;
+      transform: rotate(18deg);
+    }
+
+    .release-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border: 1px solid rgba(83, 217, 255, 0.4);
+      border-radius: 999px;
+      color: #d9f7ff;
+      background: rgba(4, 38, 76, 0.64);
+      font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif;
+      font-size: 16px;
+      letter-spacing: 0.12em;
+    }
+
+    .release-pill i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #56f1bf;
+      box-shadow: 0 0 12px #56f1bf;
+    }
+
+    .hero {
+      position: relative;
+      height: 500px;
+      padding-top: 50px;
+    }
+
+    .hero-copy {
+      position: relative;
+      z-index: 4;
+      width: 505px;
+    }
+
+    .kicker {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 14px;
+      color: var(--cyan);
+      font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 42px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--cyan), transparent);
+    }
+
+    .version {
+      margin: 0;
+      color: transparent;
+      font-family: Bahnschrift, "DIN Alternate", sans-serif;
+      font-size: 166px;
+      font-weight: 700;
+      line-height: 0.88;
+      letter-spacing: -0.075em;
+      background: linear-gradient(180deg, #fff 5%, #cbeaff 36%, #60b8ff 72%, #2775ff 100%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      filter: drop-shadow(0 0 24px rgba(87, 177, 255, 0.45));
+    }
+
+    .hero h2 {
+      margin: 20px 0 12px;
+      font-size: 38px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .hero-summary {
+      margin: 0;
+      color: #bdd0eb;
+      font-size: 20px;
+      line-height: 1.65;
+    }
+
+    .hero-art {
+      position: absolute;
+      z-index: 2;
+      top: 52px;
+      right: -70px;
+      width: 610px;
+      height: 350px;
+      overflow: hidden;
+      border-radius: 48% 8% 42% 18%;
+      border: 1px solid rgba(105, 204, 255, 0.28);
+      box-shadow: 0 32px 90px rgba(0, 76, 216, 0.34);
+      transform: rotate(1.5deg);
+      mask-image: linear-gradient(110deg, transparent 0%, #000 17%, #000 88%, transparent 100%);
+    }
+
+    .hero-art img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 47%;
+      filter: saturate(1.12) contrast(1.06);
+      transform: scale(1.05) rotate(-1.5deg);
+    }
+
+    .hero-art::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, #03102a 0%, transparent 28%, transparent 80%, rgba(3, 9, 22, 0.72) 100%);
+    }
+
+    .hero-orbit {
+      position: absolute;
+      z-index: 3;
+      right: 24px;
+      top: 100px;
+      width: 410px;
+      height: 250px;
+      border: 2px solid rgba(87, 211, 255, 0.42);
+      border-radius: 50%;
+      transform: rotate(-16deg);
+      box-shadow: 0 0 36px rgba(63, 173, 255, 0.25);
+    }
+
+    .hero-orbit::before {
+      content: "";
+      position: absolute;
+      right: 38px;
+      top: -7px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #c5f5ff;
+      box-shadow: 0 0 20px 5px #42c6ff;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      margin: 6px 0 20px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.25;
+      letter-spacing: 0.02em;
+    }
+
+    .section-head h2 strong { color: var(--cyan); }
+
+    .section-head span {
+      color: #728cad;
+      font-family: Bahnschrift, sans-serif;
+      font-size: 15px;
+      letter-spacing: 0.16em;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    .feature {
+      position: relative;
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 16px;
+      min-height: 166px;
+      padding: 20px 22px;
+      overflow: hidden;
+      border: 1px solid rgba(112, 193, 255, 0.24);
+      border-radius: 20px;
+      background:
+        linear-gradient(140deg, rgba(14, 48, 94, 0.78), rgba(4, 18, 43, 0.66));
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 18px 40px rgba(0, 0, 0, 0.15);
+    }
+
+    .feature::after {
+      content: attr(data-index);
+      position: absolute;
+      right: 14px;
+      top: 6px;
+      color: rgba(105, 202, 255, 0.09);
+      font-family: Bahnschrift, sans-serif;
+      font-size: 58px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .feature-icon {
+      display: grid;
+      place-items: center;
+      width: 58px;
+      height: 58px;
+      border: 1px solid rgba(89, 214, 255, 0.48);
+      border-radius: 17px;
+      color: #8ee9ff;
+      background: linear-gradient(145deg, rgba(39, 145, 255, 0.24), rgba(89, 73, 255, 0.1));
+      box-shadow: 0 0 24px rgba(43, 153, 255, 0.16);
+    }
+
+    .feature-icon svg {
+      width: 31px;
+      height: 31px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+
+    .feature h3 {
+      position: relative;
+      z-index: 1;
+      margin: 1px 0 7px;
+      font-size: 23px;
+      font-weight: 700;
+    }
+
+    .feature p {
+      position: relative;
+      z-index: 1;
+      margin: 0;
+      color: #9fb4d1;
+      font-size: 17px;
+      line-height: 1.5;
+    }
+
+    .extras {
+      display: grid;
+      grid-template-columns: 125px 1fr;
+      gap: 18px;
+      align-items: center;
+      margin: 18px 0;
+      padding: 18px 22px;
+      border-left: 3px solid var(--violet);
+      border-radius: 0 15px 15px 0;
+      background: linear-gradient(90deg, rgba(73, 54, 167, 0.22), rgba(7, 20, 45, 0.45));
+    }
+
+    .extras strong {
+      color: #c9c2ff;
+      font-size: 19px;
+      letter-spacing: 0.08em;
+    }
+
+    .extras p {
+      margin: 0;
+      color: #9eb3d2;
+      font-size: 17px;
+      line-height: 1.65;
+    }
+
+    .proof {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      margin: 0 0 18px;
+      overflow: hidden;
+      border: 1px solid rgba(112, 193, 255, 0.2);
+      border-radius: 17px;
+      background: rgba(75, 151, 255, 0.15);
+    }
+
+    .proof-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 13px;
+      height: 86px;
+      background: rgba(4, 18, 42, 0.82);
+    }
+
+    .proof-item b {
+      color: #77dfff;
+      font-family: Bahnschrift, sans-serif;
+      font-size: 31px;
+      line-height: 1;
+    }
+
+    .proof-item span {
+      color: #9fb5d2;
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .download {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 266px;
+      gap: 26px;
+      min-height: 380px;
+      padding: 28px 28px 26px 32px;
+      overflow: hidden;
+      border: 1px solid rgba(91, 212, 255, 0.43);
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 76% 20%, rgba(58, 191, 255, 0.2), transparent 32%),
+        linear-gradient(135deg, rgba(8, 39, 84, 0.95), rgba(4, 16, 38, 0.94));
+      box-shadow: 0 24px 70px rgba(0, 67, 178, 0.23), inset 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    .download::before {
+      content: "DOWNLOAD";
+      position: absolute;
+      left: 28px;
+      bottom: -20px;
+      color: rgba(84, 205, 255, 0.045);
+      font-family: Bahnschrift, sans-serif;
+      font-size: 108px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .download-copy {
+      position: relative;
+      z-index: 1;
+    }
+
+    .download-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 12px;
+      color: #57e6ff;
+      font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+    }
+
+    .download h2 {
+      margin: 0 0 9px;
+      font-size: 41px;
+      line-height: 1.2;
+    }
+
+    .download-lead {
+      margin: 0 0 16px;
+      color: #aec3df;
+      font-size: 19px;
+      line-height: 1.55;
+    }
+
+    .website {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      margin-bottom: 15px;
+      color: #fff;
+      font-family: Bahnschrift, sans-serif;
+      font-size: 28px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .website::before {
+      content: "↗";
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(83, 217, 255, 0.58);
+      border-radius: 50%;
+      color: var(--cyan);
+      font-size: 20px;
+    }
+
+    .install-note {
+      display: flex;
+      gap: 10px;
+      margin: 0 0 13px;
+      color: #c5d7ee;
+      font-size: 17px;
+    }
+
+    .install-note b { color: #58efc1; }
+
+    .checksum {
+      margin: 0;
+      color: #7892b7;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      word-break: break-all;
+    }
+
+    .qr-wrap {
+      position: relative;
+      z-index: 2;
+      align-self: center;
+      justify-self: end;
+      width: 254px;
+      text-align: center;
+    }
+
+    .qr-card {
+      display: grid;
+      place-items: center;
+      width: 254px;
+      height: 254px;
+      padding: 13px;
+      border-radius: 22px;
+      background: #fff;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.32), 0 0 0 6px rgba(83, 217, 255, 0.1);
+    }
+
+    .qr-card img {
+      display: block;
+      width: 228px;
+      height: 228px;
+    }
+
+    .qr-wrap p {
+      margin: 12px 0 0;
+      color: #a9c5e4;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+    }
+
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 58px;
+      color: #657e9f;
+      font-size: 15px;
+    }
+
+    footer strong {
+      color: #97aecb;
+      font-weight: 500;
+    }
+
+    @media print {
+      @page { size: 1080px 1920px; margin: 0; }
+      html, body { width: 1080px; height: 1920px; background: transparent; }
+      .poster-shell { width: 1080px !important; height: 1920px !important; }
+      .poster { transform: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="poster-shell" aria-label="DeepSeek Harness Desktop 2.1.0 发布海报">
+    <article class="poster">
+      <div class="ambient" aria-hidden="true"></div>
+      <div class="content">
+        <header class="topbar">
+          <div class="brand"><span class="brand-mark" aria-hidden="true"></span>DeepSeek Harness Desktop</div>
+          <div class="release-pill"><i aria-hidden="true"></i>2.1.0 正式发布</div>
+        </header>
+
+        <section class="hero">
+          <div class="hero-copy">
+            <p class="kicker">Desktop Release</p>
+            <h1 class="version">2.1.0</h1>
+            <h2>稳定升级 · 插件无忧</h2>
+            <p class="hero-summary">更快的更新通道，更可靠的插件恢复，<br>把“进不去、切不回、装不上”一次解决。</p>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <img src="./desktop-2.1-poster.png" alt="">
+          </div>
+          <div class="hero-orbit" aria-hidden="true"></div>
+        </section>
+
+        <section aria-labelledby="feature-title">
+          <div class="section-head">
+            <h2 id="feature-title">这次，我们把桌面端的<strong>关键痛点</strong>一起修好</h2>
+            <span>WHAT'S NEW</span>
+          </div>
+
+          <div class="features">
+            <article class="feature" data-index="01">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="M18 3 8 18h8l-2 11 10-16h-8z"/><path d="M5 7h5M3 12h5M23 23h5"/></svg>
+              </div>
+              <div><h3>国内更新加速</h3><p>自动测速国内镜像与 GitHub，下载失败静默切换，官方摘要继续校验。</p></div>
+            </article>
+
+            <article class="feature" data-index="02">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="m16 3 11 5v7c0 7-4.6 11.6-11 14-6.4-2.4-11-7-11-14V8z"/><path d="m10 13 6-3 6 3-6 3zM10 18l6 3 6-3"/></svg>
+              </div>
+              <div><h3>插件三层容灾</h3><p>自动回滚、独立恢复页与安全模式并行，单个插件不再拖垮整个应用。</p></div>
+            </article>
+
+            <article class="feature" data-index="03">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="M16 4a12 12 0 1 0 0 24h2.5a2.5 2.5 0 0 0 0-5H17a2 2 0 0 1 0-4h3a8 8 0 0 0 8-8c0-4-5.4-7-12-7Z"/><path d="M9 13h.01M12 8h.01M19 8h.01M23 12h.01"/></svg>
+              </div>
+              <div><h3>皮肤切换修复</h3><p>统一皮肤中心、市场与桌面状态，禁用后不复活，切换结果可持久保存。</p></div>
+            </article>
+
+            <article class="feature" data-index="04">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="M26 11a11 11 0 1 0 1 8"/><path d="M26 4v7h-7M11 16l3 3 7-8"/></svg>
+              </div>
+              <div><h3>安装更新更稳</h3><p>完整停止旧进程树，只清理安装目录所属进程，修复旧文件无法删除。</p></div>
+            </article>
+
+            <article class="feature" data-index="05">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><rect x="4" y="6" width="24" height="18" rx="3"/><path d="M4 11h24M9 16l3 3-3 3M16 22h5M23 4v4"/></svg>
+              </div>
+              <div><h3>后台窗口静默</h3><p>PowerShell 与子进程默认隐藏运行，不再突然弹框、闪烁或抢走焦点。</p></div>
+            </article>
+
+            <article class="feature" data-index="06">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="M4 9h9l3 3h12v14H4z"/><path d="M4 9V6h9l3 3M10 19h12M16 15v8"/></svg>
+              </div>
+              <div><h3>中文路径兼容</h3><p>D 盘、中文工作区与长短路径稳定启动，相同故障只重试一次，不再循环。</p></div>
+            </article>
+          </div>
+        </section>
+
+        <aside class="extras">
+          <strong>更多改进</strong>
+          <p>工具 → 扩展坞入口回归 · 市场安装统一事务管理 · Catppuccin 依赖补齐 · 内置插件组合刷新</p>
+        </aside>
+
+        <section class="proof" aria-label="版本验证结果">
+          <div class="proof-item"><b>218</b><span>Desktop 测试<br>全部通过</span></div>
+          <div class="proof-item"><b>57</b><span>打包运行时<br>完整校验</span></div>
+          <div class="proof-item"><b>CI OK</b><span>构建、冒烟与<br>发布流程全绿</span></div>
+        </section>
+
+        <section class="download" aria-labelledby="download-title">
+          <div class="download-copy">
+            <div class="download-label">● WINDOWS x64 · COMMUNITY BUILD</div>
+            <h2 id="download-title">扫码直接下载 2.1.0</h2>
+            <p class="download-lead">二维码直达 GitHub 正式安装包。也可以访问官网获取版本说明与备用入口。</p>
+            <a class="website" href="https://1521003.xyz/">1521003.xyz</a>
+            <p class="install-note"><b>OK</b><span>支持直接覆盖安装，无需卸载旧版本；聊天记录与个人设置不受影响。</span></p>
+            <p class="checksum">SHA-256<br>9b82d732328894c9783d236cb28e6c16873f9be8bc8f3ae725898013f7ba419d</p>
+          </div>
+          <div class="qr-wrap">
+            <a class="qr-card" href="https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.1.0/DeepSeek-Harness-Desktop-Setup-2.1.0-x64.exe" aria-label="下载 DeepSeek Harness Desktop 2.1.0 Windows x64 安装包">
+              <img src="./desktop-2.1-download-qr.svg" alt="DeepSeek Harness Desktop 2.1.0 安装包下载二维码">
+            </a>
+            <p>打开相机 / 微信扫码下载</p>
+          </div>
+        </section>
+
+        <footer>
+          <span><strong>DeepSeek Harness Desktop Community</strong> · 2026</span>
+          <span>未使用商业代码签名，SmartScreen 可能提示“未知发布者”</span>
+        </footer>
+      </div>
+    </article>
+  </main>
+
+  <script>
+    const fitPoster = () => {
+      const scale = Math.min(window.innerWidth / 1080, window.innerHeight / 1920, 1)
+      document.documentElement.style.setProperty('--poster-scale', String(scale))
+    }
+    addEventListener('resize', fitPoster, { passive: true })
+    fitPoster()
+  </script>
+</body>
+</html>

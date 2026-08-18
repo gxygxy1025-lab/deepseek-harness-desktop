@@ -82,6 +82,10 @@ for (const namespace of WEB_UI_SETTINGS_NAMESPACES) {
 }
 await access(join(resources, 'app.asar'))
 await access(join(resources, 'app-icon.png'))
+const updateShutdownProtocol = await readFile(join(resources, 'update-shutdown-v1'), 'utf8')
+if (updateShutdownProtocol.trim() !== 'dsh-desktop-update-shutdown-protocol=1') {
+  throw new Error('packaged update shutdown protocol marker is invalid')
+}
 if (!allowMissingUpdateMetadata) await access(join(resources, 'app-update.yml'))
 
 console.log(`verified ${requiredPackages.length} packaged runtime packages in ${resources}`)
