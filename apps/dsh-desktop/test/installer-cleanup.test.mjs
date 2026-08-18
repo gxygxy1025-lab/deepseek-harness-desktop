@@ -53,6 +53,33 @@ async function describeWindowsProcesses(ownedProcesses) {
   }
 }
 
+async function waitForWindowsProcessCommandLines(processIds) {
+  const probeCommand = [
+    '$expected = @($env:DSH_EXPECTED_PROCESS_IDS -split "," | ForEach-Object { [uint32] $_ })',
+    '$deadline = [DateTime]::UtcNow.AddSeconds(8)',
+    'do {',
+    '  $rows = @(foreach ($targetId in $expected) { Get-CimInstance Win32_Process -Filter "ProcessId = $targetId" -ErrorAction SilentlyContinue })',
+    '  $ready = @($rows | Where-Object { -not [string]::IsNullOrWhiteSpace($_.CommandLine) })',
+    '  if ($ready.Count -eq $expected.Count) { exit 0 }',
+    '  Start-Sleep -Milliseconds 100',
+    '} while ([DateTime]::UtcNow -lt $deadline)',
+    'Write-Error "process command lines did not become visible through WMI"',
+    'exit 1',
+  ].join('\n')
+  await execFileAsync(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', probeCommand],
+    {
+      env: {
+        ...process.env,
+        DSH_EXPECTED_PROCESS_IDS: processIds.join(','),
+      },
+      timeout: 10_000,
+      windowsHide: true,
+    },
+  )
+}
+
 test('NSIS preflight cleans only stale processes owned by the previous install', async () => {
   const config = await readFile(join(desktopRoot, 'electron-builder.yml'), 'utf8')
   const include = await readFile(join(desktopRoot, 'build', 'installer.nsh'), 'utf8')
@@ -124,7 +151,7 @@ test('Windows installer preflight accepts a missing previous install directory',
 
 test('Windows installer check terminates direct and path-attributed old processes without killing unrelated or same-name apps', {
   skip: process.platform !== 'win32',
-  timeout: 20_000,
+  timeout: 30_000,
 }, async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-cleanup-'))
   const installDirectory = join(temporary, "用户's Desktop")
@@ -239,6 +266,12 @@ test('Windows installer check terminates direct and path-attributed old processe
       stdio: 'ignore',
     })
     await once(officialWebProcess, 'spawn')
+    await waitForWindowsProcessCommandLines([
+      attributedProcess.pid,
+      encodedAttributed.pid,
+      encodedUnrelatedProcess.pid,
+      officialWebProcess.pid,
+    ])
     unrelatedProcess = spawn(unrelatedExecutable, ['-t', '127.0.0.1'], {
       windowsHide: true,
       stdio: 'ignore',
@@ -260,7 +293,7 @@ test('Windows installer check terminates direct and path-attributed old processe
         '-InstallRegistryKey',
         registryKey,
       ],
-      { timeout: 10_000, windowsHide: true },
+      { timeout: 15_000, windowsHide: true },
     )
     let ownedExits
     try {
