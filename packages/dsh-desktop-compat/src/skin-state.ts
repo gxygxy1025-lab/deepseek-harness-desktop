@@ -123,8 +123,8 @@ export class DesktopSkinStateStore implements DesktopSkinStateFace {
     this.profile = profile
   }
 
-  private get patchPath(): string { return join(this.home, 'cordis.patch.yml') }
   private get profileDir(): string { return join(this.home, 'profiles', this.profile) }
+  private get patchPath(): string { return join(this.profileDir, 'cordis.patch.yml') }
 
   private wiredPackageNames(): Set<string> {
     try {
@@ -204,7 +204,7 @@ export class DesktopSkinStateStore implements DesktopSkinStateFace {
     for (const id of rows.keys()) rows.set(id, true)
     // An insert row represents the currently active Skin Center choice. Market
     // activation intentionally normalizes it to a disabled id overlay so the
-    // shared authority section still has exactly one active theme.
+    // profile authority section still has exactly one active theme.
     for (const id of managedIds(text)) {
       if (!rows.has(id)) rows.set(id, true)
     }

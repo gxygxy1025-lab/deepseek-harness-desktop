@@ -1,9 +1,10 @@
 /**
  * The SSH operations panel shell: a header with a close control, a six-tab
  * bar, and the active tab's content. Tab state lives here (browser session
- * state); inactive tabs unmount, so each tab fetches its own data on
- * activation. The hosts tab's connect action switches here to the terminal
- * tab with the chosen alias preselected.
+ * state). The terminal stays mounted while another SSH tab is active so its
+ * PTY connection and scrollback survive navigation; the other inactive tabs
+ * unmount. The hosts tab's connect action switches here to the terminal tab
+ * with the chosen alias preselected.
  */
 import { useRef, useState } from 'react'
 import type { SshApi } from '../api.ts'
@@ -96,7 +97,14 @@ export function SshPanel({ controller, api }: SshPanelProps) {
       <div id="dsh-ssh-tab-panel" role="tabpanel" aria-labelledby={`dsh-ssh-tab-${activeTab}`} className={css.panelContent}>
         {activeTab === 'hosts' && <HostsTab api={api} onConnect={handleConnect} />}
         {activeTab === 'monitor' && <MonitorTab api={api} onConnect={handleConnect} />}
-        {activeTab === 'terminal' && <TerminalTab api={api} presetAlias={connectRequest?.alias} requestId={connectRequest?.nonce} />}
+        <div hidden={activeTab !== 'terminal'}>
+          <TerminalTab
+            api={api}
+            visible={activeTab === 'terminal'}
+            presetAlias={connectRequest?.alias}
+            requestId={connectRequest?.nonce}
+          />
+        </div>
         {activeTab === 'transfer' && <TransferTab api={api} />}
         {activeTab === 'tunnels' && <TunnelsTab api={api} />}
         {activeTab === 'cluster' && <ClusterTab api={api} />}

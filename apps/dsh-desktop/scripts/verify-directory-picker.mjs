@@ -7,18 +7,26 @@ import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
 import { _electron as electron } from 'playwright'
 
+import { STAR_PROMPT_VERSION } from '../src/star-prompt.mjs'
+
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
-const runtimeReadyTimeoutMs = packagedExecutable ? 120_000 : 60_000
+const runtimeReadyTimeoutMs = packagedExecutable || process.env.CI ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-directory-picker-e2e-'))
 const dshHome = resolve(temporary, 'dsh-home')
+const userData = resolve(temporary, 'user-data')
 let electronApp
 
 try {
   await mkdir(dshHome, { recursive: true })
+  await mkdir(userData, { recursive: true })
   await writeFile(
     resolve(dshHome, 'settings.yaml'),
     "ui-onboarding:\n  welcomeNoticeVersion: '2026-08-13.1'\n",
+  )
+  await writeFile(
+    resolve(userData, 'star-prompt-state.json'),
+    `${JSON.stringify({ schemaVersion: 1, shownVersions: [STAR_PROMPT_VERSION] }, null, 2)}\n`,
   )
   electronApp = await electron.launch({
     executablePath: packagedExecutable || electronPath,
@@ -26,11 +34,18 @@ try {
     cwd: appDir,
     env: {
       ...process.env,
-      DSH_DESKTOP_USER_DATA: resolve(temporary, 'user-data'),
+      DSH_DESKTOP_USER_DATA: userData,
       DSH_HOME: dshHome,
     },
   })
   const page = await electronApp.firstWindow()
+  const rendererEvents = []
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      rendererEvents.push(`[console:${message.type()}] ${message.text()}`)
+    }
+  })
+  page.on('pageerror', (error) => rendererEvents.push(`[pageerror] ${error.message}`))
   try {
     await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
   } catch (error) {
@@ -41,6 +56,30 @@ try {
   await page.waitForSelector('#dsh-desktop-window-chrome')
 
   const addWorkspace = page.getByRole('button', { name: /add workspace|添加工作区/u })
+  try {
+    await addWorkspace.waitFor({ state: 'visible', timeout: runtimeReadyTimeoutMs })
+  } catch (error) {
+    const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8').catch(() => '')
+    const profilePatch = await readFile(resolve(dshHome, 'profiles', 'desktop', 'cordis.patch.yml'), 'utf8').catch(() => '')
+    const rendererState = await page.evaluate(() => ({
+      buttons: [...document.querySelectorAll('button')].map((button) => ({
+        ariaLabel: button.getAttribute('aria-label'),
+        display: getComputedStyle(button).display,
+        height: button.getBoundingClientRect().height,
+        text: button.textContent?.trim(),
+        visibility: getComputedStyle(button).visibility,
+        width: button.getBoundingClientRect().width,
+      })),
+      pluginStyles: [...document.querySelectorAll('style[data-plugin]')]
+        .map((style) => style.dataset.plugin),
+    })).catch(() => ({ unavailable: true }))
+    console.error(`directory picker surface missing at ${page.url()}: ${(await page.locator('body').innerText().catch(() => '')).slice(-2_000) || '(unavailable)'}`)
+    console.error(`renderer state: ${JSON.stringify(rendererState)}`)
+    console.error(`recent renderer events:\n${rendererEvents.slice(-50).join('\n') || '(none)'}`)
+    console.error(`desktop profile patch:\n${profilePatch.slice(-4_000) || '(unavailable)'}`)
+    console.error(`recent runtime log:\n${runtimeLog.slice(-4_000) || '(no runtime log)'}`)
+    throw error
+  }
   assert.equal(await addWorkspace.count(), 1, 'add workspace button not found')
   await addWorkspace.dispatchEvent('click')
 

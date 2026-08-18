@@ -99,11 +99,11 @@ var DesktopSkinStateStore = class {
 		this.home = home;
 		this.profile = profile;
 	}
-	get patchPath() {
-		return join(this.home, "cordis.patch.yml");
-	}
 	get profileDir() {
 		return join(this.home, "profiles", this.profile);
+	}
+	get patchPath() {
+		return join(this.profileDir, "cordis.patch.yml");
 	}
 	wiredPackageNames() {
 		try {

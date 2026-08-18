@@ -24,12 +24,17 @@ function fixture({
     mkdirSync(packageDir, { recursive: true })
     writeFileSync(join(packageDir, 'cordis.patch.yml'), `- insert:\n    - id: ${id}\n      name: '${name}'\n`)
   }
-  return { home, patch: join(home, 'cordis.patch.yml'), store: new DesktopSkinStateStore(home, 'desktop') }
+  return {
+    home,
+    patch: join(profileDir, 'cordis.patch.yml'),
+    globalPatch: join(home, 'cordis.patch.yml'),
+    store: new DesktopSkinStateStore(home, 'desktop'),
+  }
 }
 
 describe('desktop skin state', () => {
   it('persists a bundle theme as the only enabled managed skin', () => {
-    const { patch, store } = fixture()
+    const { globalPatch, patch, store } = fixture()
     writeFileSync(patch, `- id: retained\n  disabled: false\n\n${SKIN_STATE_START}\n- insert:\n    - id: ui-skin-qq98\n      name: '@linxin666/dsh-ui-skin-qq98'\n${SKIN_STATE_END}\n`)
 
     store.activateBundleTheme('dsh-liquid-glass', ['dsh-liquid-glass', 'dsh-solarized'], [])
@@ -41,6 +46,7 @@ describe('desktop skin state', () => {
     expect(content).toContain('- id: ui-skin-qq98\n  disabled: true')
     expect(content.split(SKIN_STATE_START)).toHaveLength(2)
     expect(store.disabledNames(['dsh-liquid-glass', 'dsh-solarized'], [])).toEqual(new Set(['dsh-solarized']))
+    expect(() => readFileSync(globalPatch, 'utf8')).toThrow()
   })
 
   it('accepts a market theme wired only through profile dependencies', () => {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -13,6 +14,7 @@ import {
   prepareDesktopRuntimeInputs,
   requestsUpdateShutdown,
   secondaryWindowWebPreferences,
+  desktopDeepLinkFrom,
 } from '../src/electron-app.mjs'
 import {
   BUILTIN_SKIN_PACKAGES,
@@ -21,11 +23,38 @@ import {
   resolveDshCliPath,
 } from '../src/profile.mjs'
 import { DshRuntimeController } from '../src/runtime-controller.mjs'
+import { parseUpdateShutdownRequest } from '../src/update-shutdown-receipt.mjs'
+
+async function availableLoopbackPort(excludedPort) {
+  for (;;) {
+    const server = createServer()
+    const port = await new Promise((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address()
+        resolve(typeof address === 'object' && address !== null ? address.port : 0)
+      })
+    })
+    await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    if (port !== 0 && port !== excludedPort) return port
+  }
+}
 
 test('installer shutdown requests work through command line and single-instance data', () => {
   assert.equal(requestsUpdateShutdown(['desktop.exe']), false)
   assert.equal(requestsUpdateShutdown(['desktop.exe', '--shutdown-for-update']), true)
   assert.equal(requestsUpdateShutdown(['desktop.exe'], { shutdownForUpdate: true }), true)
+  const token = 'a'.repeat(64)
+  assert.deepEqual(
+    parseUpdateShutdownRequest(['desktop.exe'], { shutdownForUpdate: true, shutdownToken: token }),
+    { requested: true, token },
+  )
+})
+
+test('desktop deep links accept only the configured bounded scheme', () => {
+  assert.equal(desktopDeepLinkFrom(['desktop.exe', 'dsh://workspace/open?id=1']), 'dsh://workspace/open?id=1')
+  assert.equal(desktopDeepLinkFrom(['desktop.exe', 'https://example.com']), undefined)
+  assert.equal(desktopDeepLinkFrom(['desktop.exe', `dsh://${'a'.repeat(4_100)}`]), undefined)
 })
 
 test('independent desktop startup inputs begin concurrently', async () => {
@@ -122,14 +151,17 @@ test('update preparation stops the runtime without disposing the desktop surface
   await Promise.all([lifecycle.stop(), lifecycle.stop()])
   assert.deepEqual(calls, ['save', 'stop'])
   assert.equal(lifecycle.runtimeStopped, true)
+  assert.equal(lifecycle.operationsQuiesced, true)
   assert.equal(lifecycle.resourcesDisposed, false)
 
   assert.equal(await lifecycle.recover(), true)
   assert.deepEqual(calls, ['save', 'stop', 'start'])
   assert.equal(lifecycle.runtimeStopped, false)
+  assert.equal(lifecycle.operationsQuiesced, false)
 
   await lifecycle.shutdown()
   assert.deepEqual(calls, ['save', 'stop', 'start', 'save', 'stop', 'dispose'])
+  assert.equal(lifecycle.operationsQuiesced, true)
   assert.equal(lifecycle.resourcesDisposed, true)
 })
 
@@ -146,8 +178,10 @@ test('desktop shutdown quiesces mutations before stopping and resumes them for r
 
   await lifecycle.stop()
   assert.deepEqual(calls, ['quiesce', 'save', 'stop'])
+  assert.equal(lifecycle.operationsQuiesced, true)
   assert.equal(await lifecycle.recover(), true)
   assert.deepEqual(calls, ['quiesce', 'save', 'stop', 'resume', 'start'])
+  assert.equal(lifecycle.operationsQuiesced, false)
 })
 
 test('a disposed desktop lifecycle cannot restart after an update error', async () => {
@@ -202,7 +236,7 @@ test('recovery does not start a replacement runtime when the old runtime cannot 
   assert.equal(starts, 0)
 })
 
-test('official DSH host serves the complete desktop profile', { timeout: 90_000 }, async () => {
+test('official DSH host serves the complete desktop profile', { timeout: 150_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-runtime-'))
   const logs = new BoundedLogStore({ directory: join(root, 'logs') })
   let controller
@@ -216,7 +250,7 @@ test('official DSH host serves the complete desktop profile', { timeout: 90_000 
       logStore: logs,
       startupTimeoutMs: 45_000,
     })
-    const url = await controller.start()
+    let url = await controller.start()
     const response = await fetch(url, { signal: AbortSignal.timeout(5_000) })
     assert.equal(response.ok, true)
     assert.match(await response.text(), /__DSH_BOOT__/)
@@ -238,6 +272,62 @@ test('official DSH host serves the complete desktop profile', { timeout: 90_000 
     for (const namespace of WEB_UI_SETTINGS_NAMESPACES) {
       assert.equal(namespaces.has(namespace), true, `settings namespace ${namespace} is hidden`)
     }
+
+    const taskBoardUrl = new URL('/api/dsh-task-board/tasks', url)
+    const taskBoardInitial = await fetch(taskBoardUrl, { signal: AbortSignal.timeout(5_000) })
+    const initialLedgerText = await taskBoardInitial.text()
+    assert.equal(taskBoardInitial.ok, true, `Task Board HostStore was not served: ${taskBoardInitial.status} ${initialLedgerText}`)
+    const initialLedger = JSON.parse(initialLedgerText)
+    assert.equal(initialLedger.schemaVersion, 2)
+    assert.equal(initialLedger.revision, 0)
+    assert.equal(typeof initialLedger.updatedAt, 'number')
+    assert.deepEqual(initialLedger.tasks, [])
+    const savedTask = {
+      id: 'desktop-runtime-task',
+      title: 'Runtime HostStore verification',
+      description: '',
+      prompt: 'verify',
+      status: 'todo',
+      createdAt: 1,
+      updatedAt: 1,
+      executions: [],
+    }
+    const taskBoardWrite = await fetch(taskBoardUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tasks: [savedTask] }),
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(taskBoardWrite.ok, true, 'Task Board HostStore write failed')
+    const writtenLedger = await taskBoardWrite.json()
+    assert.equal(writtenLedger.revision, 1)
+    assert.deepEqual(writtenLedger.tasks, [savedTask])
+    const persistedTaskBoard = JSON.parse(await readFile(
+      join(root, 'profiles', 'desktop', 'state', 'task-board', 'tasks-v2.json'),
+      'utf8',
+    ))
+    assert.equal(persistedTaskBoard.schemaVersion, 2)
+    assert.deepEqual(persistedTaskBoard.tasks, [savedTask])
+
+    const originalPort = Number(new URL(url).port)
+    const replacementPort = await availableLoopbackPort(originalPort)
+    await controller.stop()
+    controller = new DshRuntimeController({
+      cliPath: resolveDshCliPath(),
+      cwd: process.cwd(),
+      dshHome: root,
+      logStore: logs,
+      preferredPort: replacementPort,
+      startupTimeoutMs: 45_000,
+    })
+    url = await controller.start()
+    assert.equal(Number(new URL(url).port), replacementPort)
+    assert.notEqual(replacementPort, originalPort)
+    const restartedTaskBoard = await fetch(new URL('/api/dsh-task-board/tasks', url), {
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(restartedTaskBoard.ok, true, 'Task Board HostStore was not restored after a port-changing restart')
+    assert.deepEqual((await restartedTaskBoard.json()).tasks, [savedTask])
 
     const unicodeWorkspacePath = join(root, '模拟 D 盘', '中文名字d')
     await mkdir(unicodeWorkspacePath, { recursive: true })
@@ -327,8 +417,12 @@ test('official DSH host serves the complete desktop profile', { timeout: 90_000 
     })
     assert.equal(applySkin.ok, true)
     assert.equal((await applySkin.json()).active, 'qq98')
-    const harnessPatch = await readFile(join(root, 'cordis.patch.yml'), 'utf8')
-    assert.match(harnessPatch, /- id: ui-skin-qq98/u)
+    const profilePatch = await readFile(join(root, 'profiles', 'desktop', 'cordis.patch.yml'), 'utf8')
+    assert.match(profilePatch, /- id: ui-skin-qq98/u)
+    await assert.rejects(
+      readFile(join(root, 'cordis.patch.yml'), 'utf8'),
+      (error) => error?.code === 'ENOENT',
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`${message}\nRecent runtime log:\n${await logs.tail(80)}`, { cause: error })

@@ -1,5 +1,5 @@
 diff --git a/lib/index.js b/lib/index.js
-index facaa37d4eac56fde0df92c101b949d654ade54b..da88e7f9522bf7d4cee16167fa2d04c0bcd8e793 100644
+index facaa37d4eac56fde0df92c101b949d654ade54b..59ce0bff4d00a0233fc625980cb36d866db1330b 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -280,6 +280,17 @@ function stripManaged(patch) {
@@ -37,10 +37,36 @@ index facaa37d4eac56fde0df92c101b949d654ade54b..da88e7f9522bf7d4cee16167fa2d04c0
  	lines.push(MANAGED_END);
  	return lines.join("\n");
  }
-@@ -616,6 +628,32 @@ function readPatch(patchPath) {
+@@ -603,10 +615,12 @@ function resolvePaths(home, profile, fromUrl = import.meta.url) {
+-	const harnessHome = resolveHarnessHome(home, process.env, install?.harnessHome);
+-	const profilesRoot = join(harnessHome, "profiles");
+-	const activeProfile = firstNonBlank(profile, process.env.DSH_SKIN_PROFILE, process.env.DSH_PROFILE) ?? profileFromCwd(process.cwd(), profilesRoot) ?? install?.profile ?? "web";
++	const harnessHome = resolveHarnessHome(home, process.env, install?.harnessHome);
++	const profilesRoot = join(harnessHome, "profiles");
++	const activeProfile = firstNonBlank(profile, process.env.DSH_SKIN_PROFILE, process.env.DSH_PROFILE) ?? profileFromCwd(process.cwd(), profilesRoot) ?? install?.profile ?? "web";
++	const profileDir = join(profilesRoot, activeProfile);
+-	return {
++	return {
+-		patchPath: join(harnessHome, "cordis.patch.yml"),
+-		profileModulesDir: join(harnessHome, "profiles", activeProfile, "node_modules"),
+-		profileManifestPath: join(harnessHome, "profiles", activeProfile, "package.json")
++		patchPath: join(profileDir, "cordis.patch.yml"),
++		legacyPatchPath: join(harnessHome, "cordis.patch.yml"),
++		profileModulesDir: join(profileDir, "node_modules"),
++		profileManifestPath: join(profileDir, "package.json")
+-	};
++	};
+ }
+ function readPatch(patchPath) {
+@@ -616,6 +630,37 @@ function readPatch(patchPath) {
  		return "";
  	}
  }
++function removeLegacyManagedSection(patch) {
++	const stripped = stripManaged(patch);
++	if (stripped.trim() === "") return "[]\n";
++	return `${stripped.trimEnd()}\n`;
++}
 +function waitForVerificationRead(delayMs) {
 +	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
 +}
@@ -70,21 +96,26 @@ index facaa37d4eac56fde0df92c101b949d654ade54b..da88e7f9522bf7d4cee16167fa2d04c0
  /**
  * Atomic replace: write a sibling temp file then rename over the target, so a
  * crash mid-write can never leave a half-written boot patch and the config
-@@ -810,8 +848,11 @@ function useSkin(name, opts = {}) {
+@@ -810,8 +855,16 @@ function useSkin(name, opts = {}) {
  		if (problem !== null) throw new Error(problem);
  		renderRegistry = registryWithProfileWiring(registry, paths.profileModulesDir, paths.profileManifestPath);
  	}
 -	const patch = stripLegacySkinRows(stripManaged(readPatch(paths.patchPath)));
 -	let next = `${patch.replace(/\s+$/, "")}\n\n${renderManaged(official ? null : name, renderRegistry)}\n`;
 +	const currentPatch = readPatch(paths.patchPath);
-+	const externalIds = externalManagedSkinIds(currentPatch, renderRegistry);
++	const legacyPatch = readPatch(paths.legacyPatchPath);
++	const legacyHasManagedSection = legacyPatch.includes(MANAGED_START);
++	const externalIds = new Set([
++		...externalManagedSkinIds(currentPatch, renderRegistry),
++		...(legacyHasManagedSection ? externalManagedSkinIds(legacyPatch, renderRegistry) : [])
++	]);
 +	const strippedPatch = stripLegacySkinRows(stripManaged(currentPatch));
 +	const patch = strippedPatch.trim() === "[]" ? "" : strippedPatch;
 +	let next = `${patch.replace(/\s+$/, "")}\n\n${renderManaged(official ? null : name, renderRegistry, externalIds)}\n`;
  	let skippedInsert = false;
  	if (!official && countInsertId(next, renderRegistry[name].id) > 1) {
  		const wired = {
-@@ -821,10 +862,11 @@ function useSkin(name, opts = {}) {
+@@ -821,10 +874,16 @@ function useSkin(name, opts = {}) {
  				bundleWired: true
  			}
  		};
@@ -94,6 +125,11 @@ index facaa37d4eac56fde0df92c101b949d654ade54b..da88e7f9522bf7d4cee16167fa2d04c0
  	}
  	writePatchAtomic(paths.patchPath, next);
 +	verifyPatchWrite(paths.patchPath, next);
++	if (legacyHasManagedSection) {
++		const cleanedLegacyPatch = removeLegacyManagedSection(legacyPatch);
++		writePatchAtomic(paths.legacyPatchPath, cleanedLegacyPatch);
++		verifyPatchWrite(paths.legacyPatchPath, cleanedLegacyPatch);
++	}
  	return (official ? "restored the official stock look — the config watcher applies it within seconds; refresh the page to see it." : `skin switched to "${name}" — the config watcher applies it within seconds; refresh the page (or the manifest re-fetches) to see it.`) + (skippedInsert ? " （检测到补丁中已有该皮肤的 insert 行，已跳过本层 insert，避免 duplicate loader entry id。）" : "");
  }
  /**

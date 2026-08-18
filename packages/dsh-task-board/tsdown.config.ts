@@ -19,6 +19,7 @@ export default clientBundle('@linxin666/dsh-client-ui-task-board', ['src/index.t
     '@deepseek-ai/dsh-client-runtime',
     '@deepseek-ai/dsh-client-ui-settings',
     '@deepseek-ai/dsh-client-ui-slots',
+    '@deepseek-ai/dsh-host-webserver',
     '@deepseek-ai/dsh-settings',
     '@deepseek-ai/dsh-system-prompt',
   ],

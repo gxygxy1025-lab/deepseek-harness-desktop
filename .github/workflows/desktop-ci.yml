@@ -24,6 +24,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:window-chrome:e2e
+      - run: pnpm --filter @deepseek-ai/dsh-desktop test:directory-picker:e2e
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:scripts

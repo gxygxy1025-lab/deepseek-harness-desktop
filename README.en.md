@@ -20,12 +20,13 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 
 If this project helps you, Star the [GitHub repository](https://github.com/ningbainb/deepseek-harness-desktop) so more desktop users can discover it.
 
-### Latest release: 2.3.0
+### Latest release: 2.4.0
 
-`desktop-v2.3.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.3.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/SHA256SUMS.txt)
+`desktop-v2.4.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.4.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/SHA256SUMS.txt)
 
 | Version | Highlights |
 | --- | --- |
+| **2.4.0** | Keeps SSH terminals connected across internal views and adds paste entry points; hides PowerShell tool windows; isolates skin state in the desktop profile and removes global patch pollution; closes path-drifted 2.2 remnants during in-place upgrades. |
 | **2.3.0** | Adds a one-time GitHub Star and community prompt; recognizes external PowerShell/CMD/Node hosts, EncodedCommand payloads, and Windows short paths during preflight; supports direct 0.1.9 upgrades; and coexists with the official web client through an isolated profile and port fallback. |
 | **2.2.0** | Hides Windows terminal descendants, cleans up attributed app/plugin background processes, migrates recognized dependencies and legacy safe-mode false positives, reuses the runtime port, and adds visible one-click safe-mode recovery. |
 | **2.1.0** | Adds measured mainland-China update mirrors, snapshot/isolation/safe-mode plugin recovery, unified skin persistence, reliable update-process cleanup, quiet background commands, Unicode-workspace restart protection, and a visible Tools menu entry for Extension Dock. |
@@ -38,12 +39,16 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 | **0.1.4** | Moves the pet to the global Shell Overlay so it appears on home and settings screens, restores all five Web UI plugin settings cards, and lists all nine packaged skins in Skin Center. |
 | **0.1.3** | Adds stable GitHub Release checks, bilingual update notes, user-confirmed downloads, taskbar progress, and a second confirmation before installation. |
 
-### 2.3.0 Highlights
+### 2.4.0 Highlights
 
-- **Reliable in-place upgrades**: installer preflight attributes external PowerShell, CMD, and Node descendants by the legacy install-root reference, decodes `-EncodedCommand`, matches both Windows 8.3 short paths and canonical long paths, falls back to WMI when process handles are unavailable, and waits with backoff after forced termination.
-- **Strict cleanup boundaries**: an external process is attributed only when its command line explicitly references a legacy install root. The official web runtime, same-name applications outside the install directory, and detached processes without that path reference are preserved.
-- **Official web-client coexistence**: Desktop always uses the isolated `profiles/desktop` profile and automatically selects a system-assigned port when its preferred port is occupied, so both clients can run together.
-- **One-time community guidance**: on the first 2.3.0 launch, users can open GitHub to Star the project, join the QQ community to report an issue, or continue working. The main process records the display atomically so reloads and later launches do not repeat it.
+- **Persistent SSH terminals and paste**: connected sessions remain mounted while switching among host, monitor, and terminal views. Paste is available from both the terminal context menu and the native Edit menu.
+- **Profile-local skin state**: skin switching writes only to the private `profiles/desktop` patch and migrates legacy managed sections out of global `cordis.patch.yml`, so official `dsh web` remains valid.
+- **Hidden tool hosts**: Windows runtime, terminal, and `pwsh` tools share a hidden console host and no longer flash a command window.
+- **Legacy in-place upgrade compatibility**: installer preflight adds a unique product-name fallback beyond path attribution, closing path-drifted 2.2 remnants before the old uninstaller can return code 2.
+- **Verifiable update handoff**: the installer uses a random token and shutdown receipt v2, proceeding only after the runtime, extension operations, and resources fully stop; legacy releases retain the constrained cleanup path.
+- **Partitioned Desktop bridge**: Main and Extension Dock use separate preloads with renderer-identity enforcement for sensitive IPC. Desktop Contract 1.0.0 provides stable capability discovery.
+- **Task Board Host storage**: the board ledger is a schema v2 file in the `desktop` profile, written atomically and synchronized through SSE. localStorage v1 is copied only after verification, retained, and used when Host storage is unavailable.
+- **One-time community guidance**: on the first 2.4.0 launch, users can open GitHub to Star the project, join the QQ community to report an issue, or continue working. The main process records the display atomically so reloads and later launches do not repeat it.
 
 ![DeepSeek Harness Desktop 2.3.0 GitHub Star and community feedback prompt](docs/screenshots/desktop-2.3.0-star-community-prompt.png)
 
@@ -68,7 +73,7 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 | --- | --- |
 | ![DeepSeek Harness Desktop 2.3.0 particle-whale startup](docs/screenshots/desktop-2.3.0-startup.png) | ![DeepSeek Harness Desktop 2.3.0 plugin and skill Extension Dock](docs/screenshots/desktop-2.3.0-extension-dock.png) |
 
-- Bundles the dsh-web-ui 0.1.15 suite with the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, plus Describe Image and the Liangshen agent;
+- Bundles the dsh-web-ui 0.1.18 suite with the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, plus Describe Image and the Liangshen agent;
 - Bundles Tencent's official QQ Bot, with in-dock QR binding for QQ direct messages and group chats — no YAML editing or background terminal required;
 - Bundles ChatGPT OAuth, OpenAI Codex models, and a reasoning-effort slider; sign-in uses the system browser and credentials stay local;
 - Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
@@ -97,7 +102,7 @@ The bundled `reasoning-slider` 0.0.2 exposes only the reasoning-effort levels a 
 
 Open it from the sidebar. Tasks are organized into five columns: Planned, To-do, In Progress, Done, and Failed. Clicking "Run" on a card hands the task to a real DSH agent session; when it finishes, the card status updates automatically. To review what happened, jump directly into the execution session for the full transcript.
 
-Tasks also support scheduled execution: configure a cron expression in the detail view (e.g. auto-upgrade DSH at 23:00 daily, generate a weekly report at 09:00 every Monday), and the task runs on its own at the scheduled time.
+Tasks also support scheduled execution: configure a cron expression in the detail view (e.g. auto-upgrade DSH at 23:00 daily, generate a weekly report at 09:00 every Monday), and the open page starts it at the scheduled time. The ledger lives in the active DSH profile's Host file, while verified legacy browser data remains available for fallback.
 
 | Multi-column board | Scheduled execution |
 | --- | --- |

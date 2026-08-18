@@ -4,11 +4,12 @@
  * `dsh-skin` binary on PATH (the bug zhu1090093659/dsh-web-ui#5: "dsh-skin
  * CLI not found on PATH").
  *
- * `use` owns the `dsh-skin managed` section of the harness-home
+ * `use` owns the `dsh-skin managed` section of the active profile's
  * `cordis.patch.yml` (atomic rewrite, hot-reloaded by the DSH config watcher
  * within seconds, no restart) and the profile node_modules symlink that makes
  * the selected skin resolvable from the running profile. `current` reads the
- * active back.
+ * active state back. The harness-home patch is only read for one-time cleanup
+ * of state written there by Desktop 2.2/2.3.
  *
  * The behaviour/text is a 1:1 port of scripts/dsh-skin (`use`/`current`;
  * workspace assets live in packages/skins/<id>). The skin registry is
@@ -289,7 +290,7 @@ export function stripManaged(patch: string): string {
   return patch.slice(0, start) + patch.slice(end + MANAGED_END.length)
 }
 
-/** Loader ids another skin manager wrote into the shared authority section. */
+/** Loader ids another skin manager wrote into the profile authority section. */
 export function externalManagedSkinIds(
   patch: string,
   registry: Record<string, SkinSwitchEntry> = loadRegistry(),
@@ -366,7 +367,7 @@ export function currentActive(patch: string, registry: Record<string, SkinSwitch
 
 /**
  * Whether a cordis.patch.yml text contains an `insert:` list row for `id`
- * (the row a skin bundle would contribute, as opposed to a home-layer
+ * (the row a skin bundle would contribute, as opposed to a profile-layer
  * `disabled: true` id-target row). The patch format is small and line-based;
  * a YAML parser dependency is not worth the weight for this one probe.
  * @param patch - raw patch text.
@@ -456,7 +457,7 @@ function isDshSkinsCarrierPath(dir: string): boolean {
 
 /**
  * Whether the active skin's loader entry is already provided by the skin
- * package's own bundle patch, so the home-layer managed section must NOT add
+ * package's own bundle patch, so the profile-layer managed section must NOT add
  * a duplicate insert row (issue #148: `duplicate loader entry id`).
  *
  * True when:
@@ -473,7 +474,7 @@ function isDshSkinsCarrierPath(dir: string): boolean {
  * particular, the node_modules symlinks ensureSymlink creates for the
  * skin-center itself are pure resolvability links — they are never
  * reconciled — and must not be mistaken for installed bundles, otherwise
- * useSkin skips the home insert row and no skin ever activates.
+ * useSkin skips the profile insert row and no skin ever activates.
  *
  * Only when the manifest is absent/unreadable does the function fall back to
  * the structural probe (a real installed dir, or a symlink to an independent
@@ -494,7 +495,7 @@ export function activeSkinIsBundleWired(entry: SkinSwitchEntry, profileModulesDi
   if (readProfileDependencies(profileManifestPath).has(entry.pkg)) return true
   // The manifest exists: its lists are authoritative. Anything not listed is
   // not reconciled by the loader — including the skin-center's own
-  // ensureSymlink links — so it keeps its home insert row.
+  // ensureSymlink links — so it keeps its profile insert row.
   if (profileManifestPath !== undefined && statSync(profileManifestPath, { throwIfNoEntry: false })) {
     return false
   }
@@ -548,8 +549,10 @@ function registryWithProfileWiring(registry: Record<string, SkinSwitchEntry>, pr
 
 /** Layout of the DSH home + profile the CLI switches against. */
 export interface SkinSwitchPaths {
-  /** ~/.dsh/cordis.patch.yml */
+  /** ~/.dsh/profiles/<profile>/cordis.patch.yml */
   patchPath: string
+  /** ~/.dsh/cordis.patch.yml (Desktop 2.2/2.3 migration source only). */
+  legacyPatchPath: string
   /** ~/.dsh/profiles/<profile>/node_modules */
   profileModulesDir: string
   /** ~/.dsh/profiles/<profile>/package.json (dsh.profile.bundles wiring). */
@@ -639,10 +642,12 @@ export function resolveProfile(
 export function resolvePaths(home?: string, profile?: string): SkinSwitchPaths {
   const harnessHome = resolveHarnessHome(home)
   const activeProfile = resolveProfile(profile, process.env, process.cwd(), joinPath(harnessHome, 'profiles'))
+  const profileDir = joinPath(harnessHome, 'profiles', activeProfile)
   return {
-    patchPath: joinPath(harnessHome, 'cordis.patch.yml'),
-    profileModulesDir: joinPath(harnessHome, 'profiles', activeProfile, 'node_modules'),
-    profileManifestPath: joinPath(harnessHome, 'profiles', activeProfile, 'package.json'),
+    patchPath: joinPath(profileDir, 'cordis.patch.yml'),
+    legacyPatchPath: joinPath(harnessHome, 'cordis.patch.yml'),
+    profileModulesDir: joinPath(profileDir, 'node_modules'),
+    profileManifestPath: joinPath(profileDir, 'package.json'),
   }
 }
 
@@ -654,6 +659,15 @@ function readPatch(patchPath: string): string {
   } catch {
     return ''
   }
+}
+
+/** Remove only the obsolete global managed block while leaving every user or
+ * official DSH row in place. Empty legacy files are normalized to an empty
+ * YAML sequence so `dsh web` never sees a null document after the repair. */
+function removeLegacyManagedSection(patch: string): string {
+  const stripped = stripManaged(patch)
+  if (stripped.trim() === '') return '[]\n'
+  return `${stripped.trimEnd()}\n`
 }
 
 export interface PatchVerificationOptions {
@@ -924,25 +938,38 @@ export function useSkin(name: string, opts: { home?: string; profile?: string; r
     // question is whether the boot graph can import the package, which is
     // what checkResolvable answers. Throw so /apply turns it into ok:false.
     // This check stays BEFORE any patch write, so a missing skin never leaves
-    // a dangling home-layer insert row behind (issue #108).
+    // a dangling profile-layer insert row behind (issue #108).
     const problem = checkResolvable(entry, paths.profileModulesDir)
     if (problem !== null) throw new Error(problem)
     // Once the target is confirmed resolvable, detect whether the skin's own
     // installed bundle patch already provides the insert row (issue #148):
-    // then the home layer keeps only the mutual-exclusion disabled rows.
+    // then the profile layer keeps only the mutual-exclusion disabled rows.
     // dsh.profile.bundles in the profile manifest is authoritative; a
     // symlinked bundled-carrier target otherwise returns false here, so that
-    // layout keeps its home insert row (no per-skin bundle patch is active).
+    // layout keeps its profile insert row (no per-skin bundle patch is active).
     renderRegistry = registryWithProfileWiring(registry, paths.profileModulesDir, paths.profileManifestPath)
   }
 
   const currentPatch = readPatch(paths.patchPath)
-  const externalIds = externalManagedSkinIds(currentPatch, renderRegistry)
+  const legacyPatch = readPatch(paths.legacyPatchPath)
+  const legacyHasManagedSection = legacyPatch.includes(MANAGED_START)
+  const externalIds = new Set([
+    ...externalManagedSkinIds(currentPatch, renderRegistry),
+    ...(legacyHasManagedSection ? externalManagedSkinIds(legacyPatch, renderRegistry) : []),
+  ])
   const strippedPatch = stripLegacySkinRows(stripManaged(currentPatch))
   const patch = strippedPatch.trim() === '[]' ? '' : strippedPatch
   const next = `${patch.replace(/\s+$/, '')}\n\n${renderManaged(official ? null : name, renderRegistry, externalIds)}\n`
   writePatchAtomic(paths.patchPath, next)
   verifyPatchWrite(paths.patchPath, next)
+  // Commit the profile state first. If that write fails, the legacy global
+  // block remains available for recovery. Only then remove the obsolete block
+  // that made the shared harness patch invalid for `dsh web` (issue #26).
+  if (legacyHasManagedSection) {
+    const cleanedLegacyPatch = removeLegacyManagedSection(legacyPatch)
+    writePatchAtomic(paths.legacyPatchPath, cleanedLegacyPatch)
+    verifyPatchWrite(paths.legacyPatchPath, cleanedLegacyPatch)
+  }
 
   const core = official
     ? 'restored the official stock look — the config watcher applies it within seconds; refresh the page to see it.'
@@ -962,7 +989,7 @@ export function currentSkin(patch: string | undefined, opts: { home?: string; pr
   const paths = resolvePaths(opts.home, opts.profile)
   const registry = opts.registry ?? loadRegistry()
   // Mirror useSkin's wiring view: an installed per-skin bundle provides its
-  // own insert row, so the home patch carries only disabled rows for it and
+  // own insert row, so the profile patch carries only disabled rows for it and
   // currentActive must treat it as bundle-wired to report it as active.
   return currentActive(patch ?? readPatch(paths.patchPath), registryWithProfileWiring(registry, paths.profileModulesDir, paths.profileManifestPath)) ?? 'none'
 }

@@ -16,8 +16,8 @@ export declare class DesktopSkinStateStore implements DesktopSkinStateFace {
     readonly home: string;
     readonly profile: string;
     constructor(home?: string, profile?: string);
-    private get patchPath();
     private get profileDir();
+    private get patchPath();
     private wiredPackageNames;
     private loaderId;
     migrateLegacy(disabledNames: Iterable<string>, entries: Iterable<SkinLoaderEntry>): Set<string>;

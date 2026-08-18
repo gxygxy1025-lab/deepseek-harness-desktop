@@ -2,8 +2,9 @@ import {
   advanceStartupProgress,
   clampProgress,
   initialProgressForState,
+  phaseIndexForProgress,
 } from './startup-progress.mjs'
-import { mountParticleWhale } from './whale-particles.mjs'
+import { mountParticleWhale, OFFICIAL_WHALE_PATH } from './whale-particles.mjs'
 
 const title = document.querySelector('#status-title')
 const detail = document.querySelector('#status-detail')
@@ -11,8 +12,9 @@ const errorLog = document.querySelector('#error-log')
 const actions = document.querySelector('#actions')
 const version = document.querySelector('#version')
 const meter = document.querySelector('#startup-progress')
-const meterFill = document.querySelector('#meter-fill')
 const progressValue = document.querySelector('#progress-value')
+const meterTip = document.querySelector('.meter-tip')
+meterTip.innerHTML = `<svg viewBox="0 0 50 50" focusable="false"><path d="${OFFICIAL_WHALE_PATH}"/></svg>`
 const whaleCanvas = document.querySelector('#whale-canvas')
 const recoverySummary = document.querySelector('#recovery-summary')
 const recoveryTitle = document.querySelector('#recovery-title')
@@ -36,14 +38,20 @@ let currentState = 'stopped'
 let progress = 0
 
 function renderProgress(value) {
+  const previousRounded = Math.round(progress)
   progress = clampProgress(value)
   const rounded = Math.round(progress)
-  meterFill.style.setProperty('--progress', `${progress.toFixed(2)}%`)
+  meter.style.setProperty('--progress', `${progress.toFixed(2)}%`)
+  meter.dataset.phase = String(phaseIndexForProgress(progress))
   meter.setAttribute('aria-valuenow', String(rounded))
   meter.setAttribute('aria-valuetext', `启动进度 ${rounded}%`)
   progressValue.value = `${String(rounded).padStart(2, '0')}%`
   progressValue.textContent = progressValue.value
-
+  if (rounded !== previousRounded) {
+    progressValue.classList.remove('is-ticking')
+    void progressValue.offsetWidth
+    progressValue.classList.add('is-ticking')
+  }
 }
 
 function render(status) {

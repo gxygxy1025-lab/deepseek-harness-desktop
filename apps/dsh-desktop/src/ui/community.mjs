@@ -1,6 +1,10 @@
 import { COMMUNITY_QQ_URL, GITHUB_FEEDBACK_URL } from '../community-links.mjs'
 
 const query = new URLSearchParams(window.location.search)
+const theme = query.get('theme')
+if (theme === 'dark' || theme === 'light') {
+  document.documentElement.dataset.dshDesktopTheme = theme
+}
 const qrImage = query.get('qr')
 const qr = document.querySelector('#community-qr')
 const status = document.querySelector('#qr-status')

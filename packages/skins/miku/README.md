@@ -54,7 +54,7 @@ dsh plugin --profile web add "link:<absolute path to this repo>"
 
 ## Switch skins
 
-Skin activation is mutually exclusive and managed via `scripts/dsh-skin` (writes into the managed section of `~/.dsh/cordis.patch.yml` + the profile symlink):
+Skin activation is mutually exclusive and managed via `scripts/dsh-skin` (writes into the managed section of `~/.dsh/profiles/<profile>/cordis.patch.yml` + the profile symlink):
 
 ```bash
 dsh-skin use miku       # activate this skin

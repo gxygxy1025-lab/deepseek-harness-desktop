@@ -76,6 +76,10 @@ function currentOf(sessions: SessionsControllerFace): string | undefined {
   return sessions.list.getSnapshot().current
 }
 
+function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof (value as { then?: unknown })?.then === 'function'
+}
+
 /**
  * Board controller (see module doc). All mutations bump the snapshot and
  * persist through the store; UI and DOM mounts subscribe and re-render.
@@ -98,16 +102,35 @@ export class BoardController {
   // --- lifecycle -------------------------------------------------------------
 
   /** Load the persisted ledger and start the navigation/status subscriptions. */
-  start(): void {
-    this.tasks = this.deps.store.load()
+  start(): void | Promise<void> {
+    const loaded = this.deps.store.load()
+    if (isPromise(loaded)) {
+      return loaded.then(tasks => { this.finishStart(tasks) })
+    }
+    this.finishStart(loaded)
+  }
+
+  /** Complete startup synchronously for local stores and after await for Host stores. */
+  private finishStart(tasks: TaskRecord[]): void {
+    this.tasks = tasks
     void this.reconcileRunningTasks()
     // A sibling tab may have edited or deleted the ledger (same origin,
     // storage events). Reload on external change so a task deleted in
     // another tab stops firing here — and is never written back by this
     // tab's stale copy (scheduler roll-forward, execution settlement).
     const unsubscribeExternal = this.deps.store.subscribeExternal?.(() => {
-      this.tasks = this.deps.store.load()
-      this.notify()
+      const loaded = this.deps.store.load()
+      if (!isPromise(loaded)) {
+        this.tasks = loaded
+        this.notify()
+        return
+      }
+      void loaded.then((next) => {
+        this.tasks = next
+        this.notify()
+      }).catch((error) => {
+        console.error('[dsh-task-board] external task reload failed', error)
+      })
     })
     if (unsubscribeExternal !== undefined) this.disposers.push(unsubscribeExternal)
     this.disposers.push(this.deps.sessions.list.subscribe(() => {
@@ -277,7 +300,7 @@ export class BoardController {
   private handleExecutionEvent(event: ExecutionEvent): void {
     if (event.kind === 'started') {
       this.tasks = this.tasks.map(task => task.id === event.taskId
-        ? attachSessionId(task, event.executionId, event.sessionId, this.now())
+        ? attachSessionId(task, event.executionId, event.sessionId, event.workspaceId, this.now())
         : task)
       this.persistAndNotify()
       return
@@ -366,7 +389,9 @@ export class BoardController {
   }
 
   private persistAndNotify(): void {
-    this.deps.store.save(this.tasks)
+    void Promise.resolve(this.deps.store.save(this.tasks)).catch((error) => {
+      console.error('[dsh-task-board] task ledger write failed', error)
+    })
     this.notify()
   }
 
@@ -380,12 +405,13 @@ function attachSessionId(
   task: TaskRecord,
   executionId: string,
   sessionId: string,
+  workspaceId: string | undefined,
   now: number,
 ): TaskRecord {
   return {
     ...task,
     updatedAt: now,
     executions: task.executions.map(execution =>
-      execution.id === executionId ? { ...execution, sessionId } : execution),
+      execution.id === executionId ? { ...execution, sessionId, workspaceId } : execution),
   }
 }

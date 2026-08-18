@@ -19,6 +19,23 @@
   background: var(--harness-bg);
 }
 
+html[data-dsh-desktop-theme="dark"] {
+  color-scheme: dark;
+  --harness-bg: #0a141b;
+  --harness-bg-subtle: #101d26;
+  --harness-bg-hover: #162631;
+  --harness-text: #e6f1f6;
+  --harness-text-secondary: #93a7b1;
+  --harness-text-tertiary: #647983;
+  --harness-border: rgba(174, 232, 245, 0.12);
+  --harness-border-strong: rgba(174, 232, 245, 0.22);
+  --harness-accent: #5b85ec;
+  --harness-accent-hover: #6f97f0;
+  --harness-danger: #e06666;
+  --harness-success: #3aa87c;
+  --harness-warning: #d99a45;
+}
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 

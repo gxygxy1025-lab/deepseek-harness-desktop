@@ -10,13 +10,15 @@ import { _electron as electron } from 'playwright'
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const screenshotArgument = process.argv.find((argument) => argument.toLowerCase().endsWith('.png'))
 const screenshot = screenshotArgument ? resolve(screenshotArgument) : undefined
+const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
+const runtimeReadyTimeoutMs = packagedExecutable ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-conversation-skills-e2e-'))
 let electronApp
 
 try {
   electronApp = await electron.launch({
-    executablePath: electronPath,
-    args: [resolve(appDir, 'src', 'main.mjs')],
+    executablePath: packagedExecutable || electronPath,
+    args: packagedExecutable ? [] : [resolve(appDir, 'src', 'main.mjs')],
     cwd: appDir,
     env: {
       ...process.env,
@@ -27,7 +29,7 @@ try {
   })
   const page = await electronApp.firstWindow()
   try {
-    await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: 60_000 })
+    await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
   } catch (error) {
     const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8').catch(() => '')
     console.error(runtimeLog.slice(-4_000))
@@ -76,7 +78,9 @@ try {
   await menu.waitFor({ state: 'hidden' })
 
   await skillsButton.click()
-  await page.getByText('探索未至之境', { exact: true }).click()
+  // Dispatch the underlying navigation click intentionally while the modal
+  // layer is open; this verifies that a real page transition closes it.
+  await page.getByText('探索未至之境', { exact: true }).click({ force: true })
   await menu.waitFor({ state: 'hidden' })
   if (screenshot) {
     await page.locator('#dsh-desktop-skills-toast').waitFor({ state: 'detached', timeout: 4_000 }).catch(() => {})

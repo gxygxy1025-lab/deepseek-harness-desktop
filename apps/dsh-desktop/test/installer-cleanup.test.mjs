@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -87,6 +87,7 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
 
   assert.match(config, /include: build\/installer\.nsh/u)
   assert.match(config, /from: build\/update-shutdown-v1[\s\S]*to: update-shutdown-v1/u)
+  assert.match(config, /from: build\/update-shutdown-v2[\s\S]*to: update-shutdown-v2/u)
   assert.match(include, /customCheckAppRunning/u)
   assert.doesNotMatch(include, /customInit/u)
   assert.match(include, /cleanup-stale-processes\.ps1/u)
@@ -104,9 +105,21 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /\$installRootReferences\.Add\(\$fullPath\)/u)
   assert.match(cleanup, /foreach \(\$reference in \$installRootReferences\)/u)
   assert.match(cleanup, /update-shutdown-v1/u)
+  assert.match(cleanup, /update-shutdown-v2/u)
+  assert.match(cleanup, /dsh-desktop-update-shutdown-receipt=2/u)
   assert.match(cleanup, /--shutdown-for-update/u)
+  assert.match(cleanup, /--shutdown-token=\$token/u)
+  assert.match(cleanup, /RandomNumberGenerator/u)
+  assert.match(cleanup, /dsh-desktop-shutdown-\$token\.json/u)
+  assert.match(cleanup, /schemaVersion -isnot \[int\]/u)
+  assert.match(cleanup, /\[int64\] \$receipt\.schemaVersion -ne 2/u)
+  assert.match(cleanup, /extensionsQuiesced -ne \$true/u)
+  assert.match(cleanup, /receipt-fallback/u)
+  assert.match(cleanup, /Test-IsDesktopBrowserProcess/u)
+  assert.match(cleanup, /--expose-internals/u)
   assert.match(cleanup, /Start-Process[\s\S]*-WindowStyle Hidden/u)
   assert.match(cleanup, /Get-CimInstance Win32_Process/u)
+  assert.match(cleanup, /\.Name\.Equals\(\$mainExecutableName, \$comparison\)/u)
   assert.match(cleanup, /\$selfPid/u)
   assert.match(cleanup, /IndexOf\(\$root, \$comparison\)/u)
   assert.match(cleanup, /Get-CommandLineVariants/u)
@@ -119,10 +132,107 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /Start-Sleep -Milliseconds/u)
   assert.match(cleanup, /exit 32/u)
   assert.match(cleanup, /exit 33/u)
+  assert.match(cleanup, /exit 34/u)
+  assert.match(cleanup, /exit 35/u)
+  assert.match(cleanup, /exit 36/u)
   assert.match(include, /IDRETRY cleanup_retry/u)
   assert.match(include, /StrCmp \$0 "0" cleanup_done/u)
   assert.match(include, /StrCmp \$0 "32" cleanup_busy/u)
+  assert.match(include, /StrCmp \$0 "34" cleanup_permission/u)
+  assert.match(include, /StrCmp \$0 "35" cleanup_protocol/u)
+  assert.match(include, /StrCmp \$0 "36" cleanup_locked/u)
+  assert.match(include, /StrCmp \$0 "33" cleanup_script_error/u)
   assert.doesNotMatch(cleanup, /taskkill|\/IM\s|ProcessName/u)
+})
+
+test('Windows installer reports a replacement-file lock separately from a running PID', {
+  skip: process.platform !== 'win32',
+  timeout: 20_000,
+}, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-lock-'))
+  const installDirectory = join(temporary, 'previous-install')
+  const executable = join(installDirectory, 'DeepSeek Harness Desktop.exe')
+  let locker
+  try {
+    await mkdir(installDirectory, { recursive: true })
+    await writeFile(executable, 'locked fixture', 'utf8')
+    locker = spawn('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      '$stream = [IO.File]::Open($env:DSH_LOCK_PATH, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None); Write-Output ready; try { Start-Sleep -Seconds 60 } finally { $stream.Dispose() }',
+    ], {
+      env: { ...process.env, DSH_LOCK_PATH: executable },
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    await once(locker, 'spawn')
+    const [ready] = await once(locker.stdout, 'data')
+    assert.match(ready.toString('utf8'), /ready/u)
+
+    await assert.rejects(
+      execFileAsync('powershell.exe', [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
+        '-InstallDirectory',
+        installDirectory,
+      ], { timeout: 10_000, windowsHide: true }),
+      error => error?.code === 36 && /locked path=/u.test(error.stdout ?? ''),
+    )
+  } finally {
+    if (locker?.exitCode === null) {
+      const exit = once(locker, 'exit')
+      locker.kill('SIGKILL')
+      await settleWithin(exit, 2_000, 'file-lock fixture did not exit').catch(() => {})
+    }
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('Windows 2.3 v1 shutdown marker falls back to exact-path cleanup', {
+  skip: process.platform !== 'win32',
+  timeout: 25_000,
+}, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-v23-'))
+  const installDirectory = join(temporary, '2.3.0')
+  const resources = join(installDirectory, 'resources')
+  const executable = join(installDirectory, 'DeepSeek Harness Desktop.exe')
+  const systemPing = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'PING.EXE')
+  let legacy
+  try {
+    await mkdir(resources, { recursive: true })
+    await copyFile(systemPing, executable)
+    await writeFile(join(resources, 'update-shutdown-v1'), 'dsh-desktop-update-shutdown-protocol=1\n', 'utf8')
+    legacy = spawn(executable, ['-t', '127.0.0.1'], { windowsHide: true, stdio: 'ignore' })
+    const legacyExit = once(legacy, 'exit')
+    await once(legacy, 'spawn')
+
+    await execFileAsync('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
+      '-InstallDirectory',
+      installDirectory,
+    ], { timeout: 20_000, windowsHide: true })
+    await settleWithin(legacyExit, 2_000, '2.3 legacy process survived installer cleanup')
+  } finally {
+    if (legacy?.exitCode === null) {
+      const exit = once(legacy, 'exit')
+      legacy.kill('SIGKILL')
+      await settleWithin(exit, 2_000, '2.3 fixture did not exit').catch(() => {})
+    }
+    await rm(temporary, { recursive: true, force: true })
+  }
 })
 
 test('Windows installer preflight accepts a missing previous install directory', {
@@ -151,7 +261,7 @@ test('Windows installer preflight accepts a missing previous install directory',
   }
 })
 
-test('Windows installer check terminates direct and path-attributed old processes without killing unrelated or same-name apps', {
+test('Windows 2.2 installer check terminates owned processes and legacy same-name app copies without killing unrelated runtimes', {
   skip: process.platform !== 'win32',
   timeout: 30_000,
 }, async () => {
@@ -314,7 +424,11 @@ test('Windows installer check terminates direct and path-attributed old processe
     assert.doesNotThrow(() => process.kill(pluginDescendantPid, 0), 'external plugin descendant was killed')
     assert.doesNotThrow(() => process.kill(encodedUnrelatedProcess.pid, 0), 'encoded PowerShell without an install-root reference was killed')
     assert.doesNotThrow(() => process.kill(officialWebProcess.pid, 0), 'official web runtime without an install-root reference was killed')
-    assert.doesNotThrow(() => process.kill(unrelatedProcess.pid, 0), 'same-name process outside the install root was killed')
+    await settleWithin(
+      unrelatedExit,
+      3_000,
+      'legacy same-name app outside the registered install root survived cleanup',
+    )
   } finally {
     for (const { child } of ownedProcesses) {
       if (child.exitCode === null) child.kill('SIGKILL')

@@ -1,17 +1,12 @@
 /**
- * Task persistence: a small storage seam with a localStorage backend.
+ * Task persistence: a small storage seam shared by local and Host backends.
  *
- * The task-board client plugin runs in the browser, and dsh exposes no
- * browser-writable file channel (same conclusion the skin-center research
- * reached for cordis.patch.yml), so tasks persist in the browser's
- * localStorage under a versioned key — the same persistence mechanism dsh's
- * own client snapshot stores use (`createSnapshotStore` persist). Data
- * survives page refreshes and dsh restarts (same origin), and survives
- * plugin uninstall (the key is simply left in place).
+ * Desktop 2.4 prefers the profile-isolated Host file backend. Browser v1
+ * localStorage remains the offline/unsupported-host fallback and is retained
+ * after a verified copy so downgrade and recovery stay possible.
  *
- * The seam keeps the backend swappable (e.g. an IndexedDB or a host-file
- * channel later); tests run against the in-memory backend and a jsdom
- * localStorage backend.
+ * The seam keeps the controller independent of transport; tests exercise the
+ * in-memory, localStorage, remote Host, and atomic Host-file implementations.
  */
 import { isValidCron } from './schedule.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
@@ -20,11 +15,11 @@ import { isTaskStatus } from './tasks.ts'
 /** Persistence seam for the task ledger. */
 export interface TaskStore {
   /** Read the persisted ledger (empty when nothing is stored yet). */
-  load(): TaskRecord[]
+  load(): TaskRecord[] | Promise<TaskRecord[]>
   /** Persist the whole ledger (replaces the stored document). */
-  save(tasks: readonly TaskRecord[]): void
+  save(tasks: readonly TaskRecord[]): void | Promise<void>
   /** Drop the persisted ledger (leaves the in-memory state alone). */
-  clear(): void
+  clear(): void | Promise<void>
   /**
    * Subscribe to ledger changes written by ANOTHER tab of the same origin
    * (browser storage events). The board controller reloads the ledger on
@@ -37,6 +32,17 @@ export interface TaskStore {
 
 /** Storage key for the task ledger document. */
 export const DEFAULT_STORAGE_KEY = 'dsh.taskBoard.v1'
+
+/** Host-file document version introduced in Desktop 2.4. */
+export const TASK_LEDGER_SCHEMA_VERSION = 2 as const
+
+/** Profile-isolated Host-file envelope. */
+export interface TaskLedgerDocumentV2 {
+  schemaVersion: typeof TASK_LEDGER_SCHEMA_VERSION
+  revision: number
+  updatedAt: number
+  tasks: TaskRecord[]
+}
 
 /** Structural shape of the storage event fired in sibling tabs (DOM-free). */
 export interface StorageChangeEvent {
@@ -69,9 +75,12 @@ function isTaskRecordShape(value: unknown): value is Omit<TaskRecord, 'status'> 
     if (typeof execution !== 'object' || execution === null) return false
     const entry = execution as Record<string, unknown>
     if (typeof entry.id !== 'string') return false
+    if (entry.runId !== undefined && typeof entry.runId !== 'string') return false
+    if (entry.workspaceId !== undefined && typeof entry.workspaceId !== 'string') return false
     if (entry.sessionId !== undefined && typeof entry.sessionId !== 'string') return false
     if (typeof entry.startedAt !== 'number') return false
     if (entry.endedAt !== undefined && typeof entry.endedAt !== 'number') return false
+    if (entry.finishedAt !== undefined && typeof entry.finishedAt !== 'number') return false
     if (entry.result !== undefined && entry.result !== 'succeeded' && entry.result !== 'failed' && entry.result !== 'cancelled') return false
     if (entry.error !== undefined && typeof entry.error !== 'string') return false
   }
@@ -139,6 +148,44 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     tasks.push(task)
   }
   return tasks
+}
+
+/** Parse a v2 Host document; malformed envelopes are rejected, not repaired in place. */
+export function parseLedgerDocumentV2(raw: string): TaskLedgerDocumentV2 | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (typeof value !== 'object' || value === null) return undefined
+  const document = value as Record<string, unknown>
+  if (document.schemaVersion !== TASK_LEDGER_SCHEMA_VERSION) return undefined
+  if (!Number.isSafeInteger(document.revision) || (document.revision as number) < 0) return undefined
+  if (typeof document.updatedAt !== 'number' || !Number.isFinite(document.updatedAt)) return undefined
+  if (!Array.isArray(document.tasks)) return undefined
+  const tasks = parseLedger(JSON.stringify(document.tasks))
+  if (tasks.length !== document.tasks.length) return undefined
+  return {
+    schemaVersion: TASK_LEDGER_SCHEMA_VERSION,
+    revision: document.revision as number,
+    updatedAt: document.updatedAt,
+    tasks,
+  }
+}
+
+/** Create one clone-safe Host document. */
+export function createLedgerDocumentV2(
+  tasks: readonly TaskRecord[],
+  revision: number,
+  updatedAt: number,
+): TaskLedgerDocumentV2 {
+  return {
+    schemaVersion: TASK_LEDGER_SCHEMA_VERSION,
+    revision,
+    updatedAt,
+    tasks: tasks.map(task => ({ ...task, executions: task.executions.map(execution => ({ ...execution })) })),
+  }
 }
 
 /** localStorage-backed store (the browser backend). */

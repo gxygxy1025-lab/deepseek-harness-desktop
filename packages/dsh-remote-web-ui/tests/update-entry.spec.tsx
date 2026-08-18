@@ -87,7 +87,9 @@ describe("UpdateEntry", () => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
     render(<UpdateEntry wide={true} t={t} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+    const trigger = screen.getByRole('button', { name: 'Check for updates' })
+    expect(trigger.getAttribute('data-dsh-update-entry')).toBe('desktop')
+    fireEvent.click(trigger)
     await waitFor(() => expect(checkForUpdates).toHaveBeenCalledOnce())
     expect(fetch).not.toHaveBeenCalled()
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -95,7 +97,9 @@ describe("UpdateEntry", () => {
 
   it("opens the panel and reports up to date", async () => {
     const { fetch } = mount(upToDateStatus())
-    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+    const trigger = screen.getByRole('button', { name: 'Check for updates' })
+    expect(trigger.getAttribute('data-dsh-update-entry')).toBe('plugin')
+    fireEvent.click(trigger)
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/update/status"))
     await waitFor(() => expect(screen.getByText('Everything is up to date')).toBeTruthy())
     expect(screen.getByText('@linxin666/dsh-web-ui-all')).toBeTruthy()

@@ -21,6 +21,8 @@ import css from './panel.module.css'
 /** Terminal tab props. */
 export interface TerminalTabProps {
   api: SshApi
+  /** Whether the persistent terminal pane is currently visible. */
+  visible?: boolean
   /** Alias preselected by a "connect" action from the hosts tab. */
   presetAlias?: string
   /** Monotonic id of the connect request (re-applies presetAlias). */
@@ -49,7 +51,7 @@ function ensureXtermCss(): void {
 }
 
 /** The xterm terminal view. */
-export function TerminalTab({ api, presetAlias, requestId }: TerminalTabProps) {
+export function TerminalTab({ api, visible = true, presetAlias, requestId }: TerminalTabProps) {
   const [hosts, setHosts] = useState<SshHostSummary[]>([])
   const [alias, setAlias] = useState(presetAlias ?? '')
   const [status, setStatus] = useState<TerminalStatus>({ kind: 'idle' })
@@ -118,6 +120,18 @@ export function TerminalTab({ api, presetAlias, requestId }: TerminalTabProps) {
     window.addEventListener('resize', onResize)
     return () => { window.removeEventListener('resize', onResize) }
   }, [])
+
+  // A hidden xterm has no measurable width. Refit after its persistent pane
+  // becomes visible again, then tell the remote PTY about the restored size.
+  useEffect(() => {
+    if (!visible) return
+    const term = termRef.current
+    const fit = fitRef.current
+    if (term === null || fit === null) return
+    fit.fit()
+    connRef.current?.resize(term.cols, term.rows)
+    term.focus()
+  }, [visible])
 
   const connect = (): void => {
     const target = alias

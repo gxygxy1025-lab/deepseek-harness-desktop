@@ -1,3 +1,10 @@
+import {
+  DESKTOP_ERROR_CODES,
+  DESKTOP_SURFACES,
+  DesktopContractError,
+  desktopContractForSurface,
+} from './desktop-contract.mjs'
+
 const ACTIONS = new Set(['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'exit'])
 const HELP_ACTIONS = new Set(['community', 'feedback', 'project', 'updates'])
 const TOOL_ACTIONS = new Set(['extensions'])
@@ -30,6 +37,14 @@ export function normalizeToolAction(value) {
     throw new TypeError(`invalid Tools action: ${JSON.stringify(value)}`)
   }
   return value
+}
+
+export function normalizeNotification(value) {
+  if (typeof value !== 'object' || value === null) throw new TypeError('invalid desktop notification')
+  const title = typeof value.title === 'string' ? value.title.trim().slice(0, 160) : ''
+  const body = typeof value.body === 'string' ? value.body.trim().slice(0, 1_000) : ''
+  if (title === '' || body === '') throw new TypeError('invalid desktop notification')
+  return { title, body }
 }
 
 export function publicRecoveryStatus(status) {
@@ -84,6 +99,7 @@ export function publicUpdateStatus(status) {
 
 export function registerDesktopIpc({
   ipcMain,
+  surfaceRegistry = ipcMain.surfaceRegistry,
   controller,
   getWindow,
   metadata,
@@ -98,8 +114,14 @@ export function registerDesktopIpc({
   setWindowChromeTheme,
   claimStarPrompt,
   getUpdateController,
+  listSkills = async () => ({ skills: [] }),
+  showNotification = async () => false,
 }) {
+  if (typeof surfaceRegistry?.assert !== 'function' || typeof surfaceRegistry?.surfaceOf !== 'function') {
+    throw new TypeError('desktop IPC requires a desktop surface registry')
+  }
   const channels = [
+    'desktop:contract',
     'desktop:info',
     'desktop:status',
     'desktop:action',
@@ -110,9 +132,29 @@ export function registerDesktopIpc({
     'desktop:update-status',
     'desktop:update-check',
     'desktop:update-install',
+    'desktop:skills-list',
+    'desktop:notification-show',
   ]
   for (const channel of channels) ipcMain.removeHandler(channel)
-  ipcMain.handle('desktop:info', () => ({
+  const handle = (channel, allowedSurfaces, handler) => {
+    ipcMain.handle(channel, async (event, ...args) => {
+      try {
+        const surface = surfaceRegistry.assert(event?.sender, allowedSurfaces)
+        return await handler(event, surface, ...args)
+      } catch (error) {
+        if (error instanceof TypeError) {
+          throw new DesktopContractError(DESKTOP_ERROR_CODES.INVALID_ARGUMENT, error.message)
+        }
+        throw error
+      }
+    })
+  }
+  const main = DESKTOP_SURFACES.MAIN
+  const extensions = DESKTOP_SURFACES.EXTENSIONS
+  const registered = [main, extensions, DESKTOP_SURFACES.COMMUNITY]
+
+  handle('desktop:contract', registered, (_event, surface) => desktopContractForSurface(surface))
+  handle('desktop:info', [main, extensions], () => ({
     appId: metadata.appId,
     productName: metadata.productName,
     version,
@@ -122,8 +164,8 @@ export function registerDesktopIpc({
     status,
     await pluginRecovery?.getState?.(),
   )
-  ipcMain.handle('desktop:status', () => getPublicStatus())
-  ipcMain.handle('desktop:action', async (_event, rawAction) => {
+  handle('desktop:status', [main, extensions], () => getPublicStatus())
+  handle('desktop:action', main, async (_event, _surface, rawAction) => {
     const action = normalizeDesktopAction(rawAction)
     if (action === 'retry') return controller.restart()
     if (action === 'repair') {
@@ -137,24 +179,28 @@ export function registerDesktopIpc({
     exitApp()
     return undefined
   })
-  ipcMain.handle('desktop:window-chrome-theme', (event, rawTheme) => {
+  handle('desktop:window-chrome-theme', [main, extensions], (event, _surface, rawTheme) => {
     const theme = normalizeWindowChromeTheme(rawTheme)
     return setWindowChromeTheme?.(event.sender, theme)
   })
-  ipcMain.handle('desktop:help-action', async (_event, rawAction) => {
+  handle('desktop:help-action', main, async (_event, _surface, rawAction) => {
     const action = normalizeHelpAction(rawAction)
     await handleHelpAction(action)
     return true
   })
-  ipcMain.handle('desktop:tool-action', async (_event, rawAction) => {
+  handle('desktop:tool-action', main, async (_event, _surface, rawAction) => {
     const action = normalizeToolAction(rawAction)
     await handleToolAction(action)
     return true
   })
-  ipcMain.handle('desktop:star-prompt-claim', async () => await claimStarPrompt?.() === true)
-  ipcMain.handle('desktop:update-status', () => publicUpdateStatus(getUpdateController?.()?.getStatus?.()))
-  ipcMain.handle('desktop:update-check', () => getUpdateController?.()?.check?.({ manual: true }))
-  ipcMain.handle('desktop:update-install', () => getUpdateController?.()?.install?.())
+  handle('desktop:star-prompt-claim', main, async () => await claimStarPrompt?.() === true)
+  handle('desktop:update-status', main, () => publicUpdateStatus(getUpdateController?.()?.getStatus?.()))
+  handle('desktop:update-check', main, () => getUpdateController?.()?.check?.({ manual: true }))
+  handle('desktop:update-install', main, () => getUpdateController?.()?.install?.())
+  handle('desktop:skills-list', main, () => listSkills())
+  handle('desktop:notification-show', [main, extensions], (_event, _surface, value) => {
+    return showNotification(normalizeNotification(value))
+  })
   const publishStatus = async (status = controller.status) => {
     const window = getWindow()
     if (window && !window.isDestroyed()) window.webContents.send('desktop:status', await getPublicStatus(status))

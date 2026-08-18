@@ -16,12 +16,18 @@ export type TaskStatus = 'backlog' | 'todo' | 'running' | 'done' | 'failed'
 export interface ExecutionRecord {
   /** Execution attempt id (uuid). */
   id: string
+  /** Stable run reference; equal to id for v2-created attempts. */
+  runId?: string
+  /** Workspace chosen for this attempt; absent in legacy v1 rows. */
+  workspaceId?: string
   /** The dsh session that ran this attempt; absent until creation resolves. */
   sessionId: string | undefined
   /** When the run started (ms epoch). */
   startedAt: number
   /** When the run settled; absent while still running. */
   endedAt: number | undefined
+  /** v2 name for the settled instant; endedAt remains for v1 compatibility. */
+  finishedAt?: number
   /** Outcome once settled. */
   result: 'succeeded' | 'failed' | 'cancelled' | undefined
   /** Human failure text when the run failed (prompt rejection or agent error). */
@@ -158,6 +164,8 @@ export function startExecution(
 ): { task: TaskRecord; execution: ExecutionRecord } {
   const execution: ExecutionRecord = {
     id: executionId,
+    runId: executionId,
+    workspaceId: undefined,
     sessionId: undefined,
     startedAt: now,
     endedAt: undefined,
@@ -185,8 +193,8 @@ export function settleExecution(
   const index = task.executions.findIndex(execution => execution.id === executionId)
   if (index === -1) return task
   const execution = task.executions[index]
-  if (execution.endedAt !== undefined) return task
-  const settled: ExecutionRecord = { ...execution, endedAt: now, result: outcome, error }
+  if (execution.finishedAt !== undefined || execution.endedAt !== undefined) return task
+  const settled: ExecutionRecord = { ...execution, endedAt: now, finishedAt: now, result: outcome, error }
   const executions = [...task.executions]
   executions[index] = settled
   const status: TaskStatus = outcome === 'succeeded' ? 'done'

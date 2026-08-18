@@ -240,8 +240,8 @@ function installConversationSkillsPage() {
     state.status.textContent = '正在读取技能库…'
     state.list.replaceChildren()
     try {
-      if (typeof window.dshDesktop?.listExtensions !== 'function') throw new Error('desktop skill inventory is unavailable')
-      const inventory = await window.dshDesktop.listExtensions()
+      if (typeof window.dshDesktop?.listSkills !== 'function') throw new Error('desktop skill inventory is unavailable')
+      const inventory = await window.dshDesktop.listSkills()
       state.skills = normalizeConversationSkills(inventory?.skills, recentNames())
       state.loadedAt = Date.now()
       render()

@@ -3,18 +3,65 @@ import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
 import { registerExtensionIpc } from '../src/extension-ipc.mjs'
+import { DESKTOP_ERROR_CODES } from '../src/desktop-contract.mjs'
+import { DesktopSurfaceRegistry } from '../src/desktop-surfaces.mjs'
 
 class FakeIpcMain {
   handlers = new Map()
+  sender = {}
+  surfaceRegistry = {
+    assert: (sender, surface) => {
+      assert.equal(sender, this.sender)
+      assert.equal(surface, 'extensions')
+      return surface
+    },
+  }
 
   removeHandler(channel) {
     this.handlers.delete(channel)
   }
 
   handle(channel, handler) {
-    this.handlers.set(channel, handler)
+    this.handlers.set(channel, (...values) => {
+      if (values.length === 0) return handler({ sender: this.sender })
+      if (values[0] === undefined) values[0] = { sender: this.sender }
+      return handler(...values)
+    })
   }
 }
+
+test('extension IPC rejects a registered main renderer before sensitive work', async () => {
+  const handlers = new Map()
+  const ipcMain = {
+    handle: (channel, handler) => handlers.set(channel, handler),
+    removeHandler: (channel) => handlers.delete(channel),
+  }
+  const surfaceRegistry = new DesktopSurfaceRegistry()
+  const mainSender = {}
+  surfaceRegistry.register(mainSender, 'main')
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  const inventory = assert.fail
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    surfaceRegistry,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: { inventory },
+    controller: {},
+    ensureProfile: async () => {},
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+    pluginRecovery: new EventEmitter(),
+  })
+  await assert.rejects(
+    handlers.get('extensions:list')({ sender: mainSender }),
+    (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
+  )
+  unregister()
+})
 
 test('extension IPC exposes only renderer-safe QQ Bot state and forwards lifecycle events', async () => {
   const ipcMain = new FakeIpcMain()
@@ -56,8 +103,8 @@ test('extension IPC exposes only renderer-safe QQ Bot state and forwards lifecyc
   assert.equal(JSON.stringify(sent).includes('appSecret'), false)
   await ipcMain.handlers.get('extensions:community-open')(undefined, 'dsh-taffy-pet')
   assert.deepEqual(opened, ['https://github.com/zq123123667/dsh-taffy-pet'])
-  assert.throws(
-    () => ipcMain.handlers.get('extensions:community-open')(undefined, 'https://example.com'),
+  await assert.rejects(
+    ipcMain.handlers.get('extensions:community-open')(undefined, 'https://example.com'),
     /community plugin identifier/u,
   )
 
@@ -185,8 +232,8 @@ test('plugin update checks stay online and exact updates use the guarded transac
     'start',
     'commit',
   ])
-  assert.throws(
-    () => ipcMain.handlers.get('extensions:plugin-update')(undefined, { name: '@community/example' }),
+  await assert.rejects(
+    ipcMain.handlers.get('extensions:plugin-update')(undefined, { name: '@community/example' }),
     /invalid plugin update request/u,
   )
   unregister()
@@ -513,12 +560,12 @@ test('QQ Bot bind and unbind wait for plugin mutations while cancellation stays 
   await removalSignal
   await assert.rejects(async () => ipcMain.handlers.get('extensions:qqbot-bind')(), /plugin change/u)
   await assert.rejects(async () => ipcMain.handlers.get('extensions:qqbot-unbind')(), /plugin change/u)
-  assert.deepEqual(ipcMain.handlers.get('extensions:qqbot-cancel')(), { binding: false })
+  assert.deepEqual(await ipcMain.handlers.get('extensions:qqbot-cancel')(), { binding: false })
   assert.deepEqual(qqCalls, ['cancel'])
 
   releaseRemoval()
   await removal
-  assert.deepEqual(ipcMain.handlers.get('extensions:qqbot-bind')(), { binding: true })
+  assert.deepEqual(await ipcMain.handlers.get('extensions:qqbot-bind')(), { binding: true })
   assert.deepEqual(qqCalls, ['cancel', 'bind'])
   await unregister()
 })

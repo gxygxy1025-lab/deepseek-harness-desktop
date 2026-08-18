@@ -6,7 +6,7 @@ A hot-pluggable DeepSeek Harness (DSH) client GUI plugin: it adds a **task board
 
 - No DSH source modification: mounted as a cordis plugin + browser DOM extension (add-on shape identical to `dsh-web-ui/packages/skins/skin-center`).
 - Unmounting restores the original state; other managed segments (dsh-skin / skin-center / personal config) are unaffected.
-- Task data persists locally; it survives a page refresh and a DSH restart.
+- Task data prefers a profile-isolated Host file and falls back to the retained browser v1 ledger when the Host endpoint is unavailable.
 
 ## Features
 
@@ -16,6 +16,7 @@ A hot-pluggable DeepSeek Harness (DSH) client GUI plugin: it adds a **task board
 - **Real execution**: on "执行" (Run), the plugin connects a workspace session through the client runtime (`workspaces.connectWorkspace`, reusing a blank session or letting the host create one), names the session after the task title, and drives a real agent via `session.prompt([{ type: 'text', text }], 'queue')`; it then subscribes to that session's snapshot and, once the round really finishes, sets the card to 已完成/已失败 and records the execution result. The execution session appears in the session list and can be opened to view the real transcript.
 - **Status write-back**: card status (进行中 → 完成/失败) is driven by the real session state; after a page refresh/restart, leftover running tasks are auto-reconciled against the current session state (reconcile).
 - **Scheduled tasks**: the details panel can schedule a task — an enable switch + a 5-field cron expression (分 时 日 月 周, supporting `*` / `*/n` / `a-b` / comma lists) + common presets (daily 09:00, every hour, every 10 minutes, Mondays 09:00); enabling computes and persists the "下次运行时间" (next run time), and the card shows a scheduled marker; at the due time it automatically takes the same real-execution path (as manual run), and the execution session remains linkable.
+- **Host-file persistence**: schema v2 is stored under the active profile at `state/task-board/tasks-v2.json` through fixed loopback same-origin routes; writes are serialized and atomically published, corrupt files are preserved beside the ledger, and live changes fan out over SSE.
 - **System-prompt injection**: the host half (`src/index.ts`) registers a `plugin:task-board` section (order 200) via `SystemPrompt.section`, declaring this plugin's existence, capabilities, and limits to every agent — it is injected when the plugin is in the composition (after mount + DSH restart) and disappears when removed (after unmount + restart), so an agent needs no external docs to know how to work with this board.
 
 ## Directory structure
@@ -23,7 +24,7 @@ A hot-pluggable DeepSeek Harness (DSH) client GUI plugin: it adds a **task board
 ```
 package.json / tsconfig.json / tsdown.config.ts   # standalone repo build
 build/tsdown.client.ts + build/web/src/platform.ts # client bundle preset copied from the DSH checkout (kept in sync with the running version)
-src/index.ts / src/invariant.ts                    # host half: only injects SystemPrompt section (no other behavior)
+src/index.ts / src/host/*.ts                       # host half: SystemPrompt + profile file store + fixed HTTP/SSE routes
 src/client/index.ts                                # apply(ctx): wires runtime services + mounts DOM
 src/client/sidebar-entry.ts                        # sidebar entry injection (self-healing MutationObserver)
 src/client/board-mount.tsx                         # middle-column board mount + show/hide toggle
@@ -32,7 +33,7 @@ src/client/board.module.css                        # styles (--dsw-* tokens, ada
 src/core/tasks.ts                                  # task model + state machine (pure functions)
 src/core/schedule.ts                               # cron parsing + next-run time (pure functions)
 src/core/scheduler.ts                              # browser scheduler (ticks every minute to fire due tasks)
-src/core/store.ts                                  # persistence (TaskStore interface + localStorage impl)
+src/core/store.ts / src/client/host-store.ts       # persistence seam, Host client, localStorage fallback + migration
 src/core/execution.ts                              # real execution service (session connect/prompt/settlement watch)
 src/core/controller.ts                             # controller (ledger state, view state, navigation awareness)
 tests/*.spec.ts                                    # automated tests: storage/state transitions/execution trigger/cron/scheduling
@@ -43,11 +44,11 @@ scripts/dsh-task-board.js                          # one-click mount/unmount/sta
 
 - **No usable add-on slot in the sidebar**: the sidebar shell only declares two single slots, `sidebar.workspaces` / `sidebar.settings`, both already taken by ui-workspace / ui-settings; an external plugin cannot register a new slot (declaring means claiming, and duplicating throws). So the entry goes through the skin-precedent **DOM injection**, self-healed with a MutationObserver (when a React re-render touches the node it re-inserts within the same frame, no flicker).
 - **The middle column cannot be replaced through a slot**: the `conversation` slot is single and already taken by ui-conversation. The board view mounts on the center column (`[data-pane="conversation"]` on older shells, `[class*="centerCol"]` on the DSH 0.1.0-rc.6 AppFrame layout) as a tail child node (outside React's ownership), toggled via the `<html data-dsh-taskboard-active>` attribute, keeping the chat subtree below mounted and stateful.
-- **Persistence uses browser localStorage**: client plugins run in the browser and DSH has no browser-writable file channel (matching skin-center's research on `cordis.patch.yml`); localStorage is also how DSH's own client snapshot store (`createSnapshotStore` persist) persists.
+- **Persistence uses a bounded Host channel**: the host exposes only fixed ledger and event paths, resolves the file from `DSH_HOME` plus the configured profile, and never accepts a filesystem path from the browser. The client keeps localStorage v1 as a fallback and rollback source.
 - **Execution rides the client runtime**: `ctx.sessions.list` subscribes to session state (`running` / `byId`), `ctx.workspaces.connectWorkspace()` creates/reuses a session, `session.prompt()` drives a real agent, and `ctx.sessions.open()` jumps to the transcript.
 - **Background settlement relies on list reconciliation**: an unopened session has no chat-snapshot window (cold), so settlement keys off the session list — every list change reconciles running tasks; result judgment takes, in order, "missing from list → cancelled / still running → wait / chat snapshot visible → by lastAgentError / tail of raw history → a turn-error node proves failure / otherwise success", and reconciliation is idempotent.
-- **Scheduled tasks run in the browser scheduler**: the plugin is pure-client (no server channel), so "run at the due time" is done by the in-tab scheduler — a tick every minute, with an immediate catch-up tick when the page returns from the background; before firing it first moves "next run" forward to the next cron match so the same tick never fires twice; it does not fire early in page load (before the session-list baseline is ready), avoiding mis-execution. Limitation: the tab must stay open (schedules missed while closed are "miss = skip", and only already-deferred due tasks are caught up on the next open); a task that is 进行中 (in progress) skips the current due time and waits for the next cron match.
-- **Same-origin tabs share one ledger**: additions, edits, and deletions in any tab propagate to the others through storage events (`LocalStorageTaskStore.subscribeExternal`), so a task deleted in one tab can never keep firing from another tab's stale in-memory copy — nor be written back by that copy's later persistence (schedule roll-forward, execution settlement).
+- **Scheduled tasks run in the browser scheduler**: persistence is host-backed, but "run at the due time" remains an in-tab scheduler — a tick every minute, with an immediate catch-up tick when the page returns from the background; before firing it first moves "next run" forward to the next cron match so the same tick never fires twice; it does not fire early in page load (before the session-list baseline is ready), avoiding mis-execution. Limitation: the tab must stay open (schedules missed while closed are "miss = skip", and only already-deferred due tasks are caught up on the next open); a task that is 进行中 (in progress) skips the current due time and waits for the next cron match.
+- **Same-origin tabs share one ledger**: Host mutations emit SSE change events; local fallback mutations use browser storage events. Either channel reloads the newest ledger so a task deleted in one tab cannot keep firing or be written back from another tab's stale copy.
 
 ## Install
 
@@ -107,9 +108,19 @@ The rows registered in the profile manifest:
 
 ## Data storage location
 
-- The task ledger lives in browser localStorage under the key `dsh.taskBoard.v1` (origin `http://127.0.0.1:<dsh web port>`; same origin persists across refresh/restart).
-- Data is retained after unmount; to clear it, run `localStorage.removeItem("dsh.taskBoard.v1")` in the browser console.
-- The storage layer is the `TaskStore` interface (`src/core/store.ts`); it can later be swapped for IndexedDB or a host file channel without touching the upper logic.
+- The authoritative v2 ledger lives at `DSH_HOME/profiles/<profile>/state/task-board/tasks-v2.json`; `profileName` defaults to the running `DSH_PROFILE` (or `web`).
+- On first use with an empty Host ledger, v1 is copied from `dsh.taskBoard.v1`, read back, and verified by count plus content hash before migration is marked complete. The v1 key is not deleted in 2.4.x.
+- When the Host endpoint is unavailable, the board uses v1 localStorage. Host updates synchronize through SSE; there is no high-frequency storage poll.
+
+## Security model
+
+- Host routes are exact paths, accept loopback same-origin requests only, cap request bodies, and never accept profile names or filesystem paths from the browser.
+- The persisted execution rows contain task fields and session/workspace/run references and timestamps, not model messages, tool output, or complete transcripts.
+
+## Known limitations
+
+- Scheduling remains browser-side: a DSH page must stay open, missed closed-page runs are skipped, and this release adds no background scheduler or replay queue.
+- Task Presets, Worktree automation, background scheduling, and a public Task Board SDK are outside this contract.
 
 ## Manual verification steps
 
@@ -123,7 +134,7 @@ The rows registered in the profile manifest:
 ## Acceptance checklist
 
 - After mount, a "任务看板" (task board) entry appears in the sidebar; clicking toggles the board, and clicking a session item returns to the chat view
-- New task (title + description/Prompt); tasks remain after refresh/restart (localStorage persistence)
+- New task (title + description/Prompt); tasks remain after refresh/restart (profile Host file, localStorage fallback)
 - Click a card to open details (content + execution log); the details have "执行" (Run) and "删除" (Delete) buttons
 - Execution really starts a session (its transcript is visible in the session list); card status follows the real execution progress; the details can jump to the execution session
 - Delete has a confirm step, and the local store is synced-removed after deletion

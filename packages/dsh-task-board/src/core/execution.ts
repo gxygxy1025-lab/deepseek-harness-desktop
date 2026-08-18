@@ -71,7 +71,7 @@ export interface ExecutionEnvironment {
 
 /** Outcome events the service emits to the controller. */
 export type ExecutionEvent =
-  | { kind: 'started'; taskId: string; executionId: string; sessionId: string }
+  | { kind: 'started'; taskId: string; executionId: string; sessionId: string; workspaceId?: string }
   | { kind: 'settled'; taskId: string; executionId: string; outcome: 'succeeded' | 'failed' | 'cancelled'; error?: string }
 
 /** Human copy for a run failure. */
@@ -107,8 +107,8 @@ export class ExecutionService {
     onEvent: (event: ExecutionEvent) => void,
   ): Promise<void> {
     try {
-      const sessionId = await this.connectSession()
-      onEvent({ kind: 'started', taskId: task.id, executionId: execution.id, sessionId })
+      const { sessionId, workspaceId } = await this.connectSession()
+      onEvent({ kind: 'started', taskId: task.id, executionId: execution.id, sessionId, workspaceId })
       const driver = this.driverOf(sessionId)
       if (driver === undefined) {
         onEvent({ kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed', error: 'execution session is not ready' })
@@ -155,7 +155,7 @@ export class ExecutionService {
    */
   async reconcile(task: TaskRecord): Promise<ExecutionEvent | undefined> {
     const execution = task.executions[task.executions.length - 1]
-    if (execution === undefined || execution.sessionId === undefined || execution.endedAt !== undefined) return undefined
+    if (execution === undefined || execution.sessionId === undefined || execution.finishedAt !== undefined || execution.endedAt !== undefined) return undefined
     const list = this.env.sessions.list.getSnapshot()
     // The host list baseline has not arrived yet (page load): a session "not
     // found" now would be a false cancel. Wait for a later list change.
@@ -198,13 +198,13 @@ export class ExecutionService {
     }
   }
 
-  private async connectSession(): Promise<string> {
+  private async connectSession(): Promise<{ sessionId: string; workspaceId: string }> {
     const workspace = this.env.workspaces.list.getSnapshot()
     const workspaceId = workspace.recentWorkspaceId ?? workspace.items[0]?.workspaceId
     if (workspaceId === undefined) {
       throw new Error('no workspace available to run the task in')
     }
-    return this.env.workspaces.connectWorkspace(workspaceId)
+    return { sessionId: await this.env.workspaces.connectWorkspace(workspaceId), workspaceId }
   }
 
   private driverOf(sessionId: string): SessionDriver | undefined {

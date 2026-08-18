@@ -9,7 +9,7 @@
 
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readlinkSync, rmSync, existsSync, symlinkSync, lstatSync, realpathSync, chmodSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -75,20 +75,24 @@ describe('atomic patch verification', () => {
   })
 })
 
-/** A throwaway HOME with an empty .dsh dir; removed after all tests. */
+/** A throwaway HOME with an empty web profile; removed after all tests. */
 let home: string
 afterAll(() => {
   if (home !== undefined) rmSync(home, { recursive: true, force: true })
 })
 function fakeHome(): string {
   home = mkdtempSync(join(tmpdir(), 'skin-switch-test-'))
-  mkdirSync(join(home, '.dsh'), { recursive: true })
+  mkdirSync(join(home, '.dsh', 'profiles', 'web'), { recursive: true })
   // Mirror the CLI test: the profile symlink target is the real repo skin dir.
   mkdirSync(join(home, 'code', 'dsh-web-ui', 'packages', 'skins'), { recursive: true })
   return home
 }
 
-function patchPath(h: string): string {
+function patchPath(h: string, profile = 'web'): string {
+  return join(h, '.dsh', 'profiles', profile, 'cordis.patch.yml')
+}
+
+function legacyPatchPath(h: string): string {
   return join(h, '.dsh', 'cordis.patch.yml')
 }
 
@@ -290,7 +294,8 @@ describe('harness home resolution (issue #120: DSH_HOME)', () => {
       withEnv({ DSH_HOME: `  ${harness}  ` }, () => {
         expect(resolveHarnessHome(undefined, process.env)).toBe(harness)
         const paths = resolvePaths()
-        expect(paths.patchPath).toBe(join(harness, 'cordis.patch.yml'))
+        expect(paths.patchPath).toBe(join(harness, 'profiles', 'web', 'cordis.patch.yml'))
+        expect(paths.legacyPatchPath).toBe(join(harness, 'cordis.patch.yml'))
         expect(paths.profileModulesDir).toBe(join(harness, 'profiles', 'web', 'node_modules'))
       })
     } finally {
@@ -302,7 +307,7 @@ describe('harness home resolution (issue #120: DSH_HOME)', () => {
     const expected = join(homedir(), '.dsh')
     withEnv({ DSH_HOME: undefined }, () => {
       expect(resolveHarnessHome()).toBe(expected)
-      expect(resolvePaths().patchPath).toBe(join(expected, 'cordis.patch.yml'))
+      expect(resolvePaths().patchPath).toBe(join(expected, 'profiles', 'web', 'cordis.patch.yml'))
     })
     withEnv({ DSH_HOME: '   ' }, () => {
       expect(resolveHarnessHome()).toBe(expected)
@@ -315,7 +320,7 @@ describe('harness home resolution (issue #120: DSH_HOME)', () => {
     try {
       withEnv({ DSH_HOME: harness }, () => {
         const paths = resolvePaths(h, 'web')
-        expect(paths.patchPath).toBe(join(h, '.dsh', 'cordis.patch.yml'))
+        expect(paths.patchPath).toBe(join(h, '.dsh', 'profiles', 'web', 'cordis.patch.yml'))
         expect(paths.profileModulesDir).toBe(join(h, '.dsh', 'profiles', 'web', 'node_modules'))
       })
     } finally {
@@ -323,12 +328,13 @@ describe('harness home resolution (issue #120: DSH_HOME)', () => {
     }
   })
 
-  it('useSkin/currentSkin write and read the $DSH_HOME patch when no home is injected', () => {
+  it('useSkin/currentSkin write and read the active profile patch when no home is injected', () => {
     const dshHome = mkdtempSync(join(tmpdir(), 'skin-switch-use-dsh-home-'))
     try {
       withEnv({ DSH_HOME: dshHome }, () => {
         useSkin('official', {})
-        expect(existsSync(join(dshHome, 'cordis.patch.yml'))).toBe(true)
+        expect(existsSync(join(dshHome, 'profiles', 'web', 'cordis.patch.yml'))).toBe(true)
+        expect(existsSync(join(dshHome, 'cordis.patch.yml'))).toBe(false)
         expect(currentSkin(undefined, {})).toBe('none')
       })
     } finally {
@@ -378,7 +384,8 @@ describe('running profile resolution (issue #155: non-default profile)', () => {
       qq98: { ...qq98, dir: fakeDir },
     }
     withEnv({ DSH_SKIN_PROFILE: undefined, DSH_PROFILE: 'wui', DSH_HOME: undefined }, () => {
-      writeFileSync(patchPath(h), '')
+      mkdirSync(dirname(patchPath(h, 'wui')), { recursive: true })
+      writeFileSync(patchPath(h, 'wui'), '')
       const message = useSkin('qq98', { home: h, registry: fakeRegistry })
       expect(message).toContain('skin switched to "qq98"')
       // DSH_PROFILE (not the legacy hard-coded 'web') is the target profile.
@@ -407,7 +414,7 @@ describe('running profile resolution (issue #155: non-default profile)', () => {
       withEnv({ DSH_SKIN_PROFILE: undefined, DSH_PROFILE: undefined, DSH_HOME: undefined }, () => {
         const paths = resolvePaths(h)
         expect(paths.profileModulesDir).toBe(join(profileDir, 'node_modules'))
-        writeFileSync(patchPath(h), '')
+        writeFileSync(patchPath(h, 'wui'), '')
         useSkin('qq98', { home: h, registry: fakeRegistry })
         expect(readlinkSync(join(paths.profileModulesDir, qq98.pkg))).toBe(fakeDir)
         expect(currentSkin(undefined, { home: h, registry: fakeRegistry })).toBe('qq98')
@@ -436,7 +443,7 @@ describe('useSkin / currentSkin against a throwaway HOME', () => {
     expect(currentSkin(undefined, { home: h })).toBe('none')
   })
 
-  it('switching through skin center disables market-managed themes in the shared section', () => {
+  it('switching through skin center disables market-managed themes in the profile section', () => {
     const h = fakeHome()
     const patch = patchPath(h)
     writeFileSync(patch, `- id: retained\n\n${MANAGED_START}\n- id: dsh-liquid-glass\n  disabled: false\n- id: ui-skin-qq98\n  disabled: true\n${MANAGED_END}\n`)
@@ -457,6 +464,32 @@ describe('useSkin / currentSkin against a throwaway HOME', () => {
     useSkin('official', { home: h, registry: miniRegistry() })
 
     expect(readFileSync(patch, 'utf8')).not.toContain('[]')
+  })
+
+  it('never appends skin state to a clean global empty-list patch', () => {
+    const h = fakeHome()
+    const globalPatch = legacyPatchPath(h)
+    writeFileSync(globalPatch, '[]\n')
+
+    useSkin('official', { home: h, registry: miniRegistry() })
+
+    expect(readFileSync(globalPatch, 'utf8')).toBe('[]\n')
+    expect(readFileSync(patchPath(h), 'utf8')).toContain(MANAGED_START)
+  })
+
+  it.each([
+    ['an empty-list root', `[]\n\n${MANAGED_START}\n- id: ui-skin-xp\n  disabled: true\n${MANAGED_END}\n`, '[]\n'],
+    ['existing user YAML', `- id: retained-global\n  disabled: false\n\n${MANAGED_START}\n- id: ui-skin-xp\n  disabled: true\n${MANAGED_END}\n`, '- id: retained-global\n  disabled: false\n'],
+  ])('moves a legacy global managed block out of %s', (_label, legacy, expectedGlobal) => {
+    const h = fakeHome()
+    const globalPatch = legacyPatchPath(h)
+    writeFileSync(globalPatch, legacy)
+
+    useSkin('official', { home: h, registry: miniRegistry() })
+
+    expect(readFileSync(globalPatch, 'utf8')).toBe(expectedGlobal)
+    expect(readFileSync(globalPatch, 'utf8')).not.toContain(MANAGED_START)
+    expect(readFileSync(patchPath(h), 'utf8')).toContain(MANAGED_START)
   })
 
   it.skipIf(process.platform === 'win32')('useSkin preserves the permission bits of an existing patch file (0600 stays 0600)', () => {

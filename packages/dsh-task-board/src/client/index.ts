@@ -22,6 +22,7 @@ import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
 import { claimTaskboardApply, releaseTaskboardApply } from './apply-guard.ts'
 import { mountBoard } from './board-mount.tsx'
+import { selectPreferredTaskStore } from './host-store.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
 import { en, zh, type TaskBoardKey } from './locales.ts'
@@ -105,86 +106,105 @@ export function apply(ctx: ClientContext): void {
   // nothing mounts yet. Only an unavailable scope (no settings surface served)
   // falls back to the composition default (enabled).
   let uiDisposer: (() => void) | undefined
+  let mountPending = false
+  let mountGeneration = 0
+  let desiredEnabled = false
   const mountUi = (): void => {
-    if (uiDisposer !== undefined) return
-    const sessions = ctx.sessions
-    const workspaces = ctx.workspaces
-    const connection = ctx.get('connection') as ConnectionHandle
+    if (uiDisposer !== undefined || mountPending) return
+    mountPending = true
+    const generation = mountGeneration
+    void (async () => {
+      const sessions = ctx.sessions
+      const workspaces = ctx.workspaces
+      const connection = ctx.get('connection') as ConnectionHandle
 
-    // Core wiring: real runtime faces into the framework-free services.
-    const store = new LocalStorageTaskStore()
-    const exec = new ExecutionService({
-      sessions: {
-        list: sessions.list,
-        binding: id => sessions.binding(id as SessionId),
-      },
-      workspaces: {
-        list: workspaces.list,
-        connectWorkspace: id => workspaces.connectWorkspace(id as WorkspaceId),
-      },
-      history: {
-        loadTail: async sessionId => {
-          const response = await connection.api.sessions.history({
-            sessionId: sessionId as SessionId,
-            maxMessages: 20,
-          })
-          return response.result.ok
-            ? { events: response.result.value.events.map(entry => entry.event) }
-            : undefined
+      // HostStore is authoritative when reachable. The one-time v1 migration
+      // copies and verifies data but intentionally leaves localStorage intact.
+      const store = await selectPreferredTaskStore({ local: new LocalStorageTaskStore() })
+      const exec = new ExecutionService({
+        sessions: {
+          list: sessions.list,
+          binding: id => sessions.binding(id as SessionId),
         },
-      },
-    })
-    const controller = new BoardController({
-      store,
-      exec,
-      sessions: {
-        list: sessions.list,
-        open: id => sessions.open(id as SessionId),
-      },
-    })
-    controller.start()
+        workspaces: {
+          list: workspaces.list,
+          connectWorkspace: id => workspaces.connectWorkspace(id as WorkspaceId),
+        },
+        history: {
+          loadTail: async sessionId => {
+            const response = await connection.api.sessions.history({
+              sessionId: sessionId as SessionId,
+              maxMessages: 20,
+            })
+            return response.result.ok
+              ? { events: response.result.value.events.map(entry => entry.event) }
+              : undefined
+          },
+        },
+      })
+      const controller = new BoardController({
+        store,
+        exec,
+        sessions: {
+          list: sessions.list,
+          open: id => sessions.open(id as SessionId),
+        },
+      })
+      await controller.start()
+      if (generation !== mountGeneration || !desiredEnabled) {
+        controller.dispose()
+        return
+      }
 
-    // Scheduled runs: a browser-side heartbeat that triggers due tasks through
-    // the same run path as the manual Run button. The first tick is gated on
-    // the session list baseline so a page-load catch-up never fires into a
-    // not-yet-ready runtime; tab visibility recovery ticks immediately.
-    const scheduler = new SchedulerService({
-      tasks: () => controller.getSnapshot().tasks,
-      now: () => Date.now(),
-      runTask: id => controller.runTask(id),
-      applySchedule: (id, nextRunAt, lastTriggeredAt) =>
-        controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt),
-      ready: () => sessions.list.getSnapshot().phase === 'ready',
-      environment: {
-        addEventListener: (type, listener) => document.addEventListener(type, listener),
-        removeEventListener: (type, listener) => document.removeEventListener(type, listener),
-      },
+      // Scheduling remains browser-side by design; persistence moving to Host
+      // does not create a background scheduler or catch-up service.
+      const scheduler = new SchedulerService({
+        tasks: () => controller.getSnapshot().tasks,
+        now: () => Date.now(),
+        runTask: id => controller.runTask(id),
+        applySchedule: (id, nextRunAt, lastTriggeredAt) =>
+          controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt),
+        ready: () => sessions.list.getSnapshot().phase === 'ready',
+        environment: {
+          addEventListener: (type, listener) => document.addEventListener(type, listener),
+          removeEventListener: (type, listener) => document.removeEventListener(type, listener),
+        },
+      })
+      scheduler.start()
+
+      const disposers: Array<() => void> = []
+      try {
+        disposers.push(mountSidebarEntry(controller))
+        disposers.push(mountBoard(controller))
+      } catch (error) {
+        // DOM failures degrade the board, never the GUI.
+        console.error('[dsh-task-board] mount failed:', error)
+      }
+
+      uiDisposer = () => {
+        for (const dispose of disposers.splice(0)) dispose()
+        scheduler.dispose()
+        controller.dispose()
+        uiDisposer = undefined
+      }
+    })().catch((error) => {
+      console.error('[dsh-task-board] HostStore initialization failed:', error)
+    }).finally(() => {
+      mountPending = false
+      if (desiredEnabled && uiDisposer === undefined) mountUi()
     })
-    scheduler.start()
-
-    const disposers: Array<() => void> = []
-    try {
-      disposers.push(mountSidebarEntry(controller))
-      disposers.push(mountBoard(controller))
-    } catch (error) {
-      // DOM failures degrade the board, never the GUI.
-      console.error('[dsh-task-board] mount failed:', error)
-    }
-
-    uiDisposer = () => {
-      for (const dispose of disposers.splice(0)) dispose()
-      scheduler.dispose()
-      controller.dispose()
-      uiDisposer = undefined
-    }
   }
   const syncEnabled = (): void => {
     const snapshot = settingsScope.getSnapshot()
     const enabled = snapshot.status === 'ready'
       ? snapshot.value?.enabled ?? true
       : snapshot.status === 'unavailable'
+    desiredEnabled = enabled
     if (enabled) mountUi()
-    else uiDisposer?.()
+    else {
+      mountGeneration += 1
+      uiDisposer?.()
+    }
   }
   settingsScope.subscribe(syncEnabled)
   syncEnabled()

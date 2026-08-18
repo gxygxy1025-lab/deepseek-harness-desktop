@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-export const STAR_PROMPT_VERSION = '2.3.0'
+export const STAR_PROMPT_VERSION = '2.4.0'
 const STAR_PROMPT_SURFACE_ID = 'dsh-desktop-star-prompt'
 
 function normalizeShownVersions(value) {
@@ -55,7 +55,12 @@ export const STAR_PROMPT_CSS = `
   display: grid;
   place-items: center;
   padding: 24px;
-  color: var(--dsw-alias-label-primary, #10131a);
+  --dsh-star-fg: #10131a;
+  --dsh-star-muted: #626a78;
+  --dsh-star-tertiary: #818896;
+  --dsh-star-layer: #f5f7fb;
+  --dsh-star-hover: #eef1f6;
+  color: var(--dsw-alias-label-primary, var(--dsh-star-fg));
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   opacity: 0;
   pointer-events: none;
@@ -63,6 +68,20 @@ export const STAR_PROMPT_CSS = `
 }
 
 #${STAR_PROMPT_SURFACE_ID}[hidden] { display: none; }
+
+html[data-dsh-desktop-chrome-theme="dark"] #${STAR_PROMPT_SURFACE_ID} {
+  --dsh-star-fg: #e6f0f5;
+  --dsh-star-muted: #9fb3c0;
+  --dsh-star-tertiary: #7e95a1;
+  --dsh-star-layer: #13232e;
+  --dsh-star-hover: #1a303d;
+}
+
+html[data-dsh-desktop-chrome-theme="dark"] #${STAR_PROMPT_SURFACE_ID} .dsh-star-panel {
+  background:
+    radial-gradient(circle at 50% -10%, rgba(92, 133, 255, 0.2), transparent 42%),
+    var(--dsw-alias-bg-base, #0f1a22);
+}
 #${STAR_PROMPT_SURFACE_ID}[data-open="true"] { opacity: 1; pointer-events: auto; }
 
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-mask {
@@ -123,14 +142,14 @@ export const STAR_PROMPT_CSS = `
   height: 34px;
   border: 0;
   border-radius: 50%;
-  color: var(--dsw-alias-label-secondary, #687080);
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #f2f4f8) 84%, transparent);
+  color: var(--dsw-alias-label-secondary, var(--dsh-star-muted));
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, var(--dsh-star-layer)) 84%, transparent);
   cursor: pointer;
   font: 400 21px/32px "Segoe UI", sans-serif;
   transition: transform 180ms ease, background 180ms ease;
 }
 
-#${STAR_PROMPT_SURFACE_ID} .dsh-star-close:hover { transform: rotate(8deg); background: var(--dsw-alias-interactive-bg-hover, #e9edf5); }
+#${STAR_PROMPT_SURFACE_ID} .dsh-star-close:hover { transform: rotate(8deg); background: var(--dsw-alias-interactive-bg-hover, var(--dsh-star-hover)); }
 
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-visual {
   position: relative;
@@ -226,10 +245,10 @@ export const STAR_PROMPT_CSS = `
   min-height: 25px;
   margin: 0 0 10px;
   padding: 0 12px;
-  border: 1px solid rgba(38, 49, 72, 0.06);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary, #4d78e8) 24%, transparent);
   border-radius: 999px;
-  color: #0e3074;
-  background: #e4edfd;
+  color: var(--dsw-alias-state-business-primary, #4d78e8);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4d78e8) 11%, transparent);
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.08em;
@@ -237,7 +256,7 @@ export const STAR_PROMPT_CSS = `
 
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-title {
   margin: 0;
-  color: var(--dsw-alias-label-primary, #11151d);
+  color: var(--dsw-alias-label-primary, var(--dsh-star-fg));
   font-size: clamp(23px, 3vw, 28px);
   font-weight: 720;
   letter-spacing: -0.035em;
@@ -247,7 +266,7 @@ export const STAR_PROMPT_CSS = `
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-copy {
   margin: 14px auto 0;
   max-width: 390px;
-  color: var(--dsw-alias-label-secondary, #626a78);
+  color: var(--dsw-alias-label-secondary, var(--dsh-star-muted));
   font-size: 14px;
   line-height: 1.75;
 }
@@ -257,8 +276,8 @@ export const STAR_PROMPT_CSS = `
   padding: 10px 12px;
   border: 0;
   border-radius: 11px;
-  color: var(--dsw-alias-label-secondary, #626a78);
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #f7f8fa) 90%, #fff1c8);
+  color: var(--dsw-alias-label-secondary, var(--dsh-star-muted));
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, var(--dsh-star-layer)) 92%, #f4c15d);
   font-size: 12px;
   line-height: 1.62;
   text-align: left;
@@ -270,7 +289,7 @@ export const STAR_PROMPT_CSS = `
   justify-content: center;
   gap: 8px;
   margin-top: 17px;
-  color: var(--dsw-alias-label-tertiary, #818896);
+  color: var(--dsw-alias-label-tertiary, var(--dsh-star-tertiary));
   font: 11px/1.3 "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
 }
 
@@ -303,8 +322,8 @@ export const STAR_PROMPT_CSS = `
   border: 0;
   border-radius: 999px;
   color: #ffffff;
-  background: #4d6bfe;
-  box-shadow: 0 10px 24px rgba(77, 107, 254, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  background: var(--dsw-alias-button-info-fill, #4d78e8);
+  box-shadow: 0 10px 24px rgba(77, 120, 232, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.16);
   transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
 
@@ -319,7 +338,7 @@ export const STAR_PROMPT_CSS = `
   transition: transform 520ms ease;
 }
 
-#${STAR_PROMPT_SURFACE_ID} .dsh-star-primary:hover { transform: translateY(-2px); background: #3d5bef; box-shadow: 0 14px 30px rgba(77, 107, 254, 0.32); }
+#${STAR_PROMPT_SURFACE_ID} .dsh-star-primary:hover { transform: translateY(-2px); background: var(--dsw-alias-button-info-hover, #3d64d8); box-shadow: 0 14px 30px rgba(77, 120, 232, 0.32); }
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-primary:hover::before { transform: translateX(120%); }
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-primary:disabled { opacity: 1; cursor: progress; }
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-primary svg { z-index: 1; width: 17px; height: 17px; }
@@ -327,17 +346,17 @@ export const STAR_PROMPT_CSS = `
 
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-community {
   min-height: 39px;
-  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1, #dfe4ee) 72%, #7393e5);
-  color: #405fae;
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #f5f7fb) 88%, #e8eeff);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1, #dfe4ee) 55%, var(--dsw-alias-state-business-primary, #4d78e8));
+  color: var(--dsw-alias-state-business-primary, #405fae);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4d78e8) 8%, var(--dsw-alias-bg-layer-2, var(--dsh-star-layer)));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-community:hover {
   transform: translateY(-1px);
-  border-color: #7191df;
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #f5f7fb) 76%, #dfe8ff);
+  border-color: var(--dsw-alias-state-business-primary, #7191df);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4d78e8) 13%, var(--dsw-alias-bg-layer-2, var(--dsh-star-layer)));
 }
 
 #${STAR_PROMPT_SURFACE_ID} .dsh-star-community svg { width: 17px; height: 17px; }
@@ -346,11 +365,11 @@ export const STAR_PROMPT_CSS = `
   min-height: 34px;
   padding: 0 14px;
   border: 0;
-  color: var(--dsw-alias-label-secondary, #697180);
+  color: var(--dsw-alias-label-secondary, var(--dsh-star-muted));
   background: transparent;
 }
 
-#${STAR_PROMPT_SURFACE_ID} .dsh-star-secondary:hover { color: var(--dsw-alias-label-primary, #222832); background: var(--dsw-alias-interactive-bg-hover, #f0f2f6); }
+#${STAR_PROMPT_SURFACE_ID} .dsh-star-secondary:hover { color: var(--dsw-alias-label-primary, var(--dsh-star-fg)); background: var(--dsw-alias-interactive-bg-hover, var(--dsh-star-hover)); }
 
 #${STAR_PROMPT_SURFACE_ID} button:focus-visible { outline: 2px solid #5c83eb; outline-offset: 3px; }
 
@@ -446,7 +465,7 @@ export function createStarPromptSurfaceScript({ forceVisible = false, showDelayM
     content.className = 'dsh-star-content';
     const kicker = document.createElement('p');
     kicker.className = 'dsh-star-kicker';
-    kicker.textContent = '2.3.0 · 社区支持';
+    kicker.textContent = '2.4.0 · 社区支持';
     const title = document.createElement('h2');
     title.id = 'dsh-star-title';
     title.className = 'dsh-star-title';

@@ -11,11 +11,12 @@ import { fileURLToPath } from "node:url";
 * `dsh-skin` binary on PATH (the bug zhu1090093659/dsh-web-ui#5: "dsh-skin
 * CLI not found on PATH").
 *
-* `use` owns the `dsh-skin managed` section of the harness-home
+* `use` owns the `dsh-skin managed` section of the active profile's
 * `cordis.patch.yml` (atomic rewrite, hot-reloaded by the DSH config watcher
 * within seconds, no restart) and the profile node_modules symlink that makes
 * the selected skin resolvable from the running profile. `current` reads the
-* active back.
+* active state back. The harness-home patch is only read for one-time cleanup
+* of state written there by Desktop 2.2/2.3.
 *
 * The behaviour/text is a 1:1 port of scripts/dsh-skin (`use`/`current`;
 * workspace assets live in packages/skins/<id>). The skin registry is
@@ -226,7 +227,7 @@ function stripManaged(patch) {
 	if (end === -1) throw new Error("managed skin section is unterminated; fix the harness cordis.patch.yml");
 	return patch.slice(0, start) + patch.slice(end + 30);
 }
-/** Loader ids another skin manager wrote into the shared authority section. */
+/** Loader ids another skin manager wrote into the profile authority section. */
 function externalManagedSkinIds(patch, registry = loadRegistry()) {
 	const start = patch.indexOf(MANAGED_START);
 	if (start === -1) return [];
@@ -282,7 +283,7 @@ function currentActive(patch, registry = loadRegistry()) {
 }
 /**
 * Whether a cordis.patch.yml text contains an `insert:` list row for `id`
-* (the row a skin bundle would contribute, as opposed to a home-layer
+* (the row a skin bundle would contribute, as opposed to a profile-layer
 * `disabled: true` id-target row). The patch format is small and line-based;
 * a YAML parser dependency is not worth the weight for this one probe.
 * @param patch - raw patch text.
@@ -360,7 +361,7 @@ function isDshSkinsCarrierPath(dir) {
 }
 /**
 * Whether the active skin's loader entry is already provided by the skin
-* package's own bundle patch, so the home-layer managed section must NOT add
+* package's own bundle patch, so the profile-layer managed section must NOT add
 * a duplicate insert row (issue #148: `duplicate loader entry id`).
 *
 * True when:
@@ -377,7 +378,7 @@ function isDshSkinsCarrierPath(dir) {
 * particular, the node_modules symlinks ensureSymlink creates for the
 * skin-center itself are pure resolvability links — they are never
 * reconciled — and must not be mistaken for installed bundles, otherwise
-* useSkin skips the home insert row and no skin ever activates.
+* useSkin skips the profile insert row and no skin ever activates.
 *
 * Only when the manifest is absent/unreadable does the function fall back to
 * the structural probe (a real installed dir, or a symlink to an independent
@@ -510,11 +511,12 @@ function resolveProfile(optsProfile, env = process.env, cwd = process.cwd(), pro
 */
 function resolvePaths(home, profile) {
 	const harnessHome = resolveHarnessHome(home);
-	const activeProfile = resolveProfile(profile, process.env, process.cwd(), join(harnessHome, "profiles"));
+	const profileDir = join(harnessHome, "profiles", resolveProfile(profile, process.env, process.cwd(), join(harnessHome, "profiles")));
 	return {
-		patchPath: join(harnessHome, "cordis.patch.yml"),
-		profileModulesDir: join(harnessHome, "profiles", activeProfile, "node_modules"),
-		profileManifestPath: join(harnessHome, "profiles", activeProfile, "package.json")
+		patchPath: join(profileDir, "cordis.patch.yml"),
+		legacyPatchPath: join(harnessHome, "cordis.patch.yml"),
+		profileModulesDir: join(profileDir, "node_modules"),
+		profileManifestPath: join(profileDir, "package.json")
 	};
 }
 function readPatch(patchPath) {
@@ -523,6 +525,14 @@ function readPatch(patchPath) {
 	} catch {
 		return "";
 	}
+}
+/** Remove only the obsolete global managed block while leaving every user or
+* official DSH row in place. Empty legacy files are normalized to an empty
+* YAML sequence so `dsh web` never sees a null document after the repair. */
+function removeLegacyManagedSection(patch) {
+	const stripped = stripManaged(patch);
+	if (stripped.trim() === "") return "[]\n";
+	return `${stripped.trimEnd()}\n`;
 }
 function waitForVerificationRead(delayMs) {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
@@ -745,11 +755,18 @@ function useSkin(name, opts = {}) {
 		renderRegistry = registryWithProfileWiring(registry, paths.profileModulesDir, paths.profileManifestPath);
 	}
 	const currentPatch = readPatch(paths.patchPath);
-	const externalIds = externalManagedSkinIds(currentPatch, renderRegistry);
+	const legacyPatch = readPatch(paths.legacyPatchPath);
+	const legacyHasManagedSection = legacyPatch.includes(MANAGED_START);
+	const externalIds = /* @__PURE__ */ new Set([...externalManagedSkinIds(currentPatch, renderRegistry), ...legacyHasManagedSection ? externalManagedSkinIds(legacyPatch, renderRegistry) : []]);
 	const strippedPatch = stripLegacySkinRows(stripManaged(currentPatch));
 	const next = `${(strippedPatch.trim() === "[]" ? "" : strippedPatch).replace(/\s+$/, "")}\n\n${renderManaged(official ? null : name, renderRegistry, externalIds)}\n`;
 	writePatchAtomic(paths.patchPath, next);
 	verifyPatchWrite(paths.patchPath, next);
+	if (legacyHasManagedSection) {
+		const cleanedLegacyPatch = removeLegacyManagedSection(legacyPatch);
+		writePatchAtomic(paths.legacyPatchPath, cleanedLegacyPatch);
+		verifyPatchWrite(paths.legacyPatchPath, cleanedLegacyPatch);
+	}
 	return official ? "restored the official stock look — the config watcher applies it within seconds; refresh the page to see it." : `skin switched to "${name}" — the config watcher applies it within seconds; refresh the page (or the manifest re-fetches) to see it.`;
 }
 /**
@@ -774,7 +791,7 @@ function currentSkin(patch, opts = {}) {
 * try-on (the GUI never embeds the ~700KB of art base64 in its own bundle).
 * The host half switches skins in-process (src/skin-switch.ts) — an ESM port
 * of the `dsh-skin` CLI that owns the `dsh-skin managed` section of
-* `~/.dsh/cordis.patch.yml` and the profile symlink, exactly like
+* the active profile's `cordis.patch.yml` and profile symlink, exactly like
 * `dsh-skin use <name>` — so no `dsh-skin` binary is required on PATH
 * (the bug zhu1090093659/dsh-web-ui#5). The config watcher hot-reloads the
 * patch within seconds and the frontend reloads the page to pick up the new

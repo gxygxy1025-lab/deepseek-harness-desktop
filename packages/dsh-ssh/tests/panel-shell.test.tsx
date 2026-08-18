@@ -35,6 +35,43 @@ describe('SshPanel shell', () => {
     await act(async () => { root.unmount() })
   })
 
+  it('keeps terminal state mounted while another SSH tab is active', async () => {
+    const api = {
+      listHosts: vi.fn(async () => [{
+        alias: 'production',
+        host: 'server.example',
+        port: 22,
+        user: 'ops',
+        auth: 'agent' as const,
+        keyReady: false,
+        proxyJump: [],
+        tags: [],
+        createdAt: 1,
+        updatedAt: 1,
+      }]),
+    } as unknown as SshApi
+    const controller = { close: vi.fn() } as unknown as PanelController
+    const root = createRoot(document.body.appendChild(document.createElement('div')))
+
+    await act(async () => { root.render(<SshPanel api={api} controller={controller} />) })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { document.querySelector<HTMLButtonElement>('#dsh-ssh-tab-terminal')?.click() })
+    const hostSelect = document.querySelector<HTMLSelectElement>('select')
+    expect(hostSelect).not.toBeNull()
+    await act(async () => {
+      if (hostSelect === null) return
+      hostSelect.value = 'production'
+      hostSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    await act(async () => { document.querySelector<HTMLButtonElement>('#dsh-ssh-tab-hosts')?.click() })
+    expect(hostSelect?.closest('div[hidden]')).not.toBeNull()
+    await act(async () => { document.querySelector<HTMLButtonElement>('#dsh-ssh-tab-terminal')?.click() })
+    expect(document.querySelector<HTMLSelectElement>('select')?.value).toBe('production')
+
+    await act(async () => { root.unmount() })
+  })
+
   it('exposes a proper multiplication-sign close control', async () => {
     const api = { listHosts: vi.fn(async () => []) } as unknown as SshApi
     const close = vi.fn()
