@@ -123,6 +123,8 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /\$selfPid/u)
   assert.match(cleanup, /IndexOf\(\$root, \$comparison\)/u)
   assert.match(cleanup, /Get-CommandLineVariants/u)
+  assert.match(cleanup, /\\u62D2\\u7EDD\\u8BBF\\u95EE/u)
+  assert.doesNotMatch(cleanup, /[^\x00-\x7F]/u)
   assert.match(cleanup, /FromBase64String/u)
   assert.match(cleanup, /\[System\.Text\.Encoding\]::Unicode/u)
   assert.doesNotMatch(cleanup, /\.MainModule|\$process\.Path/u)
