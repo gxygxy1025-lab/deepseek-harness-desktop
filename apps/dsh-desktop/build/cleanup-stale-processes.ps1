@@ -502,7 +502,7 @@ namespace DshInstaller
         ) -WindowStyle Hidden -PassThru)
       } catch {
         $script:receiptProtocolFailed = $true
-        if ($_.Exception.Message -match '(?i)access.*denied|permission|拒绝访问') {
+        if ($_.Exception.Message -match '(?i)access.*denied|permission|\u62D2\u7EDD\u8BBF\u95EE') {
           $script:permissionDenied = $true
         }
         Write-Output "receipt-launch-error pid=$($runningMain.ProcessId): $($_.Exception.Message)"
@@ -581,7 +581,7 @@ namespace DshInstaller
       try {
         Stop-Process -Id $target.ProcessId -Force -ErrorAction Stop
       } catch {
-        if ($_.Exception.Message -match '(?i)access.*denied|permission|拒绝访问') {
+        if ($_.Exception.Message -match '(?i)access.*denied|permission|\u62D2\u7EDD\u8BBF\u95EE') {
           $script:permissionDenied = $true
         }
         Write-Output "stop-error pid=$($target.ProcessId): $($_.Exception.Message)"
