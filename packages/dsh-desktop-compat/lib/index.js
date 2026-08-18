@@ -65,8 +65,7 @@ function appendDisabledRows(text, ids) {
 }
 function replaceSection(text, section) {
 	const bounds = sectionBounds(text);
-	const rawOutside = bounds === null ? text.trim() : `${text.slice(0, bounds.start)}${text.slice(bounds.end)}`.trim();
-	const outside = rawOutside === "[]" ? "" : rawOutside;
+	const outside = (bounds === null ? text.trim() : `${text.slice(0, bounds.start)}${text.slice(bounds.end)}`.trim()).split(/\r?\n/u).filter((line) => !/^[ \t]*\[\]$/u.test(line)).join("\n").trim();
 	return outside ? `${outside}\n\n${section}\n` : `${section}\n`;
 }
 function writeAtomic(path, content) {
