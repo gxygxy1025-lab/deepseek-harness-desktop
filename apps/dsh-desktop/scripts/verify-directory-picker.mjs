@@ -9,7 +9,7 @@ import { _electron as electron } from 'playwright'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
-const runtimeReadyTimeoutMs = packagedExecutable ? 120_000 : 60_000
+const runtimeReadyTimeoutMs = packagedExecutable || process.env.CI ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-directory-picker-e2e-'))
 const dshHome = resolve(temporary, 'dsh-home')
 let electronApp
@@ -41,6 +41,7 @@ try {
   await page.waitForSelector('#dsh-desktop-window-chrome')
 
   const addWorkspace = page.getByRole('button', { name: /add workspace|添加工作区/u })
+  await addWorkspace.waitFor({ state: 'visible', timeout: runtimeReadyTimeoutMs })
   assert.equal(await addWorkspace.count(), 1, 'add workspace button not found')
   await addWorkspace.dispatchEvent('click')
 
