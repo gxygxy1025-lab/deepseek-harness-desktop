@@ -7,18 +7,26 @@ import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
 import { _electron as electron } from 'playwright'
 
+import { STAR_PROMPT_VERSION } from '../src/star-prompt.mjs'
+
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
-const runtimeReadyTimeoutMs = packagedExecutable || process.env.CI ? 180_000 : 60_000
+const runtimeReadyTimeoutMs = packagedExecutable || process.env.CI ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-directory-picker-e2e-'))
 const dshHome = resolve(temporary, 'dsh-home')
+const userData = resolve(temporary, 'user-data')
 let electronApp
 
 try {
   await mkdir(dshHome, { recursive: true })
+  await mkdir(userData, { recursive: true })
   await writeFile(
     resolve(dshHome, 'settings.yaml'),
     "ui-onboarding:\n  welcomeNoticeVersion: '2026-08-13.1'\n",
+  )
+  await writeFile(
+    resolve(userData, 'star-prompt-state.json'),
+    `${JSON.stringify({ schemaVersion: 1, shownVersions: [STAR_PROMPT_VERSION] }, null, 2)}\n`,
   )
   electronApp = await electron.launch({
     executablePath: packagedExecutable || electronPath,
@@ -26,7 +34,7 @@ try {
     cwd: appDir,
     env: {
       ...process.env,
-      DSH_DESKTOP_USER_DATA: resolve(temporary, 'user-data'),
+      DSH_DESKTOP_USER_DATA: userData,
       DSH_HOME: dshHome,
     },
   })
