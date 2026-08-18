@@ -39,6 +39,13 @@ try {
     },
   })
   const page = await electronApp.firstWindow()
+  const rendererEvents = []
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      rendererEvents.push(`[console:${message.type()}] ${message.text()}`)
+    }
+  })
+  page.on('pageerror', (error) => rendererEvents.push(`[pageerror] ${error.message}`))
   try {
     await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
   } catch (error) {
@@ -53,7 +60,23 @@ try {
     await addWorkspace.waitFor({ state: 'visible', timeout: runtimeReadyTimeoutMs })
   } catch (error) {
     const runtimeLog = await readFile(resolve(temporary, 'user-data', 'logs', 'runtime.log'), 'utf8').catch(() => '')
+    const profilePatch = await readFile(resolve(dshHome, 'profiles', 'desktop', 'cordis.patch.yml'), 'utf8').catch(() => '')
+    const rendererState = await page.evaluate(() => ({
+      buttons: [...document.querySelectorAll('button')].map((button) => ({
+        ariaLabel: button.getAttribute('aria-label'),
+        display: getComputedStyle(button).display,
+        height: button.getBoundingClientRect().height,
+        text: button.textContent?.trim(),
+        visibility: getComputedStyle(button).visibility,
+        width: button.getBoundingClientRect().width,
+      })),
+      pluginStyles: [...document.querySelectorAll('style[data-plugin]')]
+        .map((style) => style.dataset.plugin),
+    })).catch(() => ({ unavailable: true }))
     console.error(`directory picker surface missing at ${page.url()}: ${(await page.locator('body').innerText().catch(() => '')).slice(-2_000) || '(unavailable)'}`)
+    console.error(`renderer state: ${JSON.stringify(rendererState)}`)
+    console.error(`recent renderer events:\n${rendererEvents.slice(-50).join('\n') || '(none)'}`)
+    console.error(`desktop profile patch:\n${profilePatch.slice(-4_000) || '(unavailable)'}`)
     console.error(`recent runtime log:\n${runtimeLog.slice(-4_000) || '(no runtime log)'}`)
     throw error
   }
