@@ -96,6 +96,7 @@ export function registerDesktopIpc({
   handleHelpAction,
   handleToolAction,
   setWindowChromeTheme,
+  claimStarPrompt,
   getUpdateController,
 }) {
   const channels = [
@@ -105,6 +106,7 @@ export function registerDesktopIpc({
     'desktop:help-action',
     'desktop:tool-action',
     'desktop:window-chrome-theme',
+    'desktop:star-prompt-claim',
     'desktop:update-status',
     'desktop:update-check',
     'desktop:update-install',
@@ -149,6 +151,7 @@ export function registerDesktopIpc({
     await handleToolAction(action)
     return true
   })
+  ipcMain.handle('desktop:star-prompt-claim', async () => await claimStarPrompt?.() === true)
   ipcMain.handle('desktop:update-status', () => publicUpdateStatus(getUpdateController?.()?.getStatus?.()))
   ipcMain.handle('desktop:update-check', () => getUpdateController?.()?.check?.({ manual: true }))
   ipcMain.handle('desktop:update-install', () => getUpdateController?.()?.install?.())

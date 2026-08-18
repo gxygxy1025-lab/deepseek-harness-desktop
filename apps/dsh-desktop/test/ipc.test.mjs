@@ -75,11 +75,13 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
       return browserWindow
     },
     setWindowChromeTheme: () => {},
+    claimStarPrompt: async () => true,
     getUpdateController: () => undefined,
   })
 
   assert.equal(await handlers.get('desktop:help-action')({}, 'community'), true)
   assert.equal(await handlers.get('desktop:tool-action')({}, 'extensions'), true)
+  assert.equal(await handlers.get('desktop:star-prompt-claim')({}), true)
   assert.deepEqual(handled, ['community', 'extensions'])
   unregister()
 })

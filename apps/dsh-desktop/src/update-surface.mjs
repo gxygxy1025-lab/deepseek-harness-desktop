@@ -17,9 +17,9 @@ export const UPDATE_SURFACE_CSS = `
 #${UPDATE_SURFACE_ID} .dsh-update-mask {
   position: absolute;
   inset: 0;
-  background: var(--dsw-alias-bg-mask-1, rgba(17, 24, 39, 0.28));
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
+  background: var(--dsw-alias-bg-mask-1, rgba(17, 24, 39, 0.32));
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+  backdrop-filter: blur(10px) saturate(125%);
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-panel {
@@ -32,6 +32,7 @@ export const UPDATE_SURFACE_CSS = `
   border-radius: 18px;
   background: var(--dsw-alias-bg-base, #ffffff);
   box-shadow: var(--dsw-shadow-lv3, 0 0 1px rgba(0, 0, 0, 0.2), 0 0 4px rgba(0, 0, 0, 0.02), 0 12px 32px rgba(0, 0, 0, 0.08));
+  animation: dsh-update-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-header {
@@ -84,9 +85,12 @@ export const UPDATE_SURFACE_CSS = `
 
 #${UPDATE_SURFACE_ID} .dsh-update-version span {
   padding: 4px 8px;
-  border: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
+  border: 0;
   border-radius: 6px;
   background: var(--dsw-alias-bg-layer-2, #f7f8fa);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-notes {
@@ -139,11 +143,11 @@ export const UPDATE_SURFACE_CSS = `
 
 #${UPDATE_SURFACE_ID} .dsh-update-action[data-primary="true"] {
   min-height: 34px;
-  padding-inline: 14px;
-  border-color: var(--dsw-alias-state-business-primary, #4d78e8);
-  border-radius: 9px;
+  padding-inline: 18px;
+  border-color: transparent;
+  border-radius: 999px;
   color: var(--dsw-alias-label-primary-foreground, #ffffff);
-  background: var(--dsw-alias-button-info-fill, #4d78e8);
+  background: var(--dsw-alias-button-info-fill, #0f1115);
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-close:hover,
@@ -152,7 +156,7 @@ export const UPDATE_SURFACE_CSS = `
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-action[data-primary="true"]:hover {
-  background: var(--dsw-alias-button-info-hover, #416ad3);
+  background: var(--dsw-alias-button-info-hover, #2b3038);
 }
 
 #${UPDATE_SURFACE_ID} button:focus-visible {
@@ -160,8 +164,14 @@ export const UPDATE_SURFACE_CSS = `
   outline-offset: 2px;
 }
 
+@keyframes dsh-update-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #${UPDATE_SURFACE_ID} * { transition: none !important; }
+  #${UPDATE_SURFACE_ID} .dsh-update-panel { animation: none !important; }
 }
 `
 

@@ -18,12 +18,13 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 如果这个项目对你有帮助，欢迎在 [GitHub 仓库](https://github.com/ningbainb/deepseek-harness-desktop) 点 Star，帮助更多桌面版用户发现它。
 
-### 最新版：2.2.0
+### 最新版：2.3.0
 
-`desktop-v2.2.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.2.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.2.0/DeepSeek-Harness-Desktop-Setup-2.2.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.2.0/SHA256SUMS.txt)
+`desktop-v2.3.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.3.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/SHA256SUMS.txt)
 
 | 版本 | 主要更新 |
 | --- | --- |
+| **2.3.0** | 新增只出现一次的 GitHub Star 动画引导与“加入社群”反馈入口；重构单一安装检查，兼容 0.1.9 直接升级，修复旧目录误报并避免同名进程和外部插件后代误阻塞。 |
 | **2.2.0** | 隐藏 Windows 终端及其后代窗口；升级时自动清理旧应用和插件后台、迁移可识别旧依赖与旧安全模式误判；重启复用端口，安全模式支持可见提示与一键恢复。 |
 | **2.1.0** | 新增国内更新镜像自动测速与回退、插件快照/自动隔离/安全模式三层容灾；统一皮肤持久化，修复升级文件占用、隐藏命令框、中文工作区重启循环，并从工具菜单直接打开扩展坞。 |
 | **2.0.0** | 修复取消后排队消息滞留与运行时损坏循环；新增 Skills 菜单、模型 API 有界重试、思考区吸顶和 SSH 实时监控；统一 Harness 原生视觉并完善粒子鲸鱼启动页。 |

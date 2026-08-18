@@ -1,6 +1,6 @@
 # DeepSeek Harness Desktop
 
-> DeepSeek Harness Desktop 2.1 is a community-maintained, open-source Windows desktop distribution for DeepSeek Harness. It preserves the complete Harness Web Surface and adds measured mainland-China update mirrors, three-layer plugin recovery, safe mode, unified skin persistence, reliable Windows lifecycle management, plugins, 11 skins, and mobile remote access.
+> DeepSeek Harness Desktop 2.3 is a community-maintained, open-source Windows desktop distribution for DeepSeek Harness. It preserves the complete Harness Web Surface and adds measured mainland-China update mirrors, three-layer plugin recovery, safe mode, unified skin persistence, reliable Windows lifecycle management, plugins, 11 skins, and mobile remote access.
 
 ## Canonical website
 
@@ -8,7 +8,7 @@
 
 ## Download
 
-- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.2.0-x64.exe
+- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe
 - Latest release notes and checksums: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest
 
 ## Source and documentation
@@ -21,8 +21,8 @@
 ## Key facts
 
 - Supported systems: Windows 10 and Windows 11, x64
-- Current release: v2.2.0
-- v2.2.0 hides terminal descendants, cleans up attributed old app/plugin processes, migrates recognized legacy dependencies, reuses the runtime port, and requires strong evidence before isolating a plugin
+- Current release: v2.3.0
+- v2.3.0 adds a one-time GitHub Star prompt with a community feedback action and consolidates legacy installer checks for reliable direct upgrades from 0.1.9
 - The bundled Skin Center includes 11 selectable skins
 - Node.js is bundled; end users do not need to install it separately
 - The project is a community edition and is not an official DeepSeek release

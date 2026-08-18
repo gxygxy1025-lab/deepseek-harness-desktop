@@ -72,6 +72,7 @@ html[data-dsh-desktop-chrome-theme="light"] {
   --dsh-desktop-chrome-highlight: transparent;
   --dsh-desktop-chrome-sheen: transparent;
   --dsh-desktop-chrome-shadow: none;
+  --dsh-desktop-chrome-menu-hover: rgba(15, 23, 42, 0.06);
 }
 
 html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
@@ -110,17 +111,19 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
 #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button {
   height: 28px;
   padding: 0 10px;
-  border: 1px solid rgba(173, 230, 244, 0.16);
-  border-radius: 14px;
+  border: 0;
+  border-radius: 8px;
+  min-height: 0;
+  box-shadow: none;
+  font: inherit;
   color: inherit;
-  background: rgba(255, 255, 255, 0.055);
+  background: transparent;
   cursor: pointer;
 }
 
 #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button:hover,
 #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button[aria-expanded="true"] {
-  border-color: rgba(173, 230, 244, 0.32);
-  background: rgba(255, 255, 255, 0.11);
+  background: var(--dsh-desktop-chrome-menu-hover, rgba(255, 255, 255, 0.1));
 }
 
 #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button:focus-visible,
@@ -138,8 +141,11 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
   max-width: calc(100vw - 20px);
   padding: 6px;
   border: 1px solid rgba(173, 230, 244, 0.2);
-  border-radius: 10px;
-  background: rgba(6, 16, 23, 0.97);
+  border-radius: 12px;
+  background: rgba(6, 16, 23, 0.82);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  animation: dsh-chrome-menu-in 160ms cubic-bezier(0.2, 0.75, 0.2, 1);
   box-shadow: 0 16px 40px rgba(0, 3, 7, 0.42);
   color: #e7f7fb;
 }
@@ -176,7 +182,7 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
 
 html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-popup {
   border-color: rgba(51, 65, 85, 0.16);
-  background: rgba(250, 252, 255, 0.98);
+  background: rgba(250, 252, 255, 0.88);
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
   color: #172033;
 }
@@ -210,6 +216,15 @@ html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chr
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+}
+
+@keyframes dsh-chrome-menu-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-popup { animation: none; }
 }
 `
 

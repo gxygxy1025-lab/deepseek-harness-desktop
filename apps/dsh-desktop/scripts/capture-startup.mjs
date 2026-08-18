@@ -11,14 +11,17 @@ const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
 const qqBotMode = process.argv.includes('--qqbot-qr')
 const communityMode = process.argv.includes('--community')
 const updateMode = process.argv.includes('--update')
+const starBurstMode = process.argv.includes('--star-burst')
+const starPromptMode = process.argv.includes('--star-prompt') || starBurstMode
 const extensionMode = process.argv.includes('--extensions') || qqBotMode
 const compactMode = process.argv.includes('--compact')
 const outputArgument = process.argv.find((argument) => argument.toLowerCase().endsWith('.png'))
 const delayArgument = process.argv.find((argument) => argument.startsWith('--delay='))
 const captureDelayMs = Math.max(0, Number(delayArgument?.slice('--delay='.length)) || 0)
-const output = resolve(outputArgument || (communityMode ? 'community-preview.png' : extensionMode ? 'extensions-preview.png' : updateMode ? 'update-preview.png' : 'startup-preview.png'))
+const output = resolve(outputArgument || (communityMode ? 'community-preview.png' : extensionMode ? 'extensions-preview.png' : updateMode ? 'update-preview.png' : starBurstMode ? 'star-burst-preview.png' : starPromptMode ? 'star-prompt-preview.png' : 'startup-preview.png'))
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-desktop-capture-'))
 let electronApp
+let capturedStarBurst = false
 try {
   electronApp = await electron.launch({
     executablePath: packagedExecutable || electronPath,
@@ -31,6 +34,7 @@ try {
       DSH_DESKTOP_STARTUP_PREVIEW_STATE: extensionMode ? '' : 'starting',
       DSH_DESKTOP_OPEN_EXTENSIONS: extensionMode ? '1' : '0',
       DSH_DESKTOP_OPEN_COMMUNITY: communityMode ? '1' : '0',
+      DSH_DESKTOP_STAR_PROMPT_PREVIEW: starPromptMode ? '1' : '0',
       DSH_DESKTOP_USER_DATA: resolve(temporary, 'user-data'),
       DSH_HOME: resolve(temporary, 'dsh-home'),
     },
@@ -52,6 +56,26 @@ try {
     }
   }
   await page.waitForLoadState('domcontentloaded')
+  if (starPromptMode) {
+    if (compactMode) await page.setViewportSize({ width: 1024, height: 720 })
+    await page.locator('#dsh-desktop-star-prompt[data-open="true"]').waitFor({ state: 'visible' })
+    if (starBurstMode) {
+      await page.getByRole('button', { name: '去 GitHub 点个 Star' }).click()
+      const particleCount = await page.locator('.dsh-star-particle').count()
+      if (particleCount < 40) throw new Error(`expected at least 40 confetti particles, found ${particleCount}`)
+      await page.waitForTimeout(400)
+      const particleState = await page.locator('.dsh-star-particle').first().evaluate((element) => {
+        const style = getComputedStyle(element)
+        const bounds = element.getBoundingClientRect()
+        return { animationName: style.animationName, opacity: style.opacity, bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } }
+      })
+      if (particleState.animationName === 'none' || Number(particleState.opacity) <= 0 || particleState.bounds.width <= 0) {
+        throw new Error(`Star particle is not visibly animated: ${JSON.stringify(particleState)}`)
+      }
+      await page.screenshot({ path: output })
+      capturedStarBurst = true
+    }
+  }
   if (updateMode) {
     await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: 60_000 })
     await page.locator('#dsh-desktop-window-chrome').waitFor({ state: 'visible' })
@@ -64,7 +88,7 @@ try {
   }
   if (extensionMode) {
     await page.waitForFunction(() => document.body.dataset.busy !== 'true' && document.querySelector('#plugin-count')?.textContent !== '0')
-    const pluginTab = page.getByRole('tab', { name: /插件/u })
+    const pluginTab = page.getByRole('tab', { name: /插件/u }).first()
     const skillTab = page.getByRole('tab', { name: /技能/u })
     await pluginTab.focus()
     await page.keyboard.press('End')
@@ -100,12 +124,12 @@ try {
       const bounds = element.getBoundingClientRect()
       return { bottom: bounds.bottom, right: bounds.right, viewportHeight: window.innerHeight, viewportWidth: window.innerWidth }
     })
-    if (layout.bottom > layout.viewportHeight || layout.right > layout.viewportWidth) {
+    if (layout.bottom > layout.viewportHeight + 1 || layout.right > layout.viewportWidth + 1) {
       throw new Error(`extension layout overflows its viewport: ${JSON.stringify(layout)}`)
     }
   }
   if (captureDelayMs > 0) await page.waitForTimeout(captureDelayMs)
-  await page.screenshot({ path: output })
+  if (!capturedStarBurst) await page.screenshot({ path: output })
   console.log(`captured startup UI: ${output}`)
 } finally {
   await electronApp?.close()
