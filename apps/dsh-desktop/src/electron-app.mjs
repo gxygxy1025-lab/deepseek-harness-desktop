@@ -31,6 +31,7 @@ import { DesktopPluginRecovery, PluginRecoveryStore } from './plugin-recovery.mj
 import { BUILTIN_BUNDLES, ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
 import { persistRuntimePort, selectPreferredRuntimePort } from './runtime-port.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
+import { installStarPromptSurface, StarPromptStore } from './star-prompt.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
 import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
@@ -68,6 +69,11 @@ export function secondaryWindowWebPreferences({ preload } = {}) {
     webSecurity: true,
     spellcheck: false,
   }
+}
+
+export function requestsUpdateShutdown(commandLine = [], additionalData) {
+  return additionalData?.shutdownForUpdate === true
+    || commandLine.includes('--shutdown-for-update')
 }
 
 export async function ensurePnpmCommandShim({ directory, executable, pnpmCli }) {
@@ -220,10 +226,25 @@ export async function startElectronApp(metadata) {
   const electron = await import('electron')
   const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, safeStorage, screen, shell } = electron
   if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
-  if (!app.requestSingleInstanceLock()) {
+  const initialUpdateShutdownRequest = requestsUpdateShutdown(process.argv)
+  let updateShutdownRequested = initialUpdateShutdownRequest
+  let requestUpdateShutdown
+  let mainWindow
+  if (!app.requestSingleInstanceLock({ shutdownForUpdate: initialUpdateShutdownRequest })) {
     app.quit()
     return
   }
+  app.on('second-instance', (_event, commandLine, _workingDirectory, additionalData) => {
+    if (requestsUpdateShutdown(commandLine, additionalData)) {
+      updateShutdownRequested = true
+      requestUpdateShutdown?.()
+      return
+    }
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  })
 
   app.setName(metadata.productName)
   app.setAppUserModelId(metadata.appId)
@@ -247,6 +268,7 @@ export async function startElectronApp(metadata) {
   const userData = app.getPath('userData')
   const logsDirectory = join(userData, 'logs')
   const logStore = new BoundedLogStore({ directory: logsDirectory })
+  const starPromptStore = new StarPromptStore({ path: join(userData, 'star-prompt-state.json') })
   await logStore.append(`[startup] application-ready=${Math.round(applicationReadyAt - applicationStartedAt)}ms`)
   const launchSafeModeRequested = await launchRequestsSafeMode()
   if (launchSafeModeRequested) await logStore.append('[plugin-recovery] safe mode requested at launch')
@@ -379,7 +401,7 @@ export async function startElectronApp(metadata) {
 
   const statePath = join(userData, 'window-state.json')
   const state = await loadWindowState(statePath, screen.getAllDisplays())
-  let mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     ...state,
     minWidth: 720,
     minHeight: 540,
@@ -416,6 +438,11 @@ export async function startElectronApp(metadata) {
   const removeUpdateSurface = installUpdateSurface({
     browserWindow: mainWindow,
     onError: (error) => void logStore.append(`[update-surface] ${error.message}`),
+  })
+  const removeStarPromptSurface = installStarPromptSurface({
+    browserWindow: mainWindow,
+    forceVisible: process.env.DSH_DESKTOP_STAR_PROMPT_PREVIEW === '1',
+    onError: (error) => void logStore.append(`[star-prompt] ${error.message}`),
   })
   if (state.maximized) mainWindow.maximize()
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
@@ -468,6 +495,14 @@ export async function startElectronApp(metadata) {
       const target = BrowserWindow.fromWebContents(sender)
       if (!target || target.isDestroyed()) return undefined
       return setWindowChromeTheme(target, theme)
+    },
+    claimStarPrompt: async () => {
+      try {
+        return await starPromptStore.claim(desktopVersion)
+      } catch (error) {
+        await logStore.append(`[star-prompt] failed to persist display state: ${error instanceof Error ? error.message : String(error)}`)
+        return false
+      }
     },
     getUpdateController: () => updateController,
   })
@@ -651,7 +686,9 @@ export async function startElectronApp(metadata) {
     }
   })
 
-  mainWindow.once('ready-to-show', () => mainWindow.show())
+  mainWindow.once('ready-to-show', () => {
+    if (!updateShutdownRequested) mainWindow.show()
+  })
   mainWindow.on('closed', () => { mainWindow = undefined })
   if (launchSafeModeRequested) await pluginRecovery.prepareSafeMode()
   const holdRuntime = process.env.DSH_DESKTOP_HOLD_STARTUP === '1'
@@ -669,13 +706,6 @@ export async function startElectronApp(metadata) {
   }
   releaseStartupSurface()
 
-  app.on('second-instance', () => {
-    if (!mainWindow) return
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.show()
-    mainWindow.focus()
-  })
-
   let quitInProgress = false
   const shutdownLifecycle = createDesktopShutdownLifecycle({
     prepareStop: () => unregisterExtensionIpc.quiesce(),
@@ -689,6 +719,7 @@ export async function startElectronApp(metadata) {
         () => updateController?.dispose(),
         () => updateController?.off('status', publishUpdateStatus),
         removeUpdateSurface,
+        removeStarPromptSurface,
         removeConversationSkills,
         removeConversationPolish,
         removeMainWindowChrome,
@@ -706,6 +737,23 @@ export async function startElectronApp(metadata) {
       }
     },
   })
+
+  requestUpdateShutdown = () => {
+    if (shutdownLifecycle.runtimeStopped) {
+      app.quit()
+      return
+    }
+    if (quitInProgress) return
+    quitInProgress = true
+    void shutdownLifecycle.shutdown()
+      .then(() => app.quit())
+      .catch((error) => {
+        quitInProgress = false
+        const message = error instanceof Error ? error.message : String(error)
+        void logStore.append(`[shutdown] installer request deferred because runtime stop failed: ${message}`).catch(() => {})
+      })
+  }
+  if (updateShutdownRequested) requestUpdateShutdown()
 
   let autoUpdater
   if (app.isPackaged && process.platform === 'win32' && process.env.DSH_DESKTOP_DISABLE_UPDATES !== '1') {

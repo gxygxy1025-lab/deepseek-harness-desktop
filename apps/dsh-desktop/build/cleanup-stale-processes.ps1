@@ -1,43 +1,23 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string] $InstallDirectory
+  [string] $InstallDirectory,
+
+  [string] $InstallRegistryKey = '',
+
+  [string] $UninstallRegistryKey = ''
 )
 
 $ErrorActionPreference = 'Stop'
-$maxAttempts = 8
-$retryDelayMs = 250
+$mainExecutableName = 'DeepSeek Harness Desktop.exe'
+$shutdownProtocolMarker = 'resources\update-shutdown-v1'
+$gracefulShutdownTimeoutMs = 7000
+$forceAttempts = 12
+$retryDelayMs = 400
 
 try {
-  $installInputRoot = [System.IO.Path]::GetFullPath($InstallDirectory).TrimEnd([char[]]@('\', '/'))
-  # Keep the provider-resolved spelling as well as the caller's spelling. The
-  # native canonicalizer below expands every 8.3 segment before comparison.
-  $installRoot = (Get-Item -LiteralPath $InstallDirectory -ErrorAction Stop).FullName.TrimEnd([char[]]@('\', '/'))
-  $volumeRoot = [System.IO.Path]::GetPathRoot($installRoot).TrimEnd([char[]]@('\', '/'))
-  if ([string]::IsNullOrWhiteSpace($installRoot) -or $installRoot -eq $volumeRoot) {
-    exit 0
-  }
-
-  $mainExecutable = Join-Path $installRoot 'DeepSeek Harness Desktop.exe'
-  $resourceRoot = Join-Path $installRoot 'resources'
-  $resourceInputRoot = Join-Path $installInputRoot 'resources'
-  if (-not (Test-Path -LiteralPath $mainExecutable -PathType Leaf)) {
-    exit 0
-  }
-
-  $resourcePrefix = "$resourceRoot\"
-  $resourceInputPrefix = "$resourceInputRoot\"
-  $comparison = [System.StringComparison]::OrdinalIgnoreCase
-  $candidatePaths = @($mainExecutable)
-  if (Test-Path -LiteralPath $resourceRoot -PathType Container) {
-    $candidatePaths += @(Get-ChildItem -LiteralPath $resourceRoot -Recurse -File -Filter '*.exe' -ErrorAction SilentlyContinue | ForEach-Object {
-      [System.IO.Path]::GetFullPath($_.FullName)
-    })
-  }
-  $candidatePaths = @($candidatePaths | Sort-Object -Unique)
   if (-not ('DshInstaller.ProcessPath' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -46,40 +26,12 @@ namespace DshInstaller
     public static class ProcessPath
     {
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
-        private const uint TH32CS_SNAPPROCESS = 0x00000002;
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        private struct PROCESSENTRY32
-        {
-            public uint dwSize;
-            public uint cntUsage;
-            public uint th32ProcessID;
-            public IntPtr th32DefaultHeapID;
-            public uint th32ModuleID;
-            public uint cntThreads;
-            public uint th32ParentProcessID;
-            public int pcPriClassBase;
-            public uint dwFlags;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-            public string szExeFile;
-        }
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr OpenProcess(
             uint processAccess,
             bool inheritHandle,
             uint processId);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool Process32First(IntPtr snapshot, ref PROCESSENTRY32 entry);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool Process32Next(IntPtr snapshot, ref PROCESSENTRY32 entry);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -148,163 +100,276 @@ namespace DshInstaller
                 CloseHandle(process);
             }
         }
-
-        public static Dictionary<uint, uint> GetParentProcessIds()
-        {
-            Dictionary<uint, uint> parents = new Dictionary<uint, uint>();
-            IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-            if (snapshot == new IntPtr(-1))
-            {
-                return parents;
-            }
-
-            try
-            {
-                PROCESSENTRY32 entry = new PROCESSENTRY32();
-                entry.dwSize = (uint) Marshal.SizeOf<PROCESSENTRY32>();
-                if (!Process32First(snapshot, ref entry))
-                {
-                    return parents;
-                }
-                do
-                {
-                    parents[entry.th32ProcessID] = entry.th32ParentProcessID;
-                    entry.dwSize = (uint) Marshal.SizeOf<PROCESSENTRY32>();
-                }
-                while (Process32Next(snapshot, ref entry));
-                return parents;
-            }
-            finally
-            {
-                CloseHandle(snapshot);
-            }
-        }
     }
 }
 '@
   }
 
-  $canonicalResourceRoot = [DshInstaller.ProcessPath]::Canonicalize($resourceRoot).TrimEnd([char[]]@('\', '/'))
-  $canonicalResourcePrefix = "$canonicalResourceRoot\"
-  $canonicalResourceInputRoot = [DshInstaller.ProcessPath]::Canonicalize($resourceInputRoot).TrimEnd([char[]]@('\', '/'))
-  $canonicalResourceInputPrefix = "$canonicalResourceInputRoot\"
-  $candidatePathSet = [System.Collections.Generic.HashSet[string]]::new(
+  $comparison = [System.StringComparison]::OrdinalIgnoreCase
+  $installRoots = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
   )
-  foreach ($candidatePath in $candidatePaths) {
-    $relativePath = $candidatePath.Substring($installRoot.Length).TrimStart([char[]]@('\', '/'))
-    $inputCandidatePath = Join-Path $installInputRoot $relativePath
-    foreach ($pathVariant in @(
-      $candidatePath,
-      $inputCandidatePath,
-      [DshInstaller.ProcessPath]::Canonicalize($candidatePath),
-      [DshInstaller.ProcessPath]::Canonicalize($inputCandidatePath)
+  $installRootReferences = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+
+  function Add-InstallRoot([string] $path) {
+    if ([string]::IsNullOrWhiteSpace($path)) {
+      return
+    }
+    try {
+      $fullPath = if ([System.IO.Path]::IsPathRooted($path)) {
+        $path.TrimEnd([char[]]@('\', '/'))
+      } else {
+        [System.IO.Path]::GetFullPath($path).TrimEnd([char[]]@('\', '/'))
+      }
+      $canonicalPath = [DshInstaller.ProcessPath]::Canonicalize($fullPath).TrimEnd([char[]]@('\', '/'))
+      $volumeRoot = [System.IO.Path]::GetPathRoot($canonicalPath).TrimEnd([char[]]@('\', '/'))
+      if (-not [string]::IsNullOrWhiteSpace($canonicalPath) -and $canonicalPath -ne $volumeRoot) {
+        [void] $installRoots.Add($canonicalPath)
+        [void] $installRootReferences.Add($fullPath)
+      }
+    } catch {
+      # A stale registry value must not turn into a false process warning.
+    }
+  }
+
+  function Get-UninstallerDirectory([string] $uninstallString) {
+    if ([string]::IsNullOrWhiteSpace($uninstallString)) {
+      return $null
+    }
+    $match = [System.Text.RegularExpressions.Regex]::Match($uninstallString, '^\s*"([^"]+)"')
+    $uninstallerPath = if ($match.Success) {
+      $match.Groups[1].Value
+    } else {
+      ($uninstallString -split '\s+', 2)[0]
+    }
+    try {
+      [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($uninstallerPath))
+    } catch {
+      $null
+    }
+  }
+
+  Add-InstallRoot $InstallDirectory
+  foreach ($hive in @('HKEY_CURRENT_USER', 'HKEY_LOCAL_MACHINE')) {
+    if (-not [string]::IsNullOrWhiteSpace($InstallRegistryKey)) {
+      $installState = Get-ItemProperty -LiteralPath "Registry::$hive\$InstallRegistryKey" -ErrorAction SilentlyContinue
+      Add-InstallRoot $installState.InstallLocation
+    }
+    if (-not [string]::IsNullOrWhiteSpace($UninstallRegistryKey)) {
+      $uninstallState = Get-ItemProperty -LiteralPath "Registry::$hive\$UninstallRegistryKey" -ErrorAction SilentlyContinue
+      Add-InstallRoot (Get-UninstallerDirectory $uninstallState.UninstallString)
+    }
+  }
+
+  $existingRoots = @($installRoots | Where-Object {
+    Test-Path -LiteralPath $_ -PathType Container
+  })
+  if ($existingRoots.Count -eq 0) {
+    exit 0
+  }
+
+  $rootVariants = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+  foreach ($reference in $installRootReferences) {
+    if (Test-Path -LiteralPath $reference -PathType Container) {
+      [void] $rootVariants.Add($reference)
+    }
+  }
+  foreach ($root in $existingRoots) {
+    $installItem = Get-Item -LiteralPath $root -ErrorAction SilentlyContinue
+    foreach ($variant in @(
+      $root,
+      $installItem.FullName,
+      [DshInstaller.ProcessPath]::Canonicalize($root),
+      [DshInstaller.ProcessPath]::Canonicalize($installItem.FullName)
     )) {
-      if (-not [string]::IsNullOrWhiteSpace($pathVariant)) {
-        [void] $candidatePathSet.Add($pathVariant)
+      if (-not [string]::IsNullOrWhiteSpace($variant)) {
+        [void] $rootVariants.Add($variant.TrimEnd([char[]]@('\', '/')))
       }
     }
   }
 
-  function Get-OwnedProcesses {
-    # QueryFullProcessImageName uses a bounded native call and avoids both WMI
-    # enumeration and the blocking MainModule/Path property on protected tasks.
-    $parents = [DshInstaller.ProcessPath]::GetParentProcessIds()
-    $inventory = @(foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
-      $path = [DshInstaller.ProcessPath]::TryGet([uint32] $process.Id)
-      if (-not $path) {
+  function Get-Ownership([string] $path) {
+    if ([string]::IsNullOrWhiteSpace($path)) {
+      return $null
+    }
+    $pathVariants = @($path, [DshInstaller.ProcessPath]::Canonicalize($path))
+    foreach ($pathVariant in $pathVariants) {
+      if ([string]::IsNullOrWhiteSpace($pathVariant)) {
         continue
       }
-      $canonicalPath = [DshInstaller.ProcessPath]::Canonicalize($path)
-      $resourceChild = (
-        $path.StartsWith($resourcePrefix, $comparison) -or
-        $path.StartsWith($resourceInputPrefix, $comparison) -or
-        $canonicalPath.StartsWith($canonicalResourcePrefix, $comparison) -or
-        $canonicalPath.StartsWith($canonicalResourceInputPrefix, $comparison)
-      )
-      $knownExecutable = $candidatePathSet.Contains($path) -or $candidatePathSet.Contains($canonicalPath)
-      [pscustomobject]@{
-        ProcessId = [uint32] $process.Id
-        ParentProcessId = if ($parents.ContainsKey([uint32] $process.Id)) {
-          $parents[[uint32] $process.Id]
-        } else {
-          [uint32] 0
+      foreach ($root in $rootVariants) {
+        $mainExecutable = Join-Path $root $mainExecutableName
+        if ($pathVariant.Equals($mainExecutable, $comparison)) {
+          return [pscustomobject]@{ Kind = 'main'; Root = $root }
         }
-        ExecutablePath = $path
-        ResourceChild = $resourceChild
-        DirectlyOwned = $knownExecutable -or $resourceChild
-      }
-    })
-
-    $ownedProcessIds = [System.Collections.Generic.HashSet[uint32]]::new()
-    foreach ($row in $inventory) {
-      if ($row.DirectlyOwned) {
-        [void] $ownedProcessIds.Add($row.ProcessId)
+        $resourcePrefix = "$(Join-Path $root 'resources')\"
+        if ($pathVariant.StartsWith($resourcePrefix, $comparison)) {
+          return [pscustomobject]@{ Kind = 'resource'; Root = $root }
+        }
       }
     }
+    $null
+  }
 
-    # Community plugins can launch system cmd, PowerShell, Node, package-manager
-    # prepare hooks, or other helpers outside the install directory. Attribute
-    # those processes by ancestry from a verified Desktop/runtime root instead
-    # of matching broad process names.
-    do {
-      $addedDescendant = $false
-      foreach ($row in $inventory) {
-        if (
-          -not $ownedProcessIds.Contains($row.ProcessId) -and
-          $ownedProcessIds.Contains($row.ParentProcessId)
-        ) {
-          [void] $ownedProcessIds.Add($row.ProcessId)
-          $addedDescendant = $true
-        }
-      }
-    } while ($addedDescendant)
-
-    @(foreach ($row in $inventory) {
-      if (-not $ownedProcessIds.Contains($row.ProcessId)) {
+  function Get-DirectInstallProcesses {
+    @(foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
+      $path = [DshInstaller.ProcessPath]::TryGet([uint32] $process.Id)
+      $ownership = Get-Ownership $path
+      if (-not $ownership) {
         continue
       }
-      $depth = 0
-      $cursor = $row
-      while ($depth -lt 128 -and $ownedProcessIds.Contains($cursor.ParentProcessId)) {
-        $depth += 1
-        $parentId = $cursor.ParentProcessId
-        $cursor = $inventory | Where-Object { $_.ProcessId -eq $parentId } | Select-Object -First 1
-        if (-not $cursor) {
+      [pscustomobject]@{
+        ProcessId = [uint32] $process.Id
+        ExecutablePath = $path
+        Kind = $ownership.Kind
+        Root = $ownership.Root
+      }
+    })
+  }
+
+  # Old runtimes may host descendants (hidden PowerShell/CMD/Node) outside the install
+  # directory. They still block file replacement through working-directory handles or
+  # loaded modules, so attribute them by an install-root reference on the command line.
+  # 2.2 hosts its runtime through powershell -EncodedCommand, where the install path
+  # only exists inside the Base64 payload, so decode those payloads before matching.
+  # Path-only attribution keeps unrelated same-host processes (an official web runtime
+  # using ~/.dsh, same-name apps elsewhere, this script) untouched.
+  $selfPid = [uint32] $PID
+
+  function Get-CommandLineVariants([string] $commandLine) {
+    $variants = [System.Collections.Generic.List[string]]::new()
+    if ([string]::IsNullOrWhiteSpace($commandLine)) {
+      return , $variants
+    }
+    $variants.Add($commandLine)
+    foreach ($match in [System.Text.RegularExpressions.Regex]::Matches(
+      $commandLine,
+      '(?i)-e(?:c|nc(?:odedcommand)?)?\s+"?([A-Za-z0-9+/=]{16,})"?'
+    )) {
+      try {
+        $decoded = [System.Text.Encoding]::Unicode.GetString(
+          [System.Convert]::FromBase64String($match.Groups[1].Value)
+        )
+        if (-not [string]::IsNullOrWhiteSpace($decoded)) {
+          $variants.Add($decoded)
+        }
+      } catch {
+        # Not a Base64 encoded command; the plaintext variant already covers it.
+      }
+    }
+    return , $variants
+  }
+
+  function Get-AttributedInstallProcesses([System.Collections.Generic.HashSet[uint32]] $directProcessIds) {
+    @(foreach ($cim in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+      $processId = [uint32] $cim.ProcessId
+      if ($processId -eq $selfPid -or $directProcessIds.Contains($processId)) {
+        continue
+      }
+      # TryGet can fail on elevated processes; the WMI executable path is a fallback
+      # so such processes are still reported instead of failing the file copy later.
+      $ownership = Get-Ownership $cim.ExecutablePath
+      if ($ownership) {
+        [pscustomobject]@{
+          ProcessId = $processId
+          ExecutablePath = $cim.ExecutablePath
+          Kind = $ownership.Kind
+          Root = $ownership.Root
+        }
+        continue
+      }
+      foreach ($variant in (Get-CommandLineVariants $cim.CommandLine)) {
+        $matchedRoot = $null
+        foreach ($root in $rootVariants) {
+          if ($variant.IndexOf($root, $comparison) -ge 0) {
+            $matchedRoot = $root
+            break
+          }
+        }
+        if ($null -ne $matchedRoot) {
+          [pscustomobject]@{
+            ProcessId = $processId
+            ExecutablePath = if ($cim.ExecutablePath) { $cim.ExecutablePath } else { $cim.Name }
+            Kind = 'attributed'
+            Root = $matchedRoot
+          }
           break
         }
       }
-      [pscustomobject]@{
-        ProcessId = $row.ProcessId
-        ExecutablePath = $row.ExecutablePath
-        Priority = ($depth * 2) + [int] $row.ResourceChild
-      }
     })
   }
 
-  function Get-OwnedProcessPriority($process) {
-    $process.Priority
+  function Get-InstallProcesses {
+    $direct = @(Get-DirectInstallProcesses)
+    $directProcessIds = [System.Collections.Generic.HashSet[uint32]]::new()
+    foreach ($target in $direct) {
+      [void] $directProcessIds.Add($target.ProcessId)
+    }
+    $direct + @(Get-AttributedInstallProcesses $directProcessIds)
   }
 
-  for ($attempt = 0; $attempt -lt $maxAttempts; $attempt += 1) {
-    $targets = @(Get-OwnedProcesses)
+  $targets = @(Get-InstallProcesses)
+  if ($targets.Count -eq 0) {
+    exit 0
+  }
+
+  $requestedGracefulShutdown = $false
+  foreach ($root in $existingRoots) {
+    $mainExecutable = Join-Path $root $mainExecutableName
+    $marker = Join-Path $root $shutdownProtocolMarker
+    $hasRunningMain = $targets | Where-Object {
+      $_.Kind -eq 'main' -and $_.ExecutablePath.Equals($mainExecutable, $comparison)
+    } | Select-Object -First 1
+    if (-not $hasRunningMain -or -not (Test-Path -LiteralPath $marker -PathType Leaf)) {
+      continue
+    }
+    try {
+      [void] (Start-Process -FilePath $mainExecutable -ArgumentList '--shutdown-for-update' -WindowStyle Hidden -PassThru)
+      $requestedGracefulShutdown = $true
+    } catch {
+      # The exact-path force fallback below remains available for legacy or damaged installs.
+    }
+  }
+
+  if ($requestedGracefulShutdown) {
+    $gracefulWait = [System.Diagnostics.Stopwatch]::StartNew()
+    do {
+      Start-Sleep -Milliseconds $retryDelayMs
+      $targets = @(Get-InstallProcesses)
+      if ($targets.Count -eq 0) {
+        exit 0
+      }
+    } while ($gracefulWait.ElapsedMilliseconds -lt $gracefulShutdownTimeoutMs)
+  }
+
+  for ($attempt = 0; $attempt -lt $forceAttempts; $attempt += 1) {
+    $targets = @(Get-InstallProcesses)
     if ($targets.Count -eq 0) {
       exit 0
     }
 
-    $ordered = $targets | Sort-Object @{
-      Expression = { Get-OwnedProcessPriority $_ }
-      Descending = $true
-    }
-    foreach ($target in $ordered) {
+    # Stop the Desktop host first so it cannot recreate a runtime while cleanup is in progress.
+    foreach ($target in ($targets | Sort-Object @{ Expression = { $_.Kind -eq 'main' }; Descending = $true })) {
       Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
     }
-    if ($attempt + 1 -lt $maxAttempts) {
+    foreach ($target in $targets) {
+      Wait-Process -Id $target.ProcessId -Timeout 1 -ErrorAction SilentlyContinue
+    }
+    if ($attempt + 1 -lt $forceAttempts) {
       Start-Sleep -Milliseconds $retryDelayMs
     }
   }
-} catch {
-  exit 32
-}
 
-exit 32
+  $remaining = @(Get-InstallProcesses)
+  foreach ($target in $remaining) {
+    Write-Output "busy pid=$($target.ProcessId) path=$($target.ExecutablePath)"
+  }
+  exit 32
+} catch {
+  Write-Output "preflight-error: $($_.Exception.Message)"
+  exit 33
+}

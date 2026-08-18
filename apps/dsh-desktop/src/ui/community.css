@@ -1,6 +1,6 @@
 html,
 body { min-width: 480px; min-height: 660px; }
-body { background: #f3f4f6; }
+body { background: #ffffff; }
 
 main { width: min(100%, 520px); margin: 0 auto; padding: 26px 26px 30px; }
 header { margin-bottom: 16px; }

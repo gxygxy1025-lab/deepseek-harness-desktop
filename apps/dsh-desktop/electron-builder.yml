@@ -11,6 +11,8 @@ afterPack: scripts/after-pack.cjs
 extraResources:
   - from: build/icon.png
     to: app-icon.png
+  - from: build/update-shutdown-v1
+    to: update-shutdown-v1
 
 directories:
   output: dist

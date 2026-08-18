@@ -11,6 +11,7 @@ import {
   beginDesktopStartup,
   createDesktopShutdownLifecycle,
   prepareDesktopRuntimeInputs,
+  requestsUpdateShutdown,
   secondaryWindowWebPreferences,
 } from '../src/electron-app.mjs'
 import {
@@ -20,6 +21,12 @@ import {
   resolveDshCliPath,
 } from '../src/profile.mjs'
 import { DshRuntimeController } from '../src/runtime-controller.mjs'
+
+test('installer shutdown requests work through command line and single-instance data', () => {
+  assert.equal(requestsUpdateShutdown(['desktop.exe']), false)
+  assert.equal(requestsUpdateShutdown(['desktop.exe', '--shutdown-for-update']), true)
+  assert.equal(requestsUpdateShutdown(['desktop.exe'], { shutdownForUpdate: true }), true)
+})
 
 test('independent desktop startup inputs begin concurrently', async () => {
   const started = []

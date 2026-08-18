@@ -18,12 +18,13 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 
 If this project helps you, Star the [GitHub repository](https://github.com/ningbainb/deepseek-harness-desktop) so more desktop users can discover it.
 
-### Latest release: 2.2.0
+### Latest release: 2.3.0
 
-`desktop-v2.2.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.2.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.2.0/DeepSeek-Harness-Desktop-Setup-2.2.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.2.0/SHA256SUMS.txt)
+`desktop-v2.3.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.3.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/SHA256SUMS.txt)
 
 | Version | Highlights |
 | --- | --- |
+| **2.3.0** | Adds a one-time GitHub Star prompt with a community feedback action, consolidates installer checks for direct 0.1.9 upgrades, fixes missing-directory false positives, and prevents same-name apps or external plugin descendants from blocking installation. |
 | **2.2.0** | Hides Windows terminal descendants, cleans up attributed app/plugin background processes, migrates recognized dependencies and legacy safe-mode false positives, reuses the runtime port, and adds visible one-click safe-mode recovery. |
 | **2.1.0** | Adds measured mainland-China update mirrors, snapshot/isolation/safe-mode plugin recovery, unified skin persistence, reliable update-process cleanup, quiet background commands, Unicode-workspace restart protection, and a visible Tools menu entry for Extension Dock. |
 | **2.0.0** | Restores queued messages after cancellation, bounds incomplete-runtime failures, adds the Skills menu, model API recovery, sticky reasoning controls, and live SSH monitoring, and aligns Desktop-owned surfaces with the native Harness visual system. |
