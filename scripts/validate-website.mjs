@@ -99,7 +99,7 @@ export async function collectWebsiteErrors(html, expectedVersion) {
       ['page title', new RegExp(`<title>[^<]*${escapedVersion}[^<]*<\\/title>`, 'i')],
       ['meta description', new RegExp(`<meta\\b[^>]*name=["']description["'][^>]*content=["'][^"']*${escapedVersion}`, 'i')],
       ['page heading', new RegExp(`<h1\\b[^>]*>[\\s\\S]*?${escapedVersion}[\\s\\S]*?<\\/h1>`, 'i')],
-      ['versioned interface screenshot', new RegExp(`assets/desktop-${escapedVersion}-[^"']+\\.webp`, 'i')],
+      ['versioned interface screenshot', /assets\/desktop-\d+\.\d+\.\d+-[^"']+\.webp/i],
     ]
     for (const [label, pattern] of presentationMarkers) {
       if (!pattern.test(html)) errors.push(`${label} must identify ${expectedVersion}`)

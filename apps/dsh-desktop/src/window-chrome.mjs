@@ -14,8 +14,15 @@ export function normalizeWindowChromeTheme(value) {
   return value
 }
 
+const windowChromeThemes = new WeakMap()
+
+export function getWindowChromeTheme(browserWindow) {
+  return windowChromeThemes.get(browserWindow) ?? 'dark'
+}
+
 export function setWindowChromeTheme(browserWindow, rawTheme) {
   const theme = normalizeWindowChromeTheme(rawTheme)
+  if (browserWindow) windowChromeThemes.set(browserWindow, theme)
   browserWindow?.setTitleBarOverlay?.({
     ...WINDOW_CHROME_THEMES[theme],
     height: WINDOW_CHROME_HEIGHT,
@@ -48,30 +55,17 @@ html[data-dsh-desktop-window-chrome="true"] body {
   align-items: center;
   padding: 0 140px 0 10px;
   overflow: visible;
-  border-bottom: 1px solid var(--dsh-desktop-chrome-border, rgba(174, 232, 245, 0.12));
   background-color: var(--dsh-desktop-chrome-bg, #071117);
-  background-image: linear-gradient(180deg, var(--dsh-desktop-chrome-highlight, rgba(255, 255, 255, 0.08)), transparent 58%);
-  box-shadow: var(--dsh-desktop-chrome-shadow, inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12));
-  -webkit-backdrop-filter: blur(26px) saturate(145%);
-  backdrop-filter: blur(26px) saturate(145%);
   isolation: isolate;
   user-select: none;
 }
 
 html[data-dsh-desktop-chrome-theme="dark"] {
-  --dsh-desktop-chrome-border: rgba(174, 232, 245, 0.12);
   --dsh-desktop-chrome-bg: #071117;
-  --dsh-desktop-chrome-highlight: rgba(255, 255, 255, 0.08);
-  --dsh-desktop-chrome-sheen: rgba(148, 226, 245, 0.055);
-  --dsh-desktop-chrome-shadow: inset 0 1px rgba(235, 251, 255, 0.1), 0 1px 6px rgba(0, 3, 7, 0.12);
 }
 
 html[data-dsh-desktop-chrome-theme="light"] {
-  --dsh-desktop-chrome-border: #e5e7eb;
   --dsh-desktop-chrome-bg: #f7f8fa;
-  --dsh-desktop-chrome-highlight: transparent;
-  --dsh-desktop-chrome-sheen: transparent;
-  --dsh-desktop-chrome-shadow: none;
   --dsh-desktop-chrome-menu-hover: rgba(15, 23, 42, 0.06);
 }
 
@@ -79,17 +73,6 @@ html[data-dsh-desktop-window-chrome="true"] .dsh-desktop-modal-layer {
   top: var(--dsh-desktop-window-chrome-height) !important;
   height: calc(100vh - var(--dsh-desktop-window-chrome-height)) !important;
   max-height: calc(100vh - var(--dsh-desktop-window-chrome-height)) !important;
-}
-
-#${WINDOW_CHROME_ID}::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  content: "";
-  pointer-events: none;
-  background:
-    linear-gradient(108deg, var(--dsh-desktop-chrome-sheen, rgba(148, 226, 245, 0.055)), transparent 24%),
-    linear-gradient(90deg, transparent 54%, rgba(255, 255, 255, 0.025) 72%, transparent 90%);
 }
 
 #${WINDOW_CHROME_ID} .dsh-window-chrome-menus {
@@ -191,12 +174,6 @@ html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chr
   color: rgba(23, 32, 51, 0.58);
 }
 
-html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} {
-  background-image: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
 html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chrome-menu-button {
   border-color: rgba(0, 0, 0, 0.1);
   color: #0f1115;
@@ -211,7 +188,7 @@ html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chr
 
 @media (prefers-contrast: more) {
   #${WINDOW_CHROME_ID} {
-    border-bottom-color: rgba(190, 238, 250, 0.5);
+    border-bottom: 1px solid rgba(190, 238, 250, 0.5);
     background: #071117;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
@@ -228,8 +205,8 @@ html[data-dsh-desktop-chrome-theme="light"] #${WINDOW_CHROME_ID} .dsh-window-chr
 }
 `
 
-export function windowChromeBrowserOptions() {
-  const theme = WINDOW_CHROME_THEMES.dark
+export function windowChromeBrowserOptions(rawTheme = 'dark') {
+  const theme = WINDOW_CHROME_THEMES[normalizeWindowChromeTheme(rawTheme)]
   return {
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
@@ -342,6 +319,9 @@ export function createWindowChromeScript({ showHelpMenu = false, showToolsMenu =
     document.body.prepend(chrome);
 
     const isDark = () => {
+      const pageTheme = document.documentElement.dataset.dshDesktopTheme;
+      if (pageTheme === 'dark') return true;
+      if (pageTheme === 'light') return false;
       if (document.body.hasAttribute('data-ds-dark-theme')) return true;
       const scheme = getComputedStyle(document.documentElement).colorScheme;
       if (scheme && scheme !== 'normal') return scheme.includes('dark');
@@ -394,6 +374,13 @@ export function installWindowChrome({ browserWindow, iconDataUrl, showHelpMenu =
   const apply = () => {
     void applyWindowChrome({ webContents, iconDataUrl, showHelpMenu, showToolsMenu }).catch(onError)
   }
+  const reapplyOverlayTheme = () => {
+    if (!browserWindow.isDestroyed?.()) setWindowChromeTheme(browserWindow, getWindowChromeTheme(browserWindow))
+  }
   webContents.on('did-finish-load', apply)
-  return () => webContents.removeListener('did-finish-load', apply)
+  browserWindow.on?.('restore', reapplyOverlayTheme)
+  return () => {
+    webContents.removeListener('did-finish-load', apply)
+    browserWindow.removeListener?.('restore', reapplyOverlayTheme)
+  }
 }

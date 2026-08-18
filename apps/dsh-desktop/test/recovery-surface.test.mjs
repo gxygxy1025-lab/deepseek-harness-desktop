@@ -8,7 +8,7 @@ test('safe mode is visible and exposes one-click recovery outside the runtime re
   const [html, renderer, preload, electron] = await Promise.all([
     source('../src/ui/extensions.html'),
     source('../src/ui/extensions.mjs'),
-    source('../src/preload.cjs'),
+    source('../src/preload-extension.cjs'),
     source('../src/electron-app.mjs'),
   ])
 

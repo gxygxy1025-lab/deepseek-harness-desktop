@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   applyWindowChrome,
   createWindowChromeScript,
+  getWindowChromeTheme,
   installWindowChrome,
   WINDOW_CHROME_CSS,
   WINDOW_CHROME_HEIGHT,
@@ -31,8 +32,8 @@ test('window chrome uses a native overlay with a compact caption area', () => {
   assert.match(WINDOW_CHROME_CSS, /--dsh-desktop-chrome-bg: #f7f8fa/)
   assert.doesNotMatch(WINDOW_CHROME_CSS, /--dsh-desktop-chrome-bg: rgba\(/)
   assert.match(WINDOW_CHROME_CSS, /dsh-desktop-modal-layer/)
-  assert.match(WINDOW_CHROME_CSS, /backdrop-filter: blur\(26px\) saturate\(145%\)/)
-  assert.match(WINDOW_CHROME_CSS, /dsh-desktop-window-chrome::before/)
+  assert.doesNotMatch(WINDOW_CHROME_CSS, /backdrop-filter: blur\(26px\)/)
+  assert.doesNotMatch(WINDOW_CHROME_CSS, /dsh-desktop-window-chrome::before/)
   assert.doesNotMatch(WINDOW_CHROME_CSS, /dsh-window-chrome-icon/)
   assert.match(WINDOW_CHROME_CSS, /dsh-window-chrome-menus/)
   assert.match(WINDOW_CHROME_CSS, /-webkit-app-region: no-drag/)
@@ -125,4 +126,49 @@ test('window chrome follows page navigations and can be detached', () => {
   assert.equal(typeof listeners.get('did-finish-load'), 'function')
   dispose()
   assert.equal(listeners.has('did-finish-load'), false)
+})
+
+test('window chrome browser options accept an initial theme for light-only windows', () => {
+  assert.deepEqual(windowChromeBrowserOptions('light'), {
+    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#f7f8fa',
+      symbolColor: '#1f2937',
+      height: 32,
+    },
+  })
+  assert.throws(() => windowChromeBrowserOptions('transparent'), /window chrome theme/)
+})
+
+test('window chrome script respects a page-declared theme hint', () => {
+  const script = createWindowChromeScript({})
+  assert.match(script, /dataset\.dshDesktopTheme/)
+})
+
+test('window chrome re-applies the tracked overlay theme after a restore', () => {
+  const overlays = []
+  const listeners = new Map()
+  const browserWindow = {
+    isDestroyed: () => false,
+    setTitleBarOverlay: (options) => overlays.push(options),
+    on: (name, listener) => listeners.set(name, listener),
+    removeListener: (name, listener) => {
+      if (listeners.get(name) === listener) listeners.delete(name)
+    },
+    webContents: {
+      on: () => {},
+      removeListener: () => {},
+    },
+  }
+  assert.equal(getWindowChromeTheme(browserWindow), 'dark')
+  setWindowChromeTheme(browserWindow, 'light')
+  assert.equal(getWindowChromeTheme(browserWindow), 'light')
+  const dispose = installWindowChrome({ browserWindow, iconDataUrl: 'data:image/png;base64,icon' })
+  assert.equal(typeof listeners.get('restore'), 'function')
+  overlays.length = 0
+  listeners.get('restore')()
+  assert.deepEqual(overlays, [{ color: '#f7f8fa', symbolColor: '#1f2937', height: 32 }])
+  dispose()
+  assert.equal(listeners.has('restore'), false)
 })

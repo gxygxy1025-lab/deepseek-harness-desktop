@@ -6,6 +6,34 @@
 
 English: No changes yet.
 
+## 2.4.0 - 2026-08-18
+
+中文：
+
+- SSH 已连接终端在主机、监控和终端视图之间切换时保持挂载与在线，返回后不再重新建立连接；终端补齐右键菜单与原生编辑菜单粘贴入口。
+- 桌面壳固定接管侧边栏左下角下载按钮：它始终打开桌面软件更新，即使远程插件升级或重新渲染也不会切回插件全家桶更新；社区插件更新继续只在扩展坞中进行。
+- Windows runtime、终端及 PowerShell 工具统一继承隐藏控制台，修复执行 `pwsh` 工具时额外命令窗口闪现的问题。
+- 皮肤启用状态完全迁移到 `profiles/desktop` 私有补丁，并在桌面启动时反向迁移、清理旧版写入全局 `~/.dsh/cordis.patch.yml` 的托管段，避免破坏官方 `dsh web` 的 YAML 与 profile。
+- 安装预检增加唯一产品主程序名兜底，可清理注册表路径漂移、旧安装目录移动或路径不可见时残留的 2.2 主进程，避免旧卸载器返回错误码 2；官方 Web runtime 与无关 PowerShell/Node 进程仍受保护。
+- 桌面自有标题栏、启动页、更新面板、扩展坞与社区提示完善明暗主题变量和窗口行为，一次性社区提示的发布目标同步到 2.4.0。
+- 覆盖更新引入令牌绑定的关闭回执协议 v2：桌面端仅在 runtime 停止、扩展操作暂停和资源释放完成后原子写入回执，安装器校验 token、旧 PID 与完成状态；旧版或超时场景继续使用受限清理降级。
+- 主界面和扩展坞拆分 preload，并用 renderer surface 注册表校验每个敏感 IPC 的真实发送方；新增 Desktop Contract 1.0.0 能力快照与稳定错误码，主界面不再持有插件写操作、QQ Bot 凭据和技能导入接口。
+- 任务看板增加 profile 隔离的 Host 文件存储 v2、原子写入、损坏文件保留、SSE 多标签同步和 localStorage v1 复制校验迁移；2.4.x 保留 v1，Host 不可用时自动回退，浏览器定时调度行为不变。
+- Desktop CI 新增官方目录选择器真实 E2E，发布门禁继续覆盖全仓验证、安装包内容校验和打包运行烟测。
+
+English:
+
+- Connected SSH terminals now remain mounted and online while switching among host, monitor, and terminal views. Returning no longer creates a new connection, and terminal paste is available through both the context menu and native Edit menu.
+- The Desktop shell now permanently owns the lower-left sidebar download trigger. It always opens the Desktop application updater, even after the remote plugin is upgraded or re-renders; community plugin updates remain confined to Extension Dock.
+- Windows runtime, terminal, and PowerShell tool processes now inherit a hidden console host, preventing an extra command window from flashing when a `pwsh` tool runs.
+- Skin enablement state is fully isolated in the private `profiles/desktop` patch. Desktop startup reverse-migrates and removes legacy managed sections from global `~/.dsh/cordis.patch.yml`, preserving valid YAML and the official `dsh web` profile.
+- Installer preflight now falls back to the unique Desktop product executable name when registry paths drift, an old installation is moved, or its path is inaccessible. This closes 2.2 main-process remnants before the legacy uninstaller can return code 2 while preserving the official web runtime and unrelated PowerShell or Node processes.
+- Desktop-owned title bars, startup and update surfaces, Extension Dock, and community prompt now have more complete light/dark theme variables and window behavior. The one-time community prompt is targeted to the 2.4.0 release.
+- In-place updates now use token-bound shutdown receipt protocol v2. Desktop atomically publishes an acknowledgement only after the runtime stops, extension operations quiesce, and resources are released; the installer validates the token, old PID, and completion state while legacy or timed-out releases retain the constrained cleanup fallback.
+- Main and Extension Dock use split preloads, and a renderer-surface registry validates the real sender of every sensitive IPC call. Desktop Contract 1.0.0 adds capability snapshots and stable error codes; Main no longer holds plugin mutation, QQ Bot credential, or skill-import bridges.
+- Task Board now has profile-isolated Host-file schema v2, atomic writes, corrupt-file preservation, SSE cross-tab synchronization, and a verified copy-first localStorage v1 migration. Version 2.4.x retains v1 and falls back when Host storage is unavailable, while browser scheduling stays unchanged.
+- Desktop CI now includes a real official directory-picker E2E check, while release gates retain full repository verification, packaged-payload checks, and packaged runtime smoke coverage.
+
 ## 2.3.0 - 2026-08-17
 
 中文：

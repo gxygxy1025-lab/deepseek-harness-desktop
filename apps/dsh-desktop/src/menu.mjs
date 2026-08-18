@@ -47,6 +47,18 @@ export function createApplicationMenuTemplate({
       ],
     },
     {
+      label: '编辑 / Edit',
+      submenu: [
+        { role: 'undo', label: '撤销 / Undo' },
+        { role: 'redo', label: '重做 / Redo' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切 / Cut' },
+        { role: 'copy', label: '复制 / Copy' },
+        { role: 'paste', label: '粘贴 / Paste', accelerator: 'CmdOrCtrl+V' },
+        { role: 'selectAll', label: '全选 / Select All' },
+      ],
+    },
+    {
       label: '帮助 / Help',
       submenu: [
         { label: '检查更新 / Check for Updates', click: action(() => checkForUpdates({ manual: true })) },
@@ -59,6 +71,32 @@ export function createApplicationMenuTemplate({
       ],
     },
   ]
+}
+
+/** Install native right-click and terminal-style keyboard paste affordances. */
+export function installEditContextMenu({ webContents, Menu }) {
+  const onContextMenu = (_event, params = {}) => {
+    const menu = Menu.buildFromTemplate([
+      { role: 'cut', label: '剪切 / Cut', enabled: params.editFlags?.canCut === true },
+      { role: 'copy', label: '复制 / Copy', enabled: params.editFlags?.canCopy === true || Boolean(params.selectionText) },
+      { role: 'paste', label: '粘贴 / Paste' },
+      { type: 'separator' },
+      { role: 'selectAll', label: '全选 / Select All' },
+    ])
+    menu.popup()
+  }
+  const onBeforeInput = (event, input = {}) => {
+    if (input.type !== 'keyDown' || String(input.key).toLowerCase() !== 'v') return
+    if (!(input.control || input.meta) || !input.shift || input.alt) return
+    event.preventDefault()
+    webContents.paste()
+  }
+  webContents.on('context-menu', onContextMenu)
+  webContents.on('before-input-event', onBeforeInput)
+  return () => {
+    webContents.removeListener('context-menu', onContextMenu)
+    webContents.removeListener('before-input-event', onBeforeInput)
+  }
 }
 
 export function installApplicationMenu(options) {

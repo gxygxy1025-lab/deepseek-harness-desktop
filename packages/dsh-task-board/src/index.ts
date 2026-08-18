@@ -1,9 +1,8 @@
 /**
  * Host loader entry for the task-board plugin.
  *
- * Everything the board does is browser work (DOM, localStorage, driving the
- * client runtime's session services over the wire), so the host half's main
- * behavior is a system-prompt section announcing the plugin to every agent.
+ * The host half owns profile-isolated file persistence and a loopback,
+ * same-origin route pair; it also announces the plugin to every agent.
  * The section registers while this plugin is in the host composition (mount /
  * DSH restart) and disappears when the plugin leaves it (unmount / restart),
  * so agents always know the board exists and how to cooperate with it. The
@@ -11,18 +10,23 @@
  * surface (`announceToAgent`); the section then disappears live.
  */
 
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from 'schemastery'
+import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import { HostTaskFileStore, resolveTaskBoardStatePath } from './host/file-store.ts'
+import { makeTaskBoardRoutes } from './host/routes.ts'
 
 /** Order of the announcement section within the tool-guidance band. */
 const SECTION_ORDER = 200
 
-export const inject = ['systemPrompt']
+export const inject = ['systemPrompt', 'webServer']
 
 /** Model-facing announcement: plugin presence, capabilities, and limits. */
-export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 插件（DSH Web GUI 的任务看板）：侧边栏「任务看板」入口；在 dsh-web-ui 插件全家桶仓库（packages/dsh-task-board）统一维护，经聚合包 web-ui-all 一键安装。能力：多列看板管理任务；任务可真实执行（驱动 agent 会话）；任务支持 5 段 cron 定时执行（如 0 23 * * *）；数据存浏览器 localStorage（键 dsh.taskBoard.v1）。限制：定时调度在浏览器端，需 GUI 标签页打开，错过即跳过；执行消耗 API 额度。用户提到「任务看板 / 看板 / 定时任务」时即指本插件，请据此协作。'
+export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 插件（DSH Web GUI 的任务看板）：侧边栏「任务看板」入口；在 dsh-web-ui 插件全家桶仓库（packages/dsh-task-board）统一维护，经聚合包 web-ui-all 一键安装。能力：多列看板管理任务；任务可真实执行（驱动 agent 会话）；任务支持 5 段 cron 定时执行（如 0 23 * * *）；数据优先保存到当前 DSH profile 的 state/task-board/tasks-v2.json，Host 不可用时兼容浏览器 localStorage v1。限制：定时调度仍在浏览器端，需 GUI 标签页打开，错过即跳过；执行消耗 API 额度。用户提到「任务看板 / 看板 / 定时任务」时即指本插件，请据此协作。'
 
 /**
  * Settings namespace of the board's announcement capability — the section the
@@ -41,11 +45,14 @@ export interface Config {
   announceToAgent?: boolean
   /** Master switch for the plugin (browser half + host announcement). */
   enabled?: boolean
+  /** Profile whose state directory owns this ledger (defaults to DSH_PROFILE/web). */
+  profileName?: string
 }
 
 export const Config: z<Config> = z.object({
   announceToAgent: z.boolean().default(true),
   enabled: z.boolean().default(true),
+  profileName: z.string().default(process.env.DSH_PROFILE ?? 'web'),
 })
 
 /** Schema default, re-read for hand-built test contexts (the loader applies them normally). */
@@ -60,6 +67,20 @@ const DEFAULT_ANNOUNCE = true
  * @param config - resolved plugin config (schema defaults applied by the loader).
  */
 export function apply(ctx: Context, config?: Config): void {
+  const profileName = config?.profileName ?? process.env.DSH_PROFILE ?? 'web'
+  const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+  const fileStore = new HostTaskFileStore({
+    path: resolveTaskBoardStatePath(dshHome, profileName),
+  })
+  ctx.effect(() => {
+    const family = makeTaskBoardRoutes(fileStore)
+    const disposers = family.routes.map(route => ctx.webServer.register(route))
+    return () => {
+      family.dispose()
+      for (const dispose of disposers) dispose()
+    }
+  }, 'task-board: host file store')
+
   // The live source the announcement reads: the settings section once the web
   // settings surface is served, the composition entry otherwise
   // (installSettingsSection swaps it when the namespace registers).

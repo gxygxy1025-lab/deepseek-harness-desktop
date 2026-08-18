@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { delimiter, join, win32 } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { emitBestEffort } from './best-effort-events.mjs'
 
@@ -9,9 +10,18 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
 export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000
 export const DESKTOP_PROFILE_NAME = 'desktop'
 const STABLE_RUNTIME_RESET_MS = 60_000
+const WINDOWS_CONSOLE_PRELOAD_PATH = fileURLToPath(new URL('./windows-console-preload.cjs', import.meta.url))
 
-function runtimeArguments(cliPath, preferredPort) {
-  return ['--expose-internals', cliPath, '--profile', DESKTOP_PROFILE_NAME, '--port', String(preferredPort)]
+function runtimeArguments(cliPath, preferredPort, consolePreloadPath) {
+  return [
+    '--expose-internals',
+    ...(consolePreloadPath ? ['--require', consolePreloadPath] : []),
+    cliPath,
+    '--profile',
+    DESKTOP_PROFILE_NAME,
+    '--port',
+    String(preferredPort),
+  ]
 }
 
 function quotePowerShellLiteral(value) {
@@ -34,13 +44,14 @@ export function createRuntimeInvocation({
   if (!Number.isInteger(preferredPort) || preferredPort < 0 || preferredPort > 65_535) {
     throw new TypeError('preferred runtime port must be an integer from 0 to 65535')
   }
-  const args = runtimeArguments(cliPath, preferredPort)
+  const args = runtimeArguments(cliPath, preferredPort, platform === 'win32' ? WINDOWS_CONSOLE_PRELOAD_PATH : undefined)
   if (platform !== 'win32') return { executable, args }
 
   // Electron is a GUI-subsystem executable and therefore gives its Node-mode
-  // DSH child no console to inherit. A hidden PowerShell host supplies one so
-  // nested cmd/pwsh/PTY helpers cannot create a visible console window even
-  // when a third-party package omits its own windowsHide option.
+  // DSH child no console to inherit. A hidden PowerShell host supplies one;
+  // the required preload explicitly attaches the GUI-subsystem DSH process
+  // to it so restricted-token pwsh children can share it without flashing a
+  // new console window.
   const command = [
     `& ${[executable, ...args].map(quotePowerShellLiteral).join(' ')} | ForEach-Object { [Console]::Out.WriteLine($_) }`,
     'exit $LASTEXITCODE',

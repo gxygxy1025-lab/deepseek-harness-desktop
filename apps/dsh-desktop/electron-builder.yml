@@ -13,6 +13,8 @@ extraResources:
     to: app-icon.png
   - from: build/update-shutdown-v1
     to: update-shutdown-v1
+  - from: build/update-shutdown-v2
+    to: update-shutdown-v2
 
 directories:
   output: dist
@@ -47,3 +49,8 @@ publish:
   provider: github
   owner: ningbainb
   repo: deepseek-harness-desktop
+
+protocols:
+  - name: DeepSeek Harness Desktop
+    schemes:
+      - dsh

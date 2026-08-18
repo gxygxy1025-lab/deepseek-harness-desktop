@@ -1,16 +1,24 @@
+// Compatibility entry for external launchers that still point at preload.cjs.
+// It intentionally matches the Extension Dock surface and remains standalone
+// because Electron's sandboxed preload runtime cannot require sibling files.
 const { contextBridge, ipcRenderer } = require('electron')
 
+function createSubscription(channel, label) {
+  return (callback) => {
+    if (typeof callback !== 'function') throw new TypeError(`${label} callback must be a function`)
+    const listener = (_event, payload) => callback(payload)
+    ipcRenderer.on(channel, listener)
+    return () => ipcRenderer.removeListener(channel, listener)
+  }
+}
+
 const api = Object.freeze({
+  getContract: () => ipcRenderer.invoke('desktop:contract'),
   getInfo: () => ipcRenderer.invoke('desktop:info'),
   getStatus: () => ipcRenderer.invoke('desktop:status'),
-  action: (action) => ipcRenderer.invoke('desktop:action', action),
-  helpAction: (action) => ipcRenderer.invoke('desktop:help-action', action),
-  toolAction: (action) => ipcRenderer.invoke('desktop:tool-action', action),
   setWindowChromeTheme: (theme) => ipcRenderer.invoke('desktop:window-chrome-theme', theme),
-  claimStarPrompt: () => ipcRenderer.invoke('desktop:star-prompt-claim'),
-  getUpdateStatus: () => ipcRenderer.invoke('desktop:update-status'),
-  checkForUpdates: () => ipcRenderer.invoke('desktop:update-check'),
-  installUpdate: () => ipcRenderer.invoke('desktop:update-install'),
+  showNotification: (notification) => ipcRenderer.invoke('desktop:notification-show', notification),
+  onStatus: createSubscription('desktop:status', 'status'),
   listExtensions: () => ipcRenderer.invoke('extensions:list'),
   checkPluginUpdates: () => ipcRenderer.invoke('extensions:plugin-check'),
   installPlugin: (spec, allowUnknown = false) => ipcRenderer.invoke('extensions:plugin-install', { spec, allowUnknown }),
@@ -29,24 +37,7 @@ const api = Object.freeze({
   startQqBotBinding: () => ipcRenderer.invoke('extensions:qqbot-bind'),
   cancelQqBotBinding: () => ipcRenderer.invoke('extensions:qqbot-cancel'),
   unbindQqBot: () => ipcRenderer.invoke('extensions:qqbot-unbind'),
-  onQqBotEvent(callback) {
-    if (typeof callback !== 'function') throw new TypeError('QQ Bot callback must be a function')
-    const listener = (_event, payload) => callback(payload)
-    ipcRenderer.on('extensions:qqbot-event', listener)
-    return () => ipcRenderer.removeListener('extensions:qqbot-event', listener)
-  },
-  onStatus(callback) {
-    if (typeof callback !== 'function') throw new TypeError('status callback must be a function')
-    const listener = (_event, status) => callback(status)
-    ipcRenderer.on('desktop:status', listener)
-    return () => ipcRenderer.removeListener('desktop:status', listener)
-  },
-  onUpdateStatus(callback) {
-    if (typeof callback !== 'function') throw new TypeError('update status callback must be a function')
-    const listener = (_event, status) => callback(status)
-    ipcRenderer.on('desktop:update-status', listener)
-    return () => ipcRenderer.removeListener('desktop:update-status', listener)
-  },
+  onQqBotEvent: createSubscription('extensions:qqbot-event', 'QQ Bot'),
 })
 
 contextBridge.exposeInMainWorld('dshDesktop', api)

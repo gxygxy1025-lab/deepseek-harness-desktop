@@ -20,12 +20,13 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 如果这个项目对你有帮助，欢迎在 [GitHub 仓库](https://github.com/ningbainb/deepseek-harness-desktop) 点 Star，帮助更多桌面版用户发现它。
 
-### 最新版：2.3.0
+### 最新版：2.4.0
 
-`desktop-v2.3.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.3.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.3.0/SHA256SUMS.txt)
+`desktop-v2.4.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.4.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/SHA256SUMS.txt)
 
 | 版本 | 主要更新 |
 | --- | --- |
+| **2.4.0** | SSH 内部视图切换保持终端连接并补齐粘贴；隐藏 PowerShell 工具窗口；皮肤状态隔离到 desktop profile 并清理全局补丁污染；覆盖升级可关闭路径漂移的 2.2 残留主程序。 |
 | **2.3.0** | 新增只出现一次的 GitHub Star 动画引导与“加入社群”反馈入口；安装预检可识别外部 PowerShell/CMD/Node 宿主、EncodedCommand 与 Windows 短路径，兼容 0.1.9 直接升级，并通过独立 profile 与端口回退和官方 Web 端共存。 |
 | **2.2.0** | 隐藏 Windows 终端及其后代窗口；升级时自动清理旧应用和插件后台、迁移可识别旧依赖与旧安全模式误判；重启复用端口，安全模式支持可见提示与一键恢复。 |
 | **2.1.0** | 新增国内更新镜像自动测速与回退、插件快照/自动隔离/安全模式三层容灾；统一皮肤持久化，修复升级文件占用、隐藏命令框、中文工作区重启循环，并从工具菜单直接打开扩展坞。 |
@@ -38,12 +39,16 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 | **0.1.4** | 桌宠迁移到全局 Shell Overlay，首页和设置页均可见；恢复五张 Web UI 插件配置卡；皮肤中心完整展示安装版随附的九套皮肤。 |
 | **0.1.3** | 加入稳定版 GitHub Release 更新检查、双语更新说明、用户确认下载、任务栏进度和二次确认安装。 |
 
-### 2.3.0 功能亮点
+### 2.4.0 功能亮点
 
-- **可靠覆盖升级**：安装预检按旧安装根路径归因并清理外部 PowerShell、CMD、Node 后代，解码 `-EncodedCommand` 负载，同时识别 Windows 8.3 短路径与规范化长路径；句柄访问受限时回退 WMI，力杀后等待退出并退避重试。
-- **严格清理边界**：只有命令行明确引用旧安装根路径的外部进程才会被归因；官方 Web 端、安装目录外的同名程序和无路径引用的独立进程不会被误杀。
-- **与官方 Web 端共存**：桌面版固定使用隔离的 `profiles/desktop` profile，首选端口被占用时自动回退到系统分配端口，两端可以同时运行。
-- **一次性社区引导**：2.3.0 首次启动可选择前往 GitHub 点 Star、加入 QQ 社群反馈问题或继续使用；展示状态由主进程原子记录，刷新和后续启动不会重复弹出。
+- **SSH 会话保活与粘贴**：已连接终端在主机、监控和终端视图间切换时保持挂载；右键菜单和原生编辑菜单均可粘贴。
+- **皮肤状态隔离**：皮肤切换只写入 `profiles/desktop` 私有补丁，并自动迁移、清理全局 `cordis.patch.yml` 中的旧托管段，官方 `dsh web` 不再被桌面皮肤破坏。
+- **工具窗口保持隐藏**：Windows runtime、终端与 `pwsh` 工具共享隐藏控制台宿主，不再闪现额外命令窗口。
+- **兼容旧版覆盖升级**：安装预检在路径归因之外增加唯一产品主进程名兜底，能清理路径漂移的 2.2 残留主程序并避免旧卸载器错误码 2。
+- **可验证更新交接**：安装器使用随机令牌与关闭回执 v2，只有 runtime、扩展操作和资源完全停止后才继续覆盖；旧版本保留受限清理兼容路径。
+- **分区桌面接口**：主界面与扩展坞采用独立 preload，并以 renderer 身份校验敏感 IPC；Desktop Contract 1.0.0 提供稳定能力探测。
+- **任务看板 Host 存储**：看板台账按 `desktop` profile 保存为 schema v2 文件，原子写入并用 SSE 同步；localStorage v1 只复制校验、不删除，并在 Host 不可用时回退。
+- **一次性社区引导**：2.4.0 首次启动可选择前往 GitHub 点 Star、加入 QQ 社群反馈问题或继续使用；展示状态由主进程原子记录，刷新和后续启动不会重复弹出。
 
 ![DeepSeek Harness Desktop 2.3.0 GitHub Star 与社群反馈引导](docs/screenshots/desktop-2.3.0-star-community-prompt.png)
 
@@ -68,7 +73,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 | --- | --- |
 | ![DeepSeek Harness Desktop 2.3.0 粒子鲸鱼启动界面](docs/screenshots/desktop-2.3.0-startup.png) | ![DeepSeek Harness Desktop 2.3.0 插件与技能扩展坞](docs/screenshots/desktop-2.3.0-extension-dock.png) |
 
-- 内置 dsh-web-ui 0.1.15 套件，保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物，并新增图像描述与量身 Agent；
+- 内置 dsh-web-ui 0.1.18 套件，保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物，并新增图像描述与量身 Agent；
 - 内置腾讯官方 QQ Bot，可在扩展坞扫码绑定 QQ 私聊与群聊，无需编辑 YAML 或打开后台终端；
 - 内置 ChatGPT OAuth、OpenAI Codex 模型与推理强度滑块，登录使用系统浏览器，凭据保存在本机；
 - 独立 `desktop` profile，不覆盖既有 DSH 配置，运行时仅监听回环地址；
@@ -97,7 +102,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 在侧边栏点击「任务看板」进入。任务按五列状态组织：待规划、待办、进行中、已完成、已失败。点击卡片上的「执行」，任务将由真实的 DSH 智能体会话执行，完成后状态自动回写；需要复盘时，可直接跳转到执行会话查看完整过程。
 
-任务支持定时执行：在详情中配置 cron 表达式（如每天 23:00 自动升级 DSH、每周一 09:00 生成周报），到点自动开工，无需人工值守。
+任务支持定时执行：在详情中配置 cron 表达式（如每天 23:00 自动升级 DSH、每周一 09:00 生成周报），页面保持打开时会在到点后自动开工。任务台账存于当前 DSH profile 的 Host 文件，浏览器旧数据在校验迁移后继续保留用于降级。
 
 | 多列看板 | 定时执行 |
 | --- | --- |

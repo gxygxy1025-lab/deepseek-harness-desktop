@@ -1,5 +1,10 @@
 import { createExtensionOperationQueue } from './extension-operation-queue.mjs'
 
+const themeQuery = new URLSearchParams(window.location.search).get('theme')
+if (themeQuery === 'dark' || themeQuery === 'light') {
+  document.documentElement.dataset.dshDesktopTheme = themeQuery
+}
+
 const pluginList = document.querySelector('#plugin-list')
 const communityPluginList = document.querySelector('#community-plugin-list')
 const skillList = document.querySelector('#skill-list')

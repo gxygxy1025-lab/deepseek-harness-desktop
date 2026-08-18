@@ -11,6 +11,8 @@ import {
   publicUpdateStatus,
   registerDesktopIpc,
 } from '../src/ipc.mjs'
+import { DESKTOP_ERROR_CODES } from '../src/desktop-contract.mjs'
+import { DesktopSurfaceRegistry } from '../src/desktop-surfaces.mjs'
 
 test('desktop action validation exposes only fixed recovery operations', () => {
   for (const action of ['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'exit']) {
@@ -51,6 +53,9 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
     handle: (channel, handler) => handlers.set(channel, handler),
     removeHandler: (channel) => handlers.delete(channel),
   }
+  const sender = {}
+  const surfaceRegistry = new DesktopSurfaceRegistry()
+  surfaceRegistry.register(sender, 'main')
   const controller = new EventEmitter()
   controller.status = { state: 'ready', url: 'http://127.0.0.1:43125/' }
   const browserWindow = { self: undefined }
@@ -58,6 +63,7 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
   const handled = []
   const unregister = registerDesktopIpc({
     ipcMain,
+    surfaceRegistry,
     controller,
     getWindow: () => undefined,
     metadata: { appId: 'desktop', productName: 'Desktop' },
@@ -79,10 +85,55 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
     getUpdateController: () => undefined,
   })
 
-  assert.equal(await handlers.get('desktop:help-action')({}, 'community'), true)
-  assert.equal(await handlers.get('desktop:tool-action')({}, 'extensions'), true)
-  assert.equal(await handlers.get('desktop:star-prompt-claim')({}), true)
+  assert.equal(await handlers.get('desktop:help-action')({ sender }, 'community'), true)
+  assert.equal(await handlers.get('desktop:tool-action')({ sender }, 'extensions'), true)
+  assert.equal(await handlers.get('desktop:star-prompt-claim')({ sender }), true)
   assert.deepEqual(handled, ['community', 'extensions'])
+  unregister()
+})
+
+test('desktop IPC rejects unregistered and wrong-surface senders with stable codes', async () => {
+  const handlers = new Map()
+  const ipcMain = {
+    handle: (channel, handler) => handlers.set(channel, handler),
+    removeHandler: (channel) => handlers.delete(channel),
+  }
+  const controller = new EventEmitter()
+  controller.status = { state: 'ready' }
+  const surfaceRegistry = new DesktopSurfaceRegistry()
+  const mainSender = {}
+  const extensionSender = {}
+  surfaceRegistry.register(mainSender, 'main')
+  surfaceRegistry.register(extensionSender, 'extensions')
+  const unregister = registerDesktopIpc({
+    ipcMain,
+    surfaceRegistry,
+    controller,
+    getWindow: () => undefined,
+    metadata: { appId: 'desktop', productName: 'Desktop' },
+    version: '2.4.0',
+    platform: 'win32',
+    ensureProfile: async () => {},
+    openLogs: async () => {},
+    exitApp: () => {},
+    handleHelpAction: async () => {},
+    handleToolAction: async () => {},
+    setWindowChromeTheme: () => {},
+    getUpdateController: () => undefined,
+  })
+
+  await assert.rejects(
+    handlers.get('desktop:update-install')({ sender: extensionSender }),
+    (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
+  )
+  await assert.rejects(
+    handlers.get('desktop:contract')({ sender: {} }),
+    (error) => error.code === DESKTOP_ERROR_CODES.SURFACE_UNKNOWN,
+  )
+  await assert.rejects(
+    handlers.get('desktop:window-chrome-theme')({ sender: mainSender }, 'system'),
+    (error) => error.code === DESKTOP_ERROR_CODES.INVALID_ARGUMENT,
+  )
   unregister()
 })
 

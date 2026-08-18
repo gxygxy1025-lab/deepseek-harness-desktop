@@ -156,12 +156,12 @@ test('community plugins can resolve desktop compatibility dependencies from the 
   }
 })
 
-test('desktop patch refresh removes the legacy profile skin section and preserves community rows', () => {
+test('desktop patch refresh preserves the profile skin section and community rows', () => {
   const skinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- id: ui-skin-qq98\n# --- end dsh-skin managed ---'
   const communityRow = "- id: community\n  name: '@community/plugin'"
   const merged = mergeDesktopPatch(`${DESKTOP_PATCH_CONFIG}\n${skinSection}\n${communityRow}\n`)
   assert.equal(merged.match(/dsh-desktop managed/gu)?.length, 2)
-  assert.doesNotMatch(merged, /ui-skin-qq98/u)
+  assert.match(merged, /ui-skin-qq98/u)
   assert.match(merged, /@community\/plugin/u)
   assert.equal(mergeDesktopPatch(merged), merged)
 })
@@ -429,7 +429,7 @@ test('profile bootstrap preserves an incompatible unrecorded schemastery package
   }
 })
 
-test('profile bootstrap moves a legacy profile skin section to the authoritative home patch', async () => {
+test('profile bootstrap keeps skin state in the desktop profile and leaves a clean global patch unchanged', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-skin-migration-'))
   const dshHome = join(root, 'home')
   const profileDir = join(dshHome, 'profiles', 'desktop')
@@ -445,11 +445,10 @@ test('profile bootstrap moves a legacy profile skin section to the authoritative
     await ensureDesktopProfile({ dshHome, packageRoots })
     const profilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
     const homePatch = await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8')
-    assert.doesNotMatch(profilePatch, /dsh-skin managed/u)
+    assert.match(profilePatch, /dsh-skin managed/u)
+    assert.match(profilePatch, /ui-skin-qq98/u)
     assert.match(profilePatch, /- id: retained/u)
-    assert.match(homePatch, /dsh-skin managed/u)
-    assert.match(homePatch, /ui-skin-qq98/u)
-    assert.match(homePatch, /- id: user-row/u)
+    assert.equal(homePatch, '- id: user-row\n')
     await ensureDesktopProfile({ dshHome, packageRoots })
     assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), homePatch)
   } finally {
@@ -457,7 +456,7 @@ test('profile bootstrap moves a legacy profile skin section to the authoritative
   }
 })
 
-test('profile bootstrap preserves a newer home skin section while removing the legacy profile copy', async () => {
+test('profile bootstrap removes a polluted global skin section without replacing newer profile state', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-empty-home-patch-'))
   const dshHome = join(root, 'home')
   const profileDir = join(dshHome, 'profiles', 'desktop')
@@ -468,8 +467,10 @@ test('profile bootstrap preserves a newer home skin section while removing the l
     await writeFile(join(profileDir, 'cordis.patch.yml'), `${skinSection}\n`)
     await writeFile(join(dshHome, 'cordis.patch.yml'), `${homeSkinSection}\n`)
     await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
-    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), `${homeSkinSection}\n`)
-    assert.doesNotMatch(await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8'), /dsh-skin managed/u)
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
+    const profilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
+    assert.match(profilePatch, /ui-skin-qq98/u)
+    assert.doesNotMatch(profilePatch, /ui-skin-blue-fantasy/u)
 
     // Desktop 0.1.8 may already have completed the migration and left a
     // zero-byte file, so the repair must not depend on detecting legacy rows.
@@ -511,7 +512,8 @@ test('profile bootstrap keeps a migrated bundled skin resolvable without restori
     assert.equal(manifest.dependencies[skinPackage], undefined)
     assert.equal(manifest.dsh.profile.bundles.includes(skinPackage), false)
     assert.equal(await realpath(alias), await realpath(skinRoot))
-    assert.match(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), new RegExp(skinPackage, 'u'))
+    assert.match(await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8'), new RegExp(skinPackage, 'u'))
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
     const records = JSON.parse(await readFile(join(profileDir, '.dsh-desktop-links.json'), 'utf8'))
     assert.deepEqual(records[skinPackage], { mode: 'link', source: skinRoot })
 

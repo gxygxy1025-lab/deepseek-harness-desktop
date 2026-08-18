@@ -86,6 +86,10 @@ const updateShutdownProtocol = await readFile(join(resources, 'update-shutdown-v
 if (updateShutdownProtocol.trim() !== 'dsh-desktop-update-shutdown-protocol=1') {
   throw new Error('packaged update shutdown protocol marker is invalid')
 }
+const updateShutdownReceipt = await readFile(join(resources, 'update-shutdown-v2'), 'utf8')
+if (updateShutdownReceipt.trim() !== 'dsh-desktop-update-shutdown-receipt=2') {
+  throw new Error('packaged update shutdown receipt marker is invalid')
+}
 if (!allowMissingUpdateMetadata) await access(join(resources, 'app-update.yml'))
 
 console.log(`verified ${requiredPackages.length} packaged runtime packages in ${resources}`)

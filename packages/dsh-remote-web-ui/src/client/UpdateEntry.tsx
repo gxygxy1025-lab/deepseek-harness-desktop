@@ -38,6 +38,7 @@ export function UpdateEntry({ wide, t }: UpdateEntryProps) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<UpdateView>({ kind: "checking" })
   const runToken = useRef(0)
+  const desktopOwned = desktopUpdateCheck() !== undefined
 
   const check = useCallback(async (): Promise<void> => {
     setView({ kind: "checking" })
@@ -99,6 +100,7 @@ export function UpdateEntry({ wide, t }: UpdateEntryProps) {
       <button
         type="button"
         className={css.trigger}
+        data-dsh-update-entry={desktopOwned ? "desktop" : "plugin"}
         data-wide={wide ? undefined : "rail"}
         aria-label={t("update.label")}
         title={t("update.label")}

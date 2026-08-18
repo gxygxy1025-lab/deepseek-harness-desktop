@@ -1,4 +1,6 @@
 const UPDATE_SURFACE_ID = 'dsh-desktop-update-surface'
+const DESKTOP_UPDATE_TRIGGER_ATTRIBUTE = 'data-dsh-desktop-update-trigger'
+const PLUGIN_UPDATE_TRIGGER_ATTRIBUTE = 'data-dsh-update-entry'
 
 export const UPDATE_SURFACE_CSS = `
 #${UPDATE_SURFACE_ID} {
@@ -8,11 +10,28 @@ export const UPDATE_SURFACE_CSS = `
   display: grid;
   place-items: center;
   padding: 24px;
-  color: var(--dsw-alias-label-primary, #0f1115);
+  --dsh-update-fg: #0f1115;
+  --dsh-update-muted: #656b75;
+  --dsh-update-panel-bg: #ffffff;
+  --dsh-update-border: #e1e4e8;
+  --dsh-update-layer: #f7f8fa;
+  --dsh-update-hover: #f1f2f4;
+  --dsh-update-track: #e8ebf0;
+  color: var(--dsw-alias-label-primary, var(--dsh-update-fg));
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 #${UPDATE_SURFACE_ID}[hidden] { display: none; }
+
+html[data-dsh-desktop-chrome-theme="dark"] #${UPDATE_SURFACE_ID} {
+  --dsh-update-fg: #e6f0f5;
+  --dsh-update-muted: #93a8b4;
+  --dsh-update-panel-bg: #0e1a23;
+  --dsh-update-border: #21333f;
+  --dsh-update-layer: #12242f;
+  --dsh-update-hover: #16303e;
+  --dsh-update-track: #1b2f3c;
+}
 
 #${UPDATE_SURFACE_ID} .dsh-update-mask {
   position: absolute;
@@ -28,9 +47,9 @@ export const UPDATE_SURFACE_CSS = `
   max-height: min(680px, calc(100vh - 88px));
   padding: 22px 24px 24px;
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l2, #e1e4e8);
+  border: 1px solid var(--dsw-alias-border-l2, var(--dsh-update-border));
   border-radius: 18px;
-  background: var(--dsw-alias-bg-base, #ffffff);
+  background: var(--dsw-alias-bg-base, var(--dsh-update-panel-bg));
   box-shadow: var(--dsw-shadow-lv3, 0 0 1px rgba(0, 0, 0, 0.2), 0 0 4px rgba(0, 0, 0, 0.02), 0 12px 32px rgba(0, 0, 0, 0.08));
   animation: dsh-update-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -44,13 +63,13 @@ export const UPDATE_SURFACE_CSS = `
 
 #${UPDATE_SURFACE_ID} .dsh-update-kicker {
   margin: 0 0 4px;
-  color: var(--dsw-alias-label-secondary, #737984);
+  color: var(--dsw-alias-label-secondary, var(--dsh-update-muted));
   font-size: 12px;
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-title {
   margin: 0;
-  color: var(--dsw-alias-label-primary, #0f1115);
+  color: var(--dsw-alias-label-primary, var(--dsh-update-fg));
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -62,7 +81,7 @@ export const UPDATE_SURFACE_CSS = `
   flex: none;
   border: 0;
   border-radius: 28px;
-  color: var(--dsw-alias-label-secondary, #656b75);
+  color: var(--dsw-alias-label-secondary, var(--dsh-update-muted));
   background: transparent;
   cursor: pointer;
   font-size: 20px;
@@ -70,7 +89,7 @@ export const UPDATE_SURFACE_CSS = `
 
 #${UPDATE_SURFACE_ID} .dsh-update-status {
   margin: 18px 0 0;
-  color: var(--dsw-alias-label-secondary, #656b75);
+  color: var(--dsw-alias-label-secondary, var(--dsh-update-muted));
   font-size: 13px;
   line-height: 1.6;
 }
@@ -79,7 +98,7 @@ export const UPDATE_SURFACE_CSS = `
   display: flex;
   gap: 8px;
   margin: 14px 0 0;
-  color: var(--dsw-alias-label-secondary, #656b75);
+  color: var(--dsw-alias-label-secondary, var(--dsh-update-muted));
   font-size: 12px;
 }
 
@@ -87,7 +106,7 @@ export const UPDATE_SURFACE_CSS = `
   padding: 4px 8px;
   border: 0;
   border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-2, #f7f8fa);
+  background: var(--dsw-alias-bg-layer-2, var(--dsh-update-layer));
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 11px;
   letter-spacing: 0.02em;
@@ -98,10 +117,10 @@ export const UPDATE_SURFACE_CSS = `
   margin: 14px 0 0;
   padding: 12px 14px;
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
+  border: 1px solid var(--dsw-alias-border-l1, var(--dsh-update-border));
   border-radius: 8px;
-  color: var(--dsw-alias-label-secondary, #656b75);
-  background: var(--dsw-alias-bg-layer-2, #f7f8fa);
+  color: var(--dsw-alias-label-secondary, var(--dsh-update-muted));
+  background: var(--dsw-alias-bg-layer-2, var(--dsh-update-layer));
   font: 12px/1.65 "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
   white-space: pre-wrap;
 }
@@ -111,7 +130,7 @@ export const UPDATE_SURFACE_CSS = `
   margin-top: 18px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--dsw-alias-interactive-bg-hover, #e8ebf0);
+  background: var(--dsw-alias-interactive-bg-hover, var(--dsh-update-track));
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-progress i {
@@ -133,10 +152,10 @@ export const UPDATE_SURFACE_CSS = `
 #${UPDATE_SURFACE_ID} .dsh-update-action {
   min-height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--dsw-alias-border-l2, #d9dce1);
+  border: 1px solid var(--dsw-alias-border-l2, var(--dsh-update-border));
   border-radius: 14px;
-  color: var(--dsw-alias-label-primary, #3f444c);
-  background: var(--dsw-alias-bg-base, #ffffff);
+  color: var(--dsw-alias-label-primary, var(--dsh-update-fg));
+  background: var(--dsw-alias-bg-base, var(--dsh-update-panel-bg));
   cursor: pointer;
   font: 400 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
@@ -147,17 +166,31 @@ export const UPDATE_SURFACE_CSS = `
   border-color: transparent;
   border-radius: 999px;
   color: var(--dsw-alias-label-primary-foreground, #ffffff);
-  background: var(--dsw-alias-button-info-fill, #0f1115);
+  background: var(--dsw-alias-button-info-fill, #4d78e8);
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-close:hover,
 #${UPDATE_SURFACE_ID} .dsh-update-action:hover:not([data-primary="true"]) {
-  background: var(--dsw-alias-interactive-bg-hover, #f1f2f4);
+  background: var(--dsw-alias-interactive-bg-hover, var(--dsh-update-hover));
 }
 
 #${UPDATE_SURFACE_ID} .dsh-update-action[data-primary="true"]:hover {
-  background: var(--dsw-alias-button-info-hover, #2b3038);
+  background: var(--dsw-alias-button-info-hover, #3d64d8);
 }
+
+#${UPDATE_SURFACE_ID} .dsh-update-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border: 2px solid var(--dsw-alias-border-l2, var(--dsh-update-border));
+  border-top-color: var(--dsw-alias-state-business-primary, #4d78e8);
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: dsh-update-spin 800ms linear infinite;
+}
+
+@keyframes dsh-update-spin { to { transform: rotate(360deg); } }
 
 #${UPDATE_SURFACE_ID} button:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary, #4d78e8);
@@ -171,7 +204,8 @@ export const UPDATE_SURFACE_CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   #${UPDATE_SURFACE_ID} * { transition: none !important; }
-  #${UPDATE_SURFACE_ID} .dsh-update-panel { animation: none !important; }
+  #${UPDATE_SURFACE_ID} .dsh-update-panel,
+  #${UPDATE_SURFACE_ID} .dsh-update-spinner { animation: none !important; }
 }
 `
 
@@ -212,6 +246,9 @@ export function createUpdateSurfaceScript() {
 
     const status = document.createElement('p');
     status.className = 'dsh-update-status';
+    const spinner = document.createElement('i');
+    spinner.className = 'dsh-update-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
     const versions = document.createElement('div');
     versions.className = 'dsh-update-version';
     const notes = document.createElement('pre');
@@ -296,6 +333,8 @@ export function createUpdateSurfaceScript() {
         status.textContent = '点击检查以获取最新桌面版本。';
         actions.append(later, recheck);
       }
+      if (phase === 'checking' || phase === 'installing') status.prepend(spinner);
+      else spinner.remove();
       if (value.visible || phase === 'ready') show();
     };
 
@@ -311,10 +350,84 @@ export function createUpdateSurfaceScript() {
   })()`
 }
 
+/**
+ * Keep the sidebar download seat owned by Desktop even when a bundled plugin
+ * is upgraded or re-renders its React tree. The plugin currently delegates to
+ * the bridge itself, but this capture-phase guard is the Desktop-owned source
+ * of truth and therefore does not depend on any particular plugin release.
+ */
+export function createDesktopUpdateTriggerGuardScript() {
+  return `(() => {
+    const api = window.dshDesktop;
+    if (typeof api?.checkForUpdates !== 'function') return false;
+
+    const guardKey = '__dshDesktopUpdateTriggerGuard';
+    window[guardKey]?.dispose?.();
+    // Old plugin releases say "plugin" and the 2.4-aware release says
+    // "desktop" when the Electron bridge exists. Claim both: the Desktop
+    // shell, not the currently installed plugin version, owns this seat.
+    const pluginSelector = 'button[${PLUGIN_UPDATE_TRIGGER_ATTRIBUTE}]';
+    const legacySelector = [
+      'button[aria-label="检查更新"]',
+      'button[aria-label="Check for updates"]',
+      'button[title="检查更新"]',
+      'button[title="Check for updates"]',
+    ].join(',');
+    const selector = pluginSelector + ',' + legacySelector;
+    const ownedSelector = 'button[${DESKTOP_UPDATE_TRIGGER_ATTRIBUTE}="true"]';
+    const excludedSelector = '#${UPDATE_SURFACE_ID},#dsh-desktop-window-chrome';
+
+    const isExcluded = (button) => button.closest(excludedSelector) !== null;
+    const claim = (button) => {
+      if (!button || isExcluded(button)) return false;
+      const previous = button.getAttribute('aria-label') || button.getAttribute('title') || '';
+      const english = previous.startsWith('Check');
+      const label = english ? 'Check for Desktop updates' : '检查桌面版更新';
+      button.setAttribute('${DESKTOP_UPDATE_TRIGGER_ATTRIBUTE}', 'true');
+      if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+      if (button.getAttribute('title') !== label) button.setAttribute('title', label);
+      return true;
+    };
+    const claimAll = () => document.querySelectorAll(selector).forEach(claim);
+    const findButton = (target) => {
+      if (!(target instanceof Element)) return null;
+      const button = target.closest(ownedSelector + ',' + selector);
+      return button && !isExcluded(button) ? button : null;
+    };
+    const onClick = (event) => {
+      const button = findButton(event.target);
+      if (!button) return;
+      claim(button);
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      void api.checkForUpdates().catch(() => {});
+    };
+    const observer = new MutationObserver(claimAll);
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['aria-label', 'title', '${PLUGIN_UPDATE_TRIGGER_ATTRIBUTE}'],
+    });
+    document.addEventListener('click', onClick, true);
+    claimAll();
+    window[guardKey] = {
+      dispose() {
+        observer.disconnect();
+        document.removeEventListener('click', onClick, true);
+      },
+    };
+    return true;
+  })()`
+}
+
 export async function applyUpdateSurface({ webContents }) {
   if (!webContents || webContents.isDestroyed?.()) return false
   await webContents.insertCSS(UPDATE_SURFACE_CSS, { cssOrigin: 'author' })
-  return webContents.executeJavaScript(createUpdateSurfaceScript(), true)
+  const mounted = await webContents.executeJavaScript(createUpdateSurfaceScript(), true)
+  const guarded = await webContents.executeJavaScript(createDesktopUpdateTriggerGuardScript(), true)
+  return Boolean(mounted && guarded)
 }
 
 export function installUpdateSurface({ browserWindow, onError = () => {} }) {

@@ -54,7 +54,7 @@ dsh plugin --profile web add "link:<本仓库绝对路径>"
 
 ## 切换皮肤
 
-皮肤启用互斥，通过 `scripts/dsh-skin` 管理（写入 `~/.dsh/cordis.patch.yml` 的 managed 区段 + profile 链接）：
+皮肤启用互斥，通过 `scripts/dsh-skin` 管理（写入 `~/.dsh/profiles/<profile>/cordis.patch.yml` 的 managed 区段 + profile 链接）：
 
 ```bash
 dsh-skin use miku       # 启用本皮肤

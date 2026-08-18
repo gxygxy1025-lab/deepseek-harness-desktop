@@ -39,7 +39,7 @@ function ExecutionRow({ execution, onOpen }: { execution: ExecutionRecord; onOpe
       </span>
       <span className={css.executionTimes}>
         {t('detail.executionStarted')} {formatTime(execution.startedAt)}
-        {execution.endedAt !== undefined && ` · ${t('detail.executionEnded')} ${formatTime(execution.endedAt)}`}
+        {(execution.finishedAt ?? execution.endedAt) !== undefined && ` · ${t('detail.executionEnded')} ${formatTime((execution.finishedAt ?? execution.endedAt) as number)}`}
       </span>
       {execution.sessionId !== undefined && (
         <button

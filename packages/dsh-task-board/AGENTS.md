@@ -10,17 +10,15 @@ dsh Web GUI 的多列任务看板（UI 类插件）。任务可**真实执行**�
   额度**，执行前先确认。
 - 定时调度在浏览器端：`core/scheduler.ts` 每 60s 心跳（+ 标签页恢复即时补 tick），
   命中 cron 到期即触发，提前滚动到下一次匹配避免同 tick 双发。
-- 纯浏览器调度，**无服务端通道**：需 GUI 标签页打开才行，错过即跳过（不排队）；
+- 调度仍是纯浏览器行为：Host 通道只持久化与同步，不负责启动任务。需 GUI 标签页打开，错过即跳过（不排队）；
   正在运行的任务到点被 runTask guard 拒绝，等下一次 cron。运行时人脸以结构接口注
   入，测试直接驱动 tick，无定时器。
 
 ## 数据模型
 
-- 任务账本存浏览器 `localStorage`，键 `dsh.taskBoard.v1`（版本化）；跨刷新与
-  dsh 重启存活（同源）。改键或字段必须在 `core/store.ts` 的解析/修复逻辑同步
-  处理旧数据。
-- 新增源码文件落区：host 面不适合此包（看板为纯 client + core），执行/调度逻辑进
-  `core/`，UI 进 `client/board/`。
+- 权威账本为当前 profile 下的 `state/task-board/tasks-v2.json`；Host 写入必须串行、临时文件回读校验后原子替换，损坏文件移名保留。浏览器 `dsh.taskBoard.v1` 是迁移源和 Host 不可用时的回退，2.4.x 不删除。
+- Host 路由只允许固定 loopback same-origin 路径，不接受浏览器传入文件路径；多标签同步使用 SSE 变更事件，不加高频轮询。
+- 执行/调度状态机进 `core/`，Host 文件与路由进 `host/`，浏览器 HostStore 客户端进 `client/`，UI 进 `client/board/`。
 
 ## 提交前检查
 

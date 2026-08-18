@@ -9,6 +9,7 @@
   --alert: #ffb66d;
   --sans: "Aptos", "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
   --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  --display: "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
   font-family: var(--sans);
   background: var(--canvas);
 }
@@ -58,7 +59,6 @@ body {
 #whale-canvas {
   z-index: 2;
   opacity: 0.9;
-  filter: drop-shadow(0 0 28px rgba(69, 171, 218, 0.12));
 }
 
 .deep-glow {
@@ -129,11 +129,11 @@ h1 {
   margin: 0;
   color: #eef7fa;
   filter: drop-shadow(0 12px 34px rgba(49, 143, 182, 0.12));
-  font-family: var(--sans);
-  font-size: clamp(38px, 4vw, 54px);
+  font-family: var(--display);
+  font-size: clamp(40px, 4.2vw, 56px);
   font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -0.045em;
+  line-height: 1.18;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   animation: reveal-up 900ms 220ms both cubic-bezier(0.16, 0.8, 0.24, 1);
 }
@@ -157,19 +157,24 @@ h1 {
 }
 
 #progress-value {
+  display: inline-block;
   color: #98dfee;
   font: 12px/1 var(--mono);
   letter-spacing: 0.06em;
+}
+
+#progress-value.is-ticking {
+  animation: progress-tick 260ms ease;
 }
 
 .meter {
   position: relative;
   width: 100%;
   height: 3px;
-  overflow: hidden;
   border-radius: 999px;
   background: rgba(127, 187, 210, 0.12);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: box-shadow 500ms ease;
 }
 
 .meter-fill {
@@ -179,7 +184,9 @@ h1 {
   height: 100%;
   overflow: hidden;
   border-radius: inherit;
-  background: #68cce4;
+  background: linear-gradient(90deg, #3f9dbd 0%, #68cce4 55%, #a8e6f4 100%);
+  background-size: 180% 100%;
+
   transition: width 720ms cubic-bezier(0.22, 0.72, 0.18, 1), background 260ms ease;
 }
 
@@ -190,6 +197,81 @@ h1 {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.68), transparent);
   transform: translateX(-120%);
   animation: progress-light 2.3s ease-in-out infinite;
+}
+
+.meter-tip {
+  position: absolute;
+  top: 50%;
+  left: var(--progress, 8%);
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(158, 231, 245, 0.28) 0%, rgba(158, 231, 245, 0) 68%);
+  transform: translate(-50%, -50%);
+  transition: left 720ms cubic-bezier(0.22, 0.72, 0.18, 1);
+  pointer-events: none;
+}
+
+.meter-tip svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: #a8e6f4;
+  transform: scaleX(-1);
+  animation: tip-swim 2.8s ease-in-out infinite;
+}
+
+.meter-tip::before {
+  content: '';
+  position: absolute;
+  top: 58%;
+  left: -7px;
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: rgba(168, 230, 244, 0.55);
+  box-shadow:
+    -8px -2px 0 -0.5px rgba(168, 230, 244, 0.34),
+    -15px -4px 0 -1px rgba(168, 230, 244, 0.2);
+  transform: translateY(-50%);
+}
+
+.meter-tick {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(127, 187, 210, 0.3);
+  transform: translate(-50%, -50%);
+  transition: background 320ms ease, box-shadow 320ms ease;
+  pointer-events: none;
+}
+
+.meter-tick::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 1px solid rgba(196, 240, 250, 0.9);
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.meter[data-phase="1"] .meter-tick-1,
+.meter[data-phase="2"] .meter-tick-1,
+.meter[data-phase="2"] .meter-tick-2 {
+  background: #c4f0fa;
+  box-shadow: 0 0 7px rgba(158, 231, 245, 0.85);
+}
+
+.meter[data-phase="1"] .meter-tick-1::after,
+.meter[data-phase="2"] .meter-tick-1::after,
+.meter[data-phase="2"] .meter-tick-2::after {
+  animation: tick-ripple 900ms ease-out;
 }
 
 .status-detail {
@@ -279,10 +361,26 @@ footer {
 }
 
 body[data-state="ready"] .meter-fill { background: #8fdced; }
+body[data-state="ready"] .meter {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 16px rgba(143, 220, 237, 0.38);
+}
+body[data-state="ready"] .meter-tip {
+  background: radial-gradient(circle, rgba(190, 244, 252, 0.42) 0%, rgba(190, 244, 252, 0) 68%);
+}
+body[data-state="ready"] .meter-tip svg { fill: #d2f5fd; }
+body[data-state="ready"] .meter-fill i { animation: progress-light 900ms ease-out 1; }
+body[data-state="ready"] #progress-value {
+  color: #c8f2fb;
+  text-shadow: 0 0 8px rgba(168, 230, 244, 0.6);
+}
 body[data-state="crashed"] { --signal: var(--alert); --signal-rgb: 255, 182, 109; }
 body[data-state="crashed"] #whale-canvas { opacity: 0.38; filter: saturate(0.48); }
 body[data-state="crashed"] .launch-status { border-color: rgba(255, 182, 109, 0.24); }
 body[data-state="crashed"] .meter-fill { background: linear-gradient(90deg, #b96827, var(--alert)); }
+body[data-state="crashed"] .meter-tip {
+  background: radial-gradient(circle, rgba(255, 182, 109, 0.3) 0%, rgba(255, 182, 109, 0) 68%);
+}
+body[data-state="crashed"] .meter-tip svg { fill: #f0b46e; }
 
 @keyframes reveal-up {
   from { opacity: 0; transform: translateY(16px); }
@@ -297,6 +395,23 @@ body[data-state="crashed"] .meter-fill { background: linear-gradient(90deg, #b96
 @keyframes progress-light {
   0%, 26% { transform: translateX(-120%); }
   76%, 100% { transform: translateX(290%); }
+}
+
+@keyframes tip-swim {
+  0%, 100% { transform: scaleX(-1) translateY(0.5px) rotate(-7deg); }
+  50% { transform: scaleX(-1) translateY(-1.5px) rotate(7deg); }
+}
+
+
+@keyframes tick-ripple {
+  0% { opacity: 0.9; transform: scale(0.5); }
+  100% { opacity: 0; transform: scale(3.2); }
+}
+
+@keyframes progress-tick {
+  0% { transform: translateY(0); opacity: 1; }
+  38% { transform: translateY(-4px); opacity: 0.25; }
+  100% { transform: translateY(0); opacity: 1; }
 }
 
 @keyframes deep-breathe {

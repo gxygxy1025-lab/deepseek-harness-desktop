@@ -6,11 +6,12 @@ settings:
 
 overrides:
   '@linxin666/dsh-web-ui-all>@linxin666/dsh-ssh': link:./packages/dsh-ssh
+  '@linxin666/dsh-web-ui-all>@linxin666/dsh-client-ui-task-board': link:./packages/dsh-task-board
 
 patchedDependencies:
   '@deepseek-ai/dsh-host-apiproxy@0.1.0-rc.6': 5315b1a2ae59b7dd822dde639513a529c2ae89c087645229725acb19a69d6d42
   '@deepseek-ai/dsh-subprocess-local@0.1.0-rc.6': 3c66a863301e168c83421e416f9881971002a70b7a015aa2e6dc7876543dc5cc
-  '@linxin666/dsh-client-ui-skin-center@0.1.18': 9120dfc9c21b6af8926ab2278bac772ba27dd5f1030491ac551de3da01abc39a
+  '@linxin666/dsh-client-ui-skin-center@0.1.18': 101376a25b9be32d858b90bedc08736f57767e4d1013c60426e84d1fb99691ef
   '@linxin666/dsh-web-ui-all@0.1.18': c8b28bc28d1f66d37cc1bc829443e2748d372834bb315f1f6880eb6e6fd51ca5
   dshmarket@1.9.0: c30de697fc62830359dff91b8be39fe5471450b4b3b6196fb0a8c7c29f67b479
 
@@ -778,12 +779,18 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: ^0.1.0-rc.6
         version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))
+      '@deepseek-ai/dsh-host-webserver':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))
       '@deepseek-ai/dsh-settings':
         specifier: ^0.1.0-rc.6
         version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/schemastery@3.18.1)
       '@deepseek-ai/dsh-system-prompt':
         specifier: ^0.1.0-rc.6
         version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-llm@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-attachment@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-brand@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-timeout@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))))(@deepseek-ai/dsh-scope@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.1
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -900,7 +907,7 @@ importers:
         specifier: workspace:*
         version: link:../skins/skin-center
       '@linxin666/dsh-client-ui-task-board':
-        specifier: workspace:*
+        specifier: link:../dsh-task-board
         version: link:../dsh-task-board
       '@linxin666/dsh-client-ui-web-ui-settings':
         specifier: workspace:*
@@ -3991,11 +3998,6 @@ packages:
 
   '@linxin666/dsh-client-ui-skin-center@0.1.18':
     resolution: {integrity: sha512-XOc3q0+vNgN44EC3O2POkjuYcWjF+zYDGq3coFFKU1heGrohRZL6SJh23dqC0X7GHKc4NbL7wQ9ivbE7G03IFg==}
-    peerDependencies:
-      react: ^18.2.0
-
-  '@linxin666/dsh-client-ui-task-board@0.1.18':
-    resolution: {integrity: sha512-vtAn0MNBJ/3D5hBi9x04J4Zw+ppNipp4njTX3RBGPSng3+W4ZlGmrhVnFNcE5fsjgKNSK/Eq8El0PITxe0TY3Q==}
     peerDependencies:
       react: ^18.2.0
 
@@ -11179,12 +11181,7 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  '@linxin666/dsh-client-ui-skin-center@0.1.18(patch_hash=9120dfc9c21b6af8926ab2278bac772ba27dd5f1030491ac551de3da01abc39a)(react@18.3.1)':
-    dependencies:
-      react: 18.3.1
-      schemastery: 3.18.0
-
-  '@linxin666/dsh-client-ui-task-board@0.1.18(react@18.3.1)':
+  '@linxin666/dsh-client-ui-skin-center@0.1.18(patch_hash=101376a25b9be32d858b90bedc08736f57767e4d1013c60426e84d1fb99691ef)(react@18.3.1)':
     dependencies:
       react: 18.3.1
       schemastery: 3.18.0
@@ -11222,7 +11219,7 @@ snapshots:
 
   '@linxin666/dsh-skins@0.1.18(react@18.3.1)':
     dependencies:
-      '@linxin666/dsh-client-ui-skin-center': 0.1.18(patch_hash=9120dfc9c21b6af8926ab2278bac772ba27dd5f1030491ac551de3da01abc39a)(react@18.3.1)
+      '@linxin666/dsh-client-ui-skin-center': 0.1.18(patch_hash=101376a25b9be32d858b90bedc08736f57767e4d1013c60426e84d1fb99691ef)(react@18.3.1)
     transitivePeerDependencies:
       - react
 
@@ -11236,8 +11233,8 @@ snapshots:
       '@linxin666/dsh-client-ui-aionui-panel': 0.1.18(react@18.3.1)
       '@linxin666/dsh-client-ui-community-plugins': 0.1.18(react@18.3.1)
       '@linxin666/dsh-client-ui-git-graph': 0.1.18(react@18.3.1)
-      '@linxin666/dsh-client-ui-skin-center': 0.1.18(patch_hash=9120dfc9c21b6af8926ab2278bac772ba27dd5f1030491ac551de3da01abc39a)(react@18.3.1)
-      '@linxin666/dsh-client-ui-task-board': 0.1.18(react@18.3.1)
+      '@linxin666/dsh-client-ui-skin-center': 0.1.18(patch_hash=101376a25b9be32d858b90bedc08736f57767e4d1013c60426e84d1fb99691ef)(react@18.3.1)
+      '@linxin666/dsh-client-ui-task-board': link:packages/dsh-task-board
       '@linxin666/dsh-client-ui-web-ui-settings': 0.1.18(react@18.3.1)
       '@linxin666/dsh-liangshen': 0.1.18
       '@linxin666/dsh-live-stats': 0.1.18(react@18.3.1)

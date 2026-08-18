@@ -22,8 +22,11 @@ The DSH home remains `DSH_HOME` or `~/.dsh`. The desktop app runs the managed `~
 | Window | Single instance, persisted visible geometry, native menu, download destination prompt |
 | Community | Help-menu QQ group QR and one-click join, direct GitHub issue feedback |
 | Updates | Stable GitHub Releases, background download, user-confirmed restart/install, release notes, taskbar progress |
+| Update handoff | Token-bound shutdown receipt v2, verified runtime/extension quiescence, constrained legacy cleanup fallback |
+| Renderer bridge | Contract v1 capability discovery, split main/extension preloads, sender-identity enforcement |
+| Task Board | Profile-isolated Host file ledger, copy-first localStorage migration, SSE synchronization; browser scheduler unchanged |
 | Visual system | Solid native/injected title-bar alignment, system-style Extension Dock, bounded animated particle-whale startup surface |
-| Security | Sandbox, context isolation, no Node integration, loopback navigation allowlist, denied permissions |
+| Security | Sandbox, context isolation, no Node integration, per-window preload APIs, sender registry, loopback navigation allowlist, denied permissions |
 
 ## Desktop 2.0 screenshots
 
@@ -80,4 +83,4 @@ pnpm desktop:pack
 pnpm --filter @deepseek-ai/dsh-desktop pack:verify
 ```
 
-Use Node.js 24 and pnpm 11.21.0. The installer is written to `apps/dsh-desktop/dist`.
+Use Node.js 24 and pnpm 11.22.0. The installer is written to `apps/dsh-desktop/dist`.

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import vm from 'node:vm'
 
 import {
   applyUpdateSurface,
+  createDesktopUpdateTriggerGuardScript,
   createUpdateSurfaceScript,
   installUpdateSurface,
   UPDATE_SURFACE_CSS,
@@ -26,6 +28,73 @@ test('update surface is an accessible Harness-themed dialog driven by desktop up
   assert.match(script, /installUpdate\(\)\.catch\(\(\) => \{\}\)\.finally/u)
 })
 
+test('desktop owns the sidebar download trigger across plugin replacement', async () => {
+  const script = createDesktopUpdateTriggerGuardScript()
+  let clickListener
+  let checks = 0
+  let prevented = false
+  let propagationStopped = false
+  let immediatePropagationStopped = false
+
+  class FakeElement {
+    constructor(attributes = {}) {
+      this.attributes = new Map(Object.entries(attributes))
+    }
+
+    closest(selector) {
+      if (selector.includes('#dsh-desktop-update-surface') && !selector.includes('button')) return null
+      return selector.includes('button') ? this : null
+    }
+
+    getAttribute(name) { return this.attributes.get(name) ?? null }
+    setAttribute(name, value) { this.attributes.set(name, String(value)) }
+  }
+
+  class FakeMutationObserver {
+    constructor(callback) { this.callback = callback }
+    observe() {}
+    disconnect() {}
+  }
+
+  const document = {
+    documentElement: new FakeElement(),
+    querySelectorAll: () => [],
+    addEventListener: (name, listener, capture) => {
+      if (name === 'click' && capture === true) clickListener = listener
+    },
+    removeEventListener: () => {},
+  }
+  const window = {
+    dshDesktop: {
+      checkForUpdates: async () => { checks += 1 },
+    },
+  }
+  vm.runInNewContext(script, { document, Element: FakeElement, MutationObserver: FakeMutationObserver, window })
+  assert.equal(typeof clickListener, 'function')
+
+  // Simulate a newly installed plugin replacing and re-rendering the old
+  // trigger after the Desktop guard was already mounted.
+  const replacement = new FakeElement({
+    'data-dsh-update-entry': 'plugin',
+    'aria-label': '检查插件更新',
+  })
+  clickListener({
+    target: replacement,
+    preventDefault: () => { prevented = true },
+    stopPropagation: () => { propagationStopped = true },
+    stopImmediatePropagation: () => { immediatePropagationStopped = true },
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(checks, 1)
+  assert.equal(prevented, true)
+  assert.equal(propagationStopped, true)
+  assert.equal(immediatePropagationStopped, true)
+  assert.equal(replacement.getAttribute('data-dsh-desktop-update-trigger'), 'true')
+  assert.equal(replacement.getAttribute('aria-label'), '检查桌面版更新')
+  assert.equal(replacement.getAttribute('title'), '检查桌面版更新')
+})
+
 test('update surface applies CSS before mounting and follows navigation', async () => {
   const calls = []
   const listeners = new Map()
@@ -42,9 +111,10 @@ test('update surface applies CSS before mounting and follows navigation', async 
     },
   }
   assert.equal(await applyUpdateSurface({ webContents }), true)
-  assert.deepEqual(calls.map((entry) => entry[0]), ['css', 'script'])
+  assert.deepEqual(calls.map((entry) => entry[0]), ['css', 'script', 'script'])
   assert.deepEqual(calls[0][2], { cssOrigin: 'author' })
   assert.equal(calls[1][2], true)
+  assert.equal(calls[2][2], true)
 
   const dispose = installUpdateSurface({ browserWindow: { webContents } })
   assert.equal(typeof listeners.get('did-finish-load'), 'function')

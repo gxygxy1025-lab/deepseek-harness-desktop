@@ -1,0 +1,70 @@
+export const DESKTOP_API_VERSION = '1.0.0'
+
+export const DESKTOP_SURFACES = Object.freeze({
+  MAIN: 'main',
+  EXTENSIONS: 'extensions',
+  COMMUNITY: 'community',
+})
+
+export const DESKTOP_ERROR_CODES = Object.freeze({
+  SURFACE_UNKNOWN: 'desktop-surface-unknown',
+  CAPABILITY_DENIED: 'desktop-capability-denied',
+  INVALID_ARGUMENT: 'desktop-invalid-argument',
+})
+
+export const DESKTOP_CAPABILITIES = Object.freeze({
+  RUNTIME_READ: 'runtime.read',
+  UPDATES_READ: 'updates.read',
+  UPDATES_INSTALL: 'updates.install',
+  EXTENSIONS_MANAGE: 'extensions.manage',
+  SKILLS_READ: 'skills.read',
+  SKILLS_IMPORT: 'skills.import',
+  NOTIFICATIONS_SHOW: 'notifications.show',
+  DEEP_LINKS_SUBSCRIBE: 'deep-links.subscribe',
+})
+
+const CAPABILITIES_BY_SURFACE = Object.freeze({
+  [DESKTOP_SURFACES.MAIN]: Object.freeze([
+    DESKTOP_CAPABILITIES.RUNTIME_READ,
+    DESKTOP_CAPABILITIES.UPDATES_READ,
+    DESKTOP_CAPABILITIES.UPDATES_INSTALL,
+    DESKTOP_CAPABILITIES.SKILLS_READ,
+    DESKTOP_CAPABILITIES.NOTIFICATIONS_SHOW,
+    DESKTOP_CAPABILITIES.DEEP_LINKS_SUBSCRIBE,
+  ]),
+  [DESKTOP_SURFACES.EXTENSIONS]: Object.freeze([
+    DESKTOP_CAPABILITIES.RUNTIME_READ,
+    DESKTOP_CAPABILITIES.EXTENSIONS_MANAGE,
+    DESKTOP_CAPABILITIES.SKILLS_IMPORT,
+    DESKTOP_CAPABILITIES.NOTIFICATIONS_SHOW,
+  ]),
+  [DESKTOP_SURFACES.COMMUNITY]: Object.freeze([]),
+})
+
+export class DesktopContractError extends Error {
+  constructor(code, message) {
+    super(message)
+    this.name = 'DesktopContractError'
+    this.code = code
+  }
+}
+
+/** Return a clone-safe immutable capability snapshot for one renderer surface. */
+export function desktopContractForSurface(surface) {
+  const capabilities = CAPABILITIES_BY_SURFACE[surface]
+  if (capabilities === undefined) {
+    throw new DesktopContractError(DESKTOP_ERROR_CODES.SURFACE_UNKNOWN, 'desktop renderer surface is not registered')
+  }
+  return Object.freeze({
+    apiVersion: DESKTOP_API_VERSION,
+    surface,
+    capabilities: [...capabilities],
+  })
+}
+
+/** Major-version compatibility is the only promise made by Contract v1. */
+export function isDesktopContractCompatible(contract, requiredMajor = 1) {
+  if (typeof contract?.apiVersion !== 'string') return false
+  const major = Number.parseInt(contract.apiVersion.split('.')[0] ?? '', 10)
+  return major === requiredMajor && Array.isArray(contract.capabilities)
+}

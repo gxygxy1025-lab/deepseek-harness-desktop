@@ -280,10 +280,9 @@ export function stripManagedSkinSection(existing = '') {
 }
 
 export function mergeDesktopPatch(existing = '') {
-  // Old desktop builds placed the skin selector's managed section in the
-  // profile patch, while current skin-center owns the DSH-home patch. Keeping
-  // both layers makes Cordis register the same skin id twice.
-  let userPatch = stripManagedSkinSection(existing)
+  // The skin selector belongs to this isolated profile. Only replace the
+  // desktop-owned block; skin and community rows must survive unchanged.
+  let userPatch = String(existing)
   const start = userPatch.indexOf(DESKTOP_PATCH_START)
   if (start !== -1) {
     const end = userPatch.indexOf(DESKTOP_PATCH_END, start)
@@ -516,7 +515,7 @@ export async function ensureDesktopProfile({
   let changed = false
   changed = (await writeIfChanged(join(profileDir, 'cordis.yml'), ROOT_CONFIG)) || changed
   const patchPath = join(profileDir, 'cordis.patch.yml')
-  const existingPatch = await readFile(patchPath, 'utf8').catch((error) => {
+  let existingPatch = await readFile(patchPath, 'utf8').catch((error) => {
     if (error?.code === 'ENOENT') return ''
     throw error
   })
@@ -525,15 +524,20 @@ export async function ensureDesktopProfile({
     if (error?.code === 'ENOENT') return undefined
     throw error
   })
-  const legacySkinSection = extractManagedSkinSection(existingPatch)
-  // Desktop builds before the skin center moved its selector state into the
-  // profile patch. The home patch is now the single authority: move the old
-  // section there only when no newer home-layer state exists, and never clear
-  // a section the running skin center has already written.
-  if (legacySkinSection !== undefined && extractManagedSkinSection(homePatch ?? '') === undefined) {
-    const rawPrefix = (homePatch ?? '').trim()
-    const prefix = rawPrefix === '[]' ? '' : rawPrefix
-    homePatch = prefix ? `${prefix}\n\n${legacySkinSection}\n` : `${legacySkinSection}\n`
+  const globalSkinSection = extractManagedSkinSection(homePatch ?? '')
+  // Desktop 2.2/2.3 incorrectly made the shared harness-home patch the skin
+  // authority. Move that managed block into the isolated desktop profile and
+  // then remove it from the global file so official `dsh web` profiles are not
+  // contaminated. An existing profile block wins over the obsolete global
+  // copy, but the global copy is removed in either case.
+  if (globalSkinSection !== undefined) {
+    if (extractManagedSkinSection(existingPatch) === undefined) {
+      const rawPrefix = existingPatch.trim()
+      const prefix = rawPrefix === '[]' ? '' : rawPrefix
+      existingPatch = prefix ? `${prefix}\n\n${globalSkinSection}\n` : `${globalSkinSection}\n`
+    }
+    const strippedHomePatch = stripManagedSkinSection(homePatch ?? '')
+    homePatch = strippedHomePatch.trim() === '' ? ROOT_CONFIG : `${strippedHomePatch.trimEnd()}\n`
     changed = (await writeIfChanged(homePatchPath, homePatch)) || changed
   }
   // DSH parses an existing patch file as YAML and requires a top-level array.
@@ -550,7 +554,7 @@ export async function ensureDesktopProfile({
   changed = (await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)) || changed
 
   const bundledSkinSelection = await resolveBundledSkinSelection({
-    managedSection: extractManagedSkinSection(homePatch ?? ''),
+    managedSection: extractManagedSkinSection(managedPatch),
     carrierRoot: activePackageRoots.get('@linxin666/dsh-skins'),
   })
   const packagesToRetire = codexConnectEnabled

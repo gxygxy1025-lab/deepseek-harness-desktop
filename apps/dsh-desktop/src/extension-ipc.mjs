@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 import { COMMUNITY_PLUGIN_CATALOG, resolveCommunityPluginUrl } from './extensions/community-catalog.mjs'
 import { defaultSkillRoots, discoverSkills, importSkill } from './extensions/skills.mjs'
+import { DESKTOP_ERROR_CODES, DesktopContractError } from './desktop-contract.mjs'
 
 const CHANNELS = [
   'extensions:list',
@@ -27,6 +28,7 @@ const CHANNELS = [
 
 export function registerExtensionIpc({
   ipcMain,
+  surfaceRegistry = ipcMain.surfaceRegistry,
   dialog,
   shell,
   getWindow,
@@ -39,6 +41,9 @@ export function registerExtensionIpc({
   qqBotBinding,
   pluginRecovery,
 }) {
+  if (typeof surfaceRegistry?.assert !== 'function') {
+    throw new TypeError('extension IPC requires a desktop surface registry')
+  }
   for (const channel of CHANNELS) ipcMain.removeHandler(channel)
   let skillPaths = new Map()
   let pluginMutationQueue = Promise.resolve()
@@ -172,10 +177,24 @@ export function registerExtensionIpc({
     })
   }
 
-  ipcMain.handle('extensions:list', scan)
-  ipcMain.handle('extensions:plugin-check', () => pluginManager.checkUpdates())
-  ipcMain.handle('extensions:plugin-install', (_event, request) => installPlugin(request))
-  ipcMain.handle('extensions:plugin-update', (_event, request) => {
+  const handleExtension = (channel, handler) => {
+    ipcMain.handle(channel, async (event, ...args) => {
+      try {
+        surfaceRegistry.assert(event?.sender, 'extensions')
+        return await handler(event, ...args)
+      } catch (error) {
+        if (error instanceof TypeError) {
+          throw new DesktopContractError(DESKTOP_ERROR_CODES.INVALID_ARGUMENT, error.message)
+        }
+        throw error
+      }
+    })
+  }
+
+  handleExtension('extensions:list', scan)
+  handleExtension('extensions:plugin-check', () => pluginManager.checkUpdates())
+  handleExtension('extensions:plugin-install', (_event, request) => installPlugin(request))
+  handleExtension('extensions:plugin-update', (_event, request) => {
     if (
       request === null
       || typeof request !== 'object'
@@ -186,8 +205,8 @@ export function registerExtensionIpc({
     }
     return installPlugin({ spec: `${request.name}@latest`, allowUnknown: request.allowUnknown })
   })
-  ipcMain.handle('extensions:plugin-remove', (_event, name) => mutatePlugin(() => pluginManager.remove(name)))
-  ipcMain.handle('extensions:plugin-enable', (_event, request) => {
+  handleExtension('extensions:plugin-remove', (_event, name) => mutatePlugin(() => pluginManager.remove(name)))
+  handleExtension('extensions:plugin-enable', (_event, request) => {
     if (
       request === null
       || typeof request !== 'object'
@@ -198,17 +217,17 @@ export function registerExtensionIpc({
     }
     return enqueuePluginMutation(() => pluginRecovery.setPluginEnabledAndRestart(request.name, request.enabled))
   })
-  ipcMain.handle('extensions:recovery-state', () => pluginRecovery.getState())
-  ipcMain.handle('extensions:recovery-restore-all', () => {
+  handleExtension('extensions:recovery-state', () => pluginRecovery.getState())
+  handleExtension('extensions:recovery-restore-all', () => {
     return enqueuePluginMutation(() => pluginRecovery.restoreDisabledAndRestart())
   })
-  ipcMain.handle('extensions:recovery-restore', (_event, id) => {
+  handleExtension('extensions:recovery-restore', (_event, id) => {
     if (typeof id !== 'string' || id.length === 0 || id.length > 120) {
       throw new TypeError('invalid recovery snapshot identifier')
     }
     return enqueuePluginMutation(() => pluginRecovery.restoreSnapshotAndRestart(id))
   })
-  ipcMain.handle('extensions:diagnostics-export', async () => {
+  handleExtension('extensions:diagnostics-export', async () => {
     const result = await dialog.showSaveDialog(getWindow(), {
       title: '导出插件诊断包',
       defaultPath: `dsh-plugin-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
@@ -224,8 +243,8 @@ export function registerExtensionIpc({
     await writeFile(result.filePath, `${JSON.stringify(diagnostics, null, 2)}\n`)
     return { canceled: false }
   })
-  ipcMain.handle('extensions:community-open', (_event, id) => shell.openExternal(resolveCommunityPluginUrl(id)))
-  ipcMain.handle('extensions:skill-import', async () => {
+  handleExtension('extensions:community-open', (_event, id) => shell.openExternal(resolveCommunityPluginUrl(id)))
+  handleExtension('extensions:skill-import', async () => {
     const result = await dialog.showOpenDialog(getWindow(), {
       title: '选择技能目录 / Select skill folder',
       properties: ['openDirectory'],
@@ -235,22 +254,22 @@ export function registerExtensionIpc({
     const imported = await importSkill({ sourceDirectory: result.filePaths[0], targetRoot })
     return { canceled: false, skill: { name: imported.name, description: imported.description } }
   })
-  ipcMain.handle('extensions:skill-open', async (_event, id) => {
+  handleExtension('extensions:skill-open', async (_event, id) => {
     if (typeof id !== 'string' || !skillPaths.has(id)) throw new TypeError('invalid skill identifier')
     return shell.openPath(skillPaths.get(id))
   })
-  ipcMain.handle('extensions:skill-root', async () => {
+  handleExtension('extensions:skill-root', async () => {
     const root = join(dshHome, 'skills')
     await mkdir(root, { recursive: true })
     return shell.openPath(root)
   })
-  ipcMain.handle('extensions:qqbot-status', () => qqBotBinding.status())
-  ipcMain.handle('extensions:qqbot-bind', () => {
+  handleExtension('extensions:qqbot-status', () => qqBotBinding.status())
+  handleExtension('extensions:qqbot-bind', () => {
     assertPluginMutationIdle()
     return qqBotBinding.start()
   })
-  ipcMain.handle('extensions:qqbot-cancel', () => qqBotBinding.cancel())
-  ipcMain.handle('extensions:qqbot-unbind', () => {
+  handleExtension('extensions:qqbot-cancel', () => qqBotBinding.cancel())
+  handleExtension('extensions:qqbot-unbind', () => {
     assertPluginMutationIdle()
     return qqBotBinding.unbind()
   })

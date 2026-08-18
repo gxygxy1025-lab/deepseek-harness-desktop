@@ -8,6 +8,7 @@ import {
 } from '../src/community-links.mjs'
 import { createCommunityQrImage } from '../src/community.mjs'
 import { createApplicationMenuTemplate } from '../src/menu.mjs'
+import { installEditContextMenu } from '../src/menu.mjs'
 
 test('community and feedback destinations are fixed secure URLs', () => {
   assert.equal(COMMUNITY_QQ_URL, 'https://qm.qq.com/q/vehlNjaeye')
@@ -50,6 +51,58 @@ test('Tools and Help menus expose Extension Dock and community actions', () => {
     ['community'],
     ['feedback'],
     ['project', GITHUB_PROJECT_URL],
+  ])
+})
+
+test('Edit menu and native context menu expose paste without renderer clipboard access', () => {
+  const template = createApplicationMenuTemplate({
+    app: { getVersion: () => '2.4.0' },
+    shell: { openExternal: () => {} },
+    controller: { restart: () => {} },
+    openCommunity: () => {},
+    openFeedback: () => {},
+    openExtensions: () => {},
+    openLogs: () => {},
+    checkForUpdates: () => {},
+  })
+  const edit = template.find((entry) => entry.label === '编辑 / Edit')
+  const paste = edit.submenu.find((entry) => entry.role === 'paste')
+  assert.equal(paste?.label, '粘贴 / Paste')
+  assert.equal(paste?.accelerator, 'CmdOrCtrl+V')
+
+  const listeners = new Map()
+  const removed = []
+  let contextTemplate
+  let popupCount = 0
+  let pasteCount = 0
+  const webContents = {
+    on: (name, callback) => { listeners.set(name, callback) },
+    removeListener: (name, callback) => { removed.push([name, callback]) },
+    paste: () => { pasteCount += 1 },
+  }
+  const dispose = installEditContextMenu({
+    webContents,
+    Menu: {
+      buildFromTemplate: (entries) => {
+        contextTemplate = entries
+        return { popup: () => { popupCount += 1 } }
+      },
+    },
+  })
+  listeners.get('context-menu')({}, { editFlags: { canCopy: true }, selectionText: 'selected' })
+  assert.equal(contextTemplate.find((entry) => entry.role === 'paste')?.enabled, undefined)
+  assert.equal(contextTemplate.find((entry) => entry.role === 'copy')?.enabled, true)
+  assert.equal(popupCount, 1)
+  let prevented = 0
+  listeners.get('before-input-event')({ preventDefault: () => { prevented += 1 } }, {
+    type: 'keyDown', key: 'V', control: true, shift: true,
+  })
+  assert.equal(pasteCount, 1)
+  assert.equal(prevented, 1)
+  dispose()
+  assert.deepEqual(removed, [
+    ['context-menu', listeners.get('context-menu')],
+    ['before-input-event', listeners.get('before-input-event')],
   ])
 })
 

@@ -12,11 +12,14 @@ import { GITHUB_FEEDBACK_URL, GITHUB_PROJECT_URL } from './community-links.mjs'
 import { promptForDownloadDestination } from './download-destination.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
+import { DESKTOP_SURFACES } from './desktop-contract.mjs'
+import { DesktopSurfaceRegistry } from './desktop-surfaces.mjs'
 import {
   createHostCompatibilityProvider,
   resolvePackageVersion,
 } from './extensions/plugin-compatibility.mjs'
 import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
+import { defaultSkillRoots, discoverSkills } from './extensions/skills.mjs'
 import {
   QqBotBindingService,
   QqBotCredentialStore,
@@ -24,7 +27,7 @@ import {
 } from './extensions/qqbot.mjs'
 import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { launchRequestsSafeMode } from './launch-safe-mode.mjs'
-import { installApplicationMenu } from './menu.mjs'
+import { installApplicationMenu, installEditContextMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { startQqBotConnector } from './optional-integrations.mjs'
 import { DesktopPluginRecovery, PluginRecoveryStore } from './plugin-recovery.mjs'
@@ -36,14 +39,16 @@ import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-cont
 import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
 import { parseUpdateMirrors, probeUpdateSource, UpdateDownloadRouter } from './update-mirrors.mjs'
+import { parseUpdateShutdownRequest, writeUpdateShutdownReceipt } from './update-shutdown-receipt.mjs'
 import { installUpdateSurface } from './update-surface.mjs'
-import { installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
+import { getWindowChromeTheme, installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
 import { installConversationPolish } from './conversation-polish.mjs'
 import { installConversationSkills } from './conversation-skills.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
-const PRELOAD_PATH = join(SOURCE_DIR, 'preload.cjs')
+const MAIN_PRELOAD_PATH = join(SOURCE_DIR, 'preload-main.cjs')
+const EXTENSION_PRELOAD_PATH = join(SOURCE_DIR, 'preload-extension.cjs')
 const STARTUP_PATH = join(SOURCE_DIR, 'ui', 'startup.html')
 const EXTENSIONS_PATH = join(SOURCE_DIR, 'ui', 'extensions.html')
 const COMMUNITY_PATH = join(SOURCE_DIR, 'ui', 'community.html')
@@ -72,8 +77,21 @@ export function secondaryWindowWebPreferences({ preload } = {}) {
 }
 
 export function requestsUpdateShutdown(commandLine = [], additionalData) {
-  return additionalData?.shutdownForUpdate === true
-    || commandLine.includes('--shutdown-for-update')
+  return parseUpdateShutdownRequest(commandLine, additionalData) !== undefined
+}
+
+/** Extract one bounded application deep link from untrusted process arguments. */
+export function desktopDeepLinkFrom(commandLine = [], protocol = 'dsh') {
+  for (const value of commandLine) {
+    if (typeof value !== 'string' || value.length > 4_096) continue
+    try {
+      const url = new URL(value)
+      if (url.protocol === `${protocol}:`) return url.href
+    } catch {
+      // Ordinary executable arguments are not URLs.
+    }
+  }
+  return undefined
 }
 
 export async function ensurePnpmCommandShim({ directory, executable, pnpmCli }) {
@@ -134,6 +152,7 @@ export function createDesktopShutdownLifecycle({
   log = async () => {},
 }) {
   let runtimeStopped = false
+  let operationsQuiesced = false
   let resourcesDisposed = false
   let stopPromise
   let shutdownPromise
@@ -152,6 +171,7 @@ export function createDesktopShutdownLifecycle({
     if (stopPromise) return stopPromise
     const operation = Promise.resolve()
       .then(prepareStop)
+      .then(() => { operationsQuiesced = true })
       .then(() => Promise.resolve().then(saveState).catch(report))
       .then(stopRuntime)
       .then(() => { runtimeStopped = true })
@@ -159,6 +179,7 @@ export function createDesktopShutdownLifecycle({
         await report(error)
         try {
           await resumeOperations()
+          operationsQuiesced = false
         } catch (resumeError) {
           await report(resumeError)
         }
@@ -202,6 +223,7 @@ export function createDesktopShutdownLifecycle({
     }
     try {
       await resumeOperations()
+      operationsQuiesced = false
       await startRuntime()
     } catch (error) {
       await report(error)
@@ -217,6 +239,7 @@ export function createDesktopShutdownLifecycle({
     shutdown,
     recover,
     get runtimeStopped() { return runtimeStopped },
+    get operationsQuiesced() { return operationsQuiesced },
     get resourcesDisposed() { return resourcesDisposed },
   })
 }
@@ -224,26 +247,47 @@ export function createDesktopShutdownLifecycle({
 export async function startElectronApp(metadata) {
   const applicationStartedAt = performance.now()
   const electron = await import('electron')
-  const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, safeStorage, screen, shell } = electron
+  const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, shell } = electron
   if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
-  const initialUpdateShutdownRequest = requestsUpdateShutdown(process.argv)
-  let updateShutdownRequested = initialUpdateShutdownRequest
+  const initialUpdateShutdownRequest = parseUpdateShutdownRequest(process.argv)
+  let updateShutdownRequest = initialUpdateShutdownRequest
+  let updateShutdownRequested = initialUpdateShutdownRequest !== undefined
   let requestUpdateShutdown
   let mainWindow
-  if (!app.requestSingleInstanceLock({ shutdownForUpdate: initialUpdateShutdownRequest })) {
+  const pendingDeepLinks = []
+  const publishDeepLink = (url) => {
+    if (!url) return
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) {
+      pendingDeepLinks.push(url)
+      return
+    }
+    mainWindow.webContents.send('desktop:deep-link', url)
+  }
+  publishDeepLink(desktopDeepLinkFrom(process.argv, metadata.protocol))
+  if (!app.requestSingleInstanceLock({
+    shutdownForUpdate: updateShutdownRequested,
+    ...(initialUpdateShutdownRequest?.token ? { shutdownToken: initialUpdateShutdownRequest.token } : {}),
+  })) {
     app.quit()
     return
   }
   app.on('second-instance', (_event, commandLine, _workingDirectory, additionalData) => {
-    if (requestsUpdateShutdown(commandLine, additionalData)) {
+    const request = parseUpdateShutdownRequest(commandLine, additionalData)
+    if (request !== undefined) {
+      updateShutdownRequest = request
       updateShutdownRequested = true
-      requestUpdateShutdown?.()
+      requestUpdateShutdown?.(request)
       return
     }
+    publishDeepLink(desktopDeepLinkFrom(commandLine, metadata.protocol))
     if (!mainWindow) return
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
+  })
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    publishDeepLink(desktopDeepLinkFrom([url], metadata.protocol))
   })
 
   app.setName(metadata.productName)
@@ -401,6 +445,7 @@ export async function startElectronApp(metadata) {
 
   const statePath = join(userData, 'window-state.json')
   const state = await loadWindowState(statePath, screen.getAllDisplays())
+  const surfaceRegistry = new DesktopSurfaceRegistry()
   mainWindow = new BrowserWindow({
     ...state,
     minWidth: 720,
@@ -411,7 +456,7 @@ export async function startElectronApp(metadata) {
     backgroundColor: '#040814',
     ...windowChromeBrowserOptions(),
     webPreferences: {
-      preload: PRELOAD_PATH,
+      preload: MAIN_PRELOAD_PATH,
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -419,7 +464,14 @@ export async function startElectronApp(metadata) {
       spellcheck: false,
     },
   })
+  const unregisterMainSurface = surfaceRegistry.register(mainWindow.webContents, DESKTOP_SURFACES.MAIN)
+  const flushDeepLinks = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    for (const url of pendingDeepLinks.splice(0)) mainWindow.webContents.send('desktop:deep-link', url)
+  }
+  mainWindow.webContents.on('did-finish-load', flushDeepLinks)
   applyWindowIcon(mainWindow, appIcon)
+  const removeEditContextMenu = installEditContextMenu({ webContents: mainWindow.webContents, Menu })
   const removeMainWindowChrome = installWindowChrome({
     browserWindow: mainWindow,
     iconDataUrl: windowChromeIconDataUrl,
@@ -475,6 +527,7 @@ export async function startElectronApp(metadata) {
 
   const unregisterIpc = registerDesktopIpc({
     ipcMain,
+    surfaceRegistry,
     controller,
     getWindow: () => mainWindow,
     metadata,
@@ -494,7 +547,12 @@ export async function startElectronApp(metadata) {
     setWindowChromeTheme: (sender, theme) => {
       const target = BrowserWindow.fromWebContents(sender)
       if (!target || target.isDestroyed()) return undefined
-      return setWindowChromeTheme(target, theme)
+      const applied = setWindowChromeTheme(target, theme)
+      if (target === mainWindow) {
+        syncCommunityWindowTheme(applied)
+        syncExtensionWindowTheme(applied)
+      }
+      return applied
     },
     claimStarPrompt: async () => {
       try {
@@ -505,6 +563,30 @@ export async function startElectronApp(metadata) {
       }
     },
     getUpdateController: () => updateController,
+    listSkills: async () => {
+      const catalog = await discoverSkills({
+        roots: defaultSkillRoots({
+          projectRoot,
+          dshHome,
+          agentsHome: process.env.DSH_AGENTS_HOME,
+        }),
+      })
+      return {
+        skills: catalog.skills.map((skill, index) => ({
+          id: `${skill.rank}:${index}:${skill.name}`,
+          name: skill.name,
+          description: skill.description,
+          source: skill.source,
+          shadowed: Boolean(skill.shadowedBy),
+        })),
+        diagnostics: catalog.diagnostics.map((item) => ({ error: item.error })),
+      }
+    },
+    showNotification: ({ title, body }) => {
+      if (!Notification?.isSupported?.()) return false
+      new Notification({ title, body }).show()
+      return true
+    },
   })
 
   const createExtensionWindow = async () => {
@@ -513,6 +595,7 @@ export async function startElectronApp(metadata) {
       extensionWindow.focus()
       return extensionWindow
     }
+    const chromeTheme = mainWindow && !mainWindow.isDestroyed() ? getWindowChromeTheme(mainWindow) : 'dark'
     extensionWindow = new BrowserWindow({
       width: 1120,
       height: 780,
@@ -522,10 +605,14 @@ export async function startElectronApp(metadata) {
       parent: mainWindow,
       title: 'Extension Dock',
       icon: appIcon,
-      backgroundColor: '#ffffff',
-      ...windowChromeBrowserOptions(),
-      webPreferences: secondaryWindowWebPreferences({ preload: PRELOAD_PATH }),
+      backgroundColor: chromeTheme === 'dark' ? '#0a141b' : '#ffffff',
+      ...windowChromeBrowserOptions(chromeTheme),
+      webPreferences: secondaryWindowWebPreferences({ preload: EXTENSION_PRELOAD_PATH }),
     })
+    const unregisterExtensionSurface = surfaceRegistry.register(
+      extensionWindow.webContents,
+      DESKTOP_SURFACES.EXTENSIONS,
+    )
     applyWindowIcon(extensionWindow, appIcon)
     const removeExtensionWindowChrome = installWindowChrome({
       browserWindow: extensionWindow,
@@ -541,12 +628,22 @@ export async function startElectronApp(metadata) {
     extensionWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
     extensionWindow.once('ready-to-show', () => extensionWindow?.show())
     extensionWindow.on('closed', () => {
+      unregisterExtensionSurface()
       removeExtensionWindowChrome()
       extensionWindow = undefined
     })
-    await extensionWindow.loadFile(EXTENSIONS_PATH)
+    await extensionWindow.loadFile(EXTENSIONS_PATH, { query: { theme: chromeTheme } })
     return extensionWindow
   }
+
+  const syncSecondaryWindowTheme = (window, theme) => {
+    if (!window || window.isDestroyed()) return
+    setWindowChromeTheme(window, theme)
+    const script = `document.documentElement.dataset.dshDesktopTheme = ${JSON.stringify(theme)}; document.documentElement.dataset.dshDesktopChromeTheme = ${JSON.stringify(theme)}`
+    void window.webContents.executeJavaScript(script).catch(() => {})
+  }
+  const syncCommunityWindowTheme = (theme) => syncSecondaryWindowTheme(communityWindow, theme)
+  const syncExtensionWindowTheme = (theme) => syncSecondaryWindowTheme(extensionWindow, theme)
 
   const createCommunityWindow = () => {
     if (communityWindowPromise) return communityWindowPromise
@@ -562,6 +659,7 @@ export async function startElectronApp(metadata) {
       if (!mainWindow || mainWindow.isDestroyed()) {
         throw new Error('main window closed before the community window could open')
       }
+      const chromeTheme = getWindowChromeTheme(mainWindow)
       createdWindow = new BrowserWindow({
         width: 580,
         height: 740,
@@ -571,11 +669,15 @@ export async function startElectronApp(metadata) {
         parent: mainWindow,
         title: '加入社群',
         icon: appIcon,
-        backgroundColor: '#f7f8fa',
-        ...windowChromeBrowserOptions(),
+        backgroundColor: chromeTheme === 'dark' ? '#0a141b' : '#f7f8fa',
+        ...windowChromeBrowserOptions(chromeTheme),
         webPreferences: secondaryWindowWebPreferences(),
       })
       communityWindow = createdWindow
+      const unregisterCommunitySurface = surfaceRegistry.register(
+        createdWindow.webContents,
+        DESKTOP_SURFACES.COMMUNITY,
+      )
       applyWindowIcon(createdWindow, appIcon)
       const removeCommunityWindowChrome = installWindowChrome({
         browserWindow: createdWindow,
@@ -594,10 +696,11 @@ export async function startElectronApp(metadata) {
         if (!createdWindow.isDestroyed()) createdWindow.show()
       })
       createdWindow.on('closed', () => {
+        unregisterCommunitySurface()
         removeCommunityWindowChrome()
         if (communityWindow === createdWindow) communityWindow = undefined
       })
-      await createdWindow.loadFile(COMMUNITY_PATH, { query: { qr: qrImage } })
+      await createdWindow.loadFile(COMMUNITY_PATH, { query: { qr: qrImage, theme: chromeTheme } })
       return createdWindow
     })().catch((error) => {
       if (createdWindow && !createdWindow.isDestroyed()) createdWindow.destroy()
@@ -612,6 +715,7 @@ export async function startElectronApp(metadata) {
 
   const unregisterExtensionIpc = registerExtensionIpc({
     ipcMain,
+    surfaceRegistry,
     dialog,
     shell,
     getWindow: () => extensionWindow ?? mainWindow,
@@ -722,7 +826,10 @@ export async function startElectronApp(metadata) {
         removeStarPromptSurface,
         removeConversationSkills,
         removeConversationPolish,
+        removeEditContextMenu,
         removeMainWindowChrome,
+        () => mainWindow?.webContents.removeListener('did-finish-load', flushDeepLinks),
+        unregisterMainSurface,
         unregisterIpc,
         unregisterExtensionIpc,
         () => pluginRecovery.dispose(),
@@ -738,22 +845,33 @@ export async function startElectronApp(metadata) {
     },
   })
 
-  requestUpdateShutdown = () => {
-    if (shutdownLifecycle.runtimeStopped) {
-      app.quit()
-      return
-    }
+  requestUpdateShutdown = (request = updateShutdownRequest) => {
     if (quitInProgress) return
     quitInProgress = true
     void shutdownLifecycle.shutdown()
-      .then(() => app.quit())
+      .then(async () => {
+        if (request?.token) {
+          try {
+            await writeUpdateShutdownReceipt({
+              token: request.token,
+              pid: process.pid,
+              runtimeStopped: shutdownLifecycle.runtimeStopped,
+              extensionsQuiesced: shutdownLifecycle.operationsQuiesced,
+            })
+            await logStore.append(`[shutdown] update receipt v2 written for pid=${process.pid}`)
+          } catch (error) {
+            await logStore.append(`[shutdown] update receipt v2 failed: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+        app.quit()
+      })
       .catch((error) => {
         quitInProgress = false
         const message = error instanceof Error ? error.message : String(error)
         void logStore.append(`[shutdown] installer request deferred because runtime stop failed: ${message}`).catch(() => {})
       })
   }
-  if (updateShutdownRequested) requestUpdateShutdown()
+  if (updateShutdownRequested) requestUpdateShutdown(updateShutdownRequest)
 
   let autoUpdater
   if (app.isPackaged && process.platform === 'win32' && process.env.DSH_DESKTOP_DISABLE_UPDATES !== '1') {

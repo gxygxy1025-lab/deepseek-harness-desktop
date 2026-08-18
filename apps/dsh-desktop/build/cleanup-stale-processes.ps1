@@ -10,9 +10,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $mainExecutableName = 'DeepSeek Harness Desktop.exe'
 $shutdownProtocolMarker = 'resources\update-shutdown-v1'
+$shutdownReceiptMarker = 'resources\update-shutdown-v2'
+$shutdownReceiptMarkerValue = 'dsh-desktop-update-shutdown-receipt=2'
 $gracefulShutdownTimeoutMs = 7000
+$receiptShutdownTimeoutMs = 15000
+$receiptProcessExitTimeoutMs = 5000
 $forceAttempts = 12
 $retryDelayMs = 400
+$script:receiptProtocolFailed = $false
+$script:permissionDenied = $false
 
 try {
   if (-not ('DshInstaller.ProcessPath' -as [type])) {
@@ -270,6 +276,20 @@ namespace DshInstaller
       if ($processId -eq $selfPid -or $directProcessIds.Contains($processId)) {
         continue
       }
+      # Electron-builder uninstallers through 2.2 reject any running process with
+      # the product executable name, even when a damaged or moved installation is
+      # no longer discoverable through the registry. Mirror that exact product-name
+      # boundary so the legacy uninstaller cannot fail after this preflight succeeds.
+      # The name is unique to the Desktop host; official dsh web runtimes use node.
+      if ($cim.Name -and $cim.Name.Equals($mainExecutableName, $comparison)) {
+        [pscustomobject]@{
+          ProcessId = $processId
+          ExecutablePath = if ($cim.ExecutablePath) { $cim.ExecutablePath } else { $cim.Name }
+          Kind = 'main'
+          Root = ''
+        }
+        continue
+      }
       # TryGet can fail on elevated processes; the WMI executable path is a fallback
       # so such processes are still reported instead of failing the file copy later.
       $ownership = Get-Ownership $cim.ExecutablePath
@@ -312,9 +332,213 @@ namespace DshInstaller
     $direct + @(Get-AttributedInstallProcesses $directProcessIds)
   }
 
+  function New-ShutdownToken {
+    $bytes = New-Object byte[] 32
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+      $generator.GetBytes($bytes)
+    } finally {
+      $generator.Dispose()
+    }
+    -join ($bytes | ForEach-Object { $_.ToString('x2') })
+  }
+
+  function Get-ShutdownReceiptPath([string] $token) {
+    if ($token -notmatch '^[a-f0-9]{64}$') {
+      throw 'invalid generated shutdown token'
+    }
+    Join-Path ([System.IO.Path]::GetTempPath()) "dsh-desktop-shutdown-$token.json"
+  }
+
+  function Read-ValidatedShutdownReceipt(
+    [string] $path,
+    [string] $token,
+    [uint32] $expectedPid
+  ) {
+    try {
+      $receiptFile = Get-Item -LiteralPath $path -ErrorAction Stop
+      if ($receiptFile.Length -gt 4096) { return $null }
+      $receipt = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+      if (($receipt.schemaVersion -isnot [int]) -and ($receipt.schemaVersion -isnot [long])) { return $null }
+      if ([int64] $receipt.schemaVersion -ne 2) { return $null }
+      if (($receipt.token -isnot [string]) -or $receipt.token -cne $token) { return $null }
+      if (($receipt.pid -isnot [int]) -and ($receipt.pid -isnot [long])) { return $null }
+      if ([int64] $receipt.pid -ne [int64] $expectedPid) { return $null }
+      if (($receipt.runtimeStopped -isnot [bool]) -or $receipt.runtimeStopped -ne $true) { return $null }
+      if (($receipt.extensionsQuiesced -isnot [bool]) -or $receipt.extensionsQuiesced -ne $true) { return $null }
+      if ($receipt.writtenAt -isnot [string]) { return $null }
+      $parsedWrittenAt = [System.DateTimeOffset]::MinValue
+      if (-not [System.DateTimeOffset]::TryParse(
+        $receipt.writtenAt,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::RoundtripKind,
+        [ref] $parsedWrittenAt
+      )) { return $null }
+      return $receipt
+    } catch {
+      return $null
+    }
+  }
+
+  function Wait-ForProcessExit([uint32] $processId, [int] $timeoutMs) {
+    $wait = [System.Diagnostics.Stopwatch]::StartNew()
+    do {
+      if ($null -eq (Get-Process -Id $processId -ErrorAction SilentlyContinue)) {
+        return $true
+      }
+      Start-Sleep -Milliseconds 100
+    } while ($wait.ElapsedMilliseconds -lt $timeoutMs)
+    return $false
+  }
+
+  function Test-ShutdownReceiptMarker([string] $path) {
+    try {
+      (Get-Content -LiteralPath $path -Raw -Encoding UTF8).Trim() -ceq $shutdownReceiptMarkerValue
+    } catch {
+      $false
+    }
+  }
+
+  function Get-ReplacementFileBlockers {
+    $paths = [System.Collections.Generic.HashSet[string]]::new(
+      [System.StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($root in $existingRoots) {
+      [void] $paths.Add((Join-Path $root $mainExecutableName))
+      [void] $paths.Add((Join-Path $root 'resources\app.asar'))
+    }
+    @(foreach ($path in $paths) {
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        continue
+      }
+      $stream = $null
+      try {
+        $stream = [System.IO.File]::Open(
+          $path,
+          [System.IO.FileMode]::Open,
+          [System.IO.FileAccess]::ReadWrite,
+          [System.IO.FileShare]::None
+        )
+      } catch [System.UnauthorizedAccessException] {
+        [pscustomobject]@{ Kind = 'permission'; Path = $path; Message = $_.Exception.Message }
+      } catch [System.IO.IOException] {
+        [pscustomobject]@{ Kind = 'locked'; Path = $path; Message = $_.Exception.Message }
+      } finally {
+        if ($null -ne $stream) {
+          $stream.Dispose()
+        }
+      }
+    })
+  }
+
+  function Complete-Preflight {
+    $blockers = @()
+    for ($attempt = 0; $attempt -lt 10; $attempt += 1) {
+      $blockers = @(Get-ReplacementFileBlockers)
+      if ($blockers.Count -eq 0) {
+        exit 0
+      }
+      if ($blockers | Where-Object { $_.Kind -eq 'permission' } | Select-Object -First 1) {
+        break
+      }
+      if ($attempt + 1 -lt 10) {
+        Start-Sleep -Milliseconds 200
+      }
+    }
+    foreach ($blocker in $blockers) {
+      Write-Output "$($blocker.Kind) path=$($blocker.Path): $($blocker.Message)"
+    }
+    if ($blockers | Where-Object { $_.Kind -eq 'permission' } | Select-Object -First 1) {
+      exit 34
+    }
+    exit 36
+  }
+
+  function Test-IsDesktopBrowserProcess($target) {
+    try {
+      $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $($target.ProcessId)" -ErrorAction Stop
+      $commandLine = [string] $cim.CommandLine
+      if ([string]::IsNullOrWhiteSpace($commandLine)) {
+        return $true
+      }
+      # Electron renderers/GPU helpers and the embedded DSH Node runtime use
+      # the same product executable. Only the browser process can own the
+      # single-instance shutdown handshake and write a receipt for its PID.
+      return $commandLine -notmatch '(?i)(?:^|\s)--type=' -and $commandLine -notmatch '(?i)(?:^|\s)--expose-internals(?:\s|$)'
+    } catch {
+      # Same-user installs expose the command line. If an elevated process
+      # hides it, let the receipt attempt fail into the permission/fallback
+      # diagnostics instead of silently skipping a potentially valid host.
+      return $true
+    }
+  }
+
   $targets = @(Get-InstallProcesses)
   if ($targets.Count -eq 0) {
-    exit 0
+    Complete-Preflight
+  }
+
+  # Receipt v2 is the deterministic path for 2.4+ applications. The installer
+  # supplies only a high-entropy token; the old application derives the fixed
+  # TEMP path itself, so no command line can redirect a privileged write.
+  $receiptAttempted = $false
+  foreach ($root in $existingRoots) {
+    $mainExecutable = Join-Path $root $mainExecutableName
+    $marker = Join-Path $root $shutdownReceiptMarker
+    $runningMains = @($targets | Where-Object {
+      $_.Kind -eq 'main' -and $_.ExecutablePath.Equals($mainExecutable, $comparison)
+    } | Where-Object { Test-IsDesktopBrowserProcess $_ } | Sort-Object ProcessId | Select-Object -First 1)
+    if ($runningMains.Count -eq 0 -or -not (Test-ShutdownReceiptMarker $marker)) {
+      continue
+    }
+    foreach ($runningMain in $runningMains) {
+      $receiptAttempted = $true
+      $token = New-ShutdownToken
+      $receiptPath = Get-ShutdownReceiptPath $token
+      try {
+        [void] (Start-Process -FilePath $mainExecutable -ArgumentList @(
+          '--shutdown-for-update',
+          "--shutdown-token=$token"
+        ) -WindowStyle Hidden -PassThru)
+      } catch {
+        $script:receiptProtocolFailed = $true
+        if ($_.Exception.Message -match '(?i)access.*denied|permission|拒绝访问') {
+          $script:permissionDenied = $true
+        }
+        Write-Output "receipt-launch-error pid=$($runningMain.ProcessId): $($_.Exception.Message)"
+        continue
+      }
+
+      $receiptWait = [System.Diagnostics.Stopwatch]::StartNew()
+      $validated = $null
+      do {
+        if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
+          $validated = Read-ValidatedShutdownReceipt $receiptPath $token $runningMain.ProcessId
+          break
+        }
+        Start-Sleep -Milliseconds 100
+      } while ($receiptWait.ElapsedMilliseconds -lt $receiptShutdownTimeoutMs)
+
+      if ($null -eq $validated) {
+        $script:receiptProtocolFailed = $true
+        $kind = if (Test-Path -LiteralPath $receiptPath -PathType Leaf) { 'invalid' } else { 'timeout' }
+        Write-Output "receipt-$kind pid=$($runningMain.ProcessId)"
+      } elseif (Wait-ForProcessExit $runningMain.ProcessId $receiptProcessExitTimeoutMs) {
+        Write-Output "receipt-ok pid=$($runningMain.ProcessId)"
+      } else {
+        $script:receiptProtocolFailed = $true
+        Write-Output "receipt-pid-timeout pid=$($runningMain.ProcessId)"
+      }
+      Remove-Item -LiteralPath $receiptPath -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  if ($receiptAttempted) {
+    $targets = @(Get-InstallProcesses)
+    if ($targets.Count -eq 0) {
+      Complete-Preflight
+    }
+    Write-Output 'receipt-fallback: attributed legacy cleanup required'
   }
 
   $requestedGracefulShutdown = $false
@@ -341,7 +565,7 @@ namespace DshInstaller
       Start-Sleep -Milliseconds $retryDelayMs
       $targets = @(Get-InstallProcesses)
       if ($targets.Count -eq 0) {
-        exit 0
+        Complete-Preflight
       }
     } while ($gracefulWait.ElapsedMilliseconds -lt $gracefulShutdownTimeoutMs)
   }
@@ -349,12 +573,19 @@ namespace DshInstaller
   for ($attempt = 0; $attempt -lt $forceAttempts; $attempt += 1) {
     $targets = @(Get-InstallProcesses)
     if ($targets.Count -eq 0) {
-      exit 0
+      Complete-Preflight
     }
 
     # Stop the Desktop host first so it cannot recreate a runtime while cleanup is in progress.
     foreach ($target in ($targets | Sort-Object @{ Expression = { $_.Kind -eq 'main' }; Descending = $true })) {
-      Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
+      try {
+        Stop-Process -Id $target.ProcessId -Force -ErrorAction Stop
+      } catch {
+        if ($_.Exception.Message -match '(?i)access.*denied|permission|拒绝访问') {
+          $script:permissionDenied = $true
+        }
+        Write-Output "stop-error pid=$($target.ProcessId): $($_.Exception.Message)"
+      }
     }
     foreach ($target in $targets) {
       Wait-Process -Id $target.ProcessId -Timeout 1 -ErrorAction SilentlyContinue
@@ -367,6 +598,12 @@ namespace DshInstaller
   $remaining = @(Get-InstallProcesses)
   foreach ($target in $remaining) {
     Write-Output "busy pid=$($target.ProcessId) path=$($target.ExecutablePath)"
+  }
+  if ($script:permissionDenied) {
+    exit 34
+  }
+  if ($script:receiptProtocolFailed) {
+    exit 35
   }
   exit 32
 } catch {

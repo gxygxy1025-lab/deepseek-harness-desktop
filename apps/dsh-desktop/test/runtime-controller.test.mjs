@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
@@ -18,6 +19,8 @@ import {
   terminateChildProcessTree,
   validateLoopbackUrl,
 } from '../src/runtime-controller.mjs'
+
+const desktopRequire = createRequire(new URL('../package.json', import.meta.url))
 
 class FakeChild extends EventEmitter {
   constructor() {
@@ -106,6 +109,7 @@ test('hidden Windows runtime wrapper gives terminal descendants an inherited hid
   const script = Buffer.from(invocation.args[6], 'base64').toString('utf16le')
   assert.match(script, /DeepSeek''s Harness/u)
   assert.match(script, /'--expose-internals'/u)
+  assert.match(script, /'--require' '[^']*windows-console-preload\.cjs'/u)
   assert.match(script, /'--profile' 'desktop'/u)
   assert.match(script, /'--port' '0'/u)
   assert.match(script, /ForEach-Object \{ \[Console\]::Out\.WriteLine\(\$_\) \}/u)
@@ -140,6 +144,35 @@ test('hidden Windows runtime wrapper preserves runtime output and exit status', 
 
   assert.equal(result.status, 23, result.stderr)
   assert.match(result.stdout, /dsh web: http:\/\/127\.0\.0\.1:43125/u)
+})
+
+test('Windows preload attaches the GUI-subsystem runtime to its hidden parent console', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const electronExecutable = desktopRequire('electron')
+  const preloadPath = fileURLToPath(new URL('../src/windows-console-preload.cjs', import.meta.url))
+  const probe = [
+    'const koffi = require("koffi")',
+    'const kernel32 = koffi.load("kernel32.dll")',
+    'const getConsoleProcessList = kernel32.func("__stdcall", "GetConsoleProcessList", "uint32", ["uint32*", "uint32"])',
+    'process.stdout.write(String(getConsoleProcessList(Buffer.alloc(16), 4)))',
+  ].join(';')
+  const environment = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+  const detached = spawnSync(electronExecutable, ['-e', probe], {
+    encoding: 'utf8',
+    env: environment,
+    windowsHide: true,
+  })
+  const attached = spawnSync(electronExecutable, ['--require', preloadPath, '-e', probe], {
+    encoding: 'utf8',
+    env: environment,
+    windowsHide: true,
+  })
+
+  assert.equal(detached.status, 0, detached.stderr)
+  assert.equal(detached.stdout, '0')
+  assert.equal(attached.status, 0, attached.stderr)
+  assert.ok(Number.parseInt(attached.stdout, 10) > 0, attached.stdout)
 })
 
 test('HTTP readiness probe waits through a short bind race', async () => {

@@ -1,55 +1,57 @@
-# DeepSeek Harness Desktop 2.3.0
+# DeepSeek Harness Desktop 2.4.0
 
 ## 中文
 
 ### 本次亮点
 
-- 2.3.0 主界面首次加载后会展示一次 GitHub Star 引导。弹窗采用 Harness 明暗主题变量，以分层淡入、缓慢星轨、一次性光晕、按钮流光和短促星尘替代突兀弹跳；系统启用“减少动态效果”时会自动关闭动画。弹窗支持关闭按钮、遮罩、Escape、完整 Tab 焦点循环与“先继续使用”，不会阻止用户进入产品。
-- 展示状态由 Electron 主进程在用户数据目录原子记录。只有版本恰好为 2.3.0 且未展示过时才会返回许可，因此页面刷新、运行时重载和后续启动都不会重复弹出。损坏状态可安全重建，开发截图模式不会污染真实用户状态。
-- 主按钮通过现有固定动作打开 `ningbainb/deepseek-harness-desktop`；新增“加入社群，随时反馈 Bug”按钮，通过现有受控 IPC 打开 QQ 社群窗口与二维码。弹窗不访问 GitHub API、不要求令牌、不显示可能失真的 Star 数量，也不会在用户仅仅点击按钮后声称已经完成点星；实际操作仍由用户在 GitHub 页面确认。
-- 修复图示覆盖更新失败：当旧安装目录已被移除时，`cleanup-stale-processes.ps1` 曾使用强制 `Get-Item` 解析目录，异常被统一映射为退出码 32，随后 NSIS 将它错误解释成“仍有后台进程”。现在缺失目录或非目录路径会直接返回成功，因为此时没有旧安装进程需要按目录归属清理。
-- 安装进程检查从 `customInit` 与 electron-builder 默认检查两套逻辑收敛为单一 `customCheckAppRunning` 入口，在真正安装前读取当前目录及 HKCU/HKLM 记录的旧安装目录。0.1.9 至 2.2 直接走精确路径兜底，支持协议的新版本先请求优雅退出；脚本异常使用独立退出码 33，真实残留使用 32 并附带 PID 与路径，不再全局按进程名阻塞安装。
-- 针对 2.2 由安装目录外隐藏 PowerShell 承载运行时的情况，安装预检会按命令行中的安装根路径归因 PowerShell、CMD、Node 等外部后代，并先解码 `-EncodedCommand` 的 Base64 负载再匹配。匹配集合同时保留安装器或注册表提供的 Windows 8.3 短路径引用与规范化长路径，避免短路径宿主漏判。进程句柄因旧实例以管理员身份运行等原因无法打开时，检查会回退到 WMI 可执行路径；力杀后等待进程实际退出，并以退避重试处理短暂占用。归因边界只接受安装根路径引用，官方 Web 端运行时、安装目录外的同名程序以及没有安装路径引用的外部进程均不会被误杀。
-- 桌面运行时固定使用独立的 `profiles/desktop` profile，端口状态保存在该 profile 的私有文件中；首选端口被官方 Web 端或其他程序占用时会自动回退到系统分配端口。共享主目录中的重试策略与托管补丁段均以增量、原子方式写入，不覆盖用户或官方 Web 端已有配置，因此两端可以同时运行且互不抢占。
+- SSH 已连接终端在主机、监控、文件与终端内部视图之间切换时保持挂载和在线，返回终端不再重新建立连接；终端补齐右键粘贴和原生编辑菜单粘贴入口。
+- 侧边栏左下角下载按钮由桌面壳稳定接管，始终表示“桌面软件更新”。远程插件升级或页面重新渲染不会把它改成插件更新；社区插件更新继续只在扩展坞中进行。
+- Windows runtime、终端和 `pwsh` 工具统一继承隐藏控制台宿主，执行 PowerShell 工具时不再闪现额外命令窗口。
+- 皮肤状态只写入 `profiles/desktop` 私有补丁。启动时会迁移并清理旧版写入全局 `~/.dsh/cordis.patch.yml` 的托管段，保留有效 YAML，官方 `dsh web` 与桌面端可以继续并存。
+- 覆盖升级采用关闭回执协议 v2：安装器生成 64 位十六进制随机令牌，桌面端完全停止 DSH runtime、暂停扩展操作并释放资源后，才在 TEMP 固定令牌路径原子写入回执。安装器核对 schema、令牌、旧 PID 和两个完成状态，再等待旧 PID 退出；不支持协议或回执超时的旧版本仍走受限的安装路径/产品身份清理。
+- 主界面与扩展坞使用独立 preload，并按真实 `webContents` 身份登记 renderer surface。主界面不暴露插件安装/删除、QQ Bot 凭据操作或技能导入；扩展坞不暴露桌面软件安装更新。Desktop Contract v1 提供 `1.0.0` 版本与能力表用于功能探测，IPC 身份校验才是权限边界。
+- 任务看板 schema v2 优先保存到当前 DSH profile 的 `state/task-board/tasks-v2.json`。Host 写入串行、临时文件回读校验后原子替换，损坏文件移名保留；浏览器通过固定 loopback same-origin 路由读写并用 SSE 接收变更。首次迁移会复制 localStorage v1、回读校验数量和内容哈希后再标记完成，2.4.x 不删除旧数据；Host 不可用时自动回退 v1。定时任务仍由打开的浏览器页面调度，不新增后台补跑。
+- 安装预检继续兼容 2.2 路径漂移与旧卸载器错误码 2：仅对唯一产品主进程名使用兜底，官方 Web runtime 与无安装路径引用的无关 PowerShell/Node 仍保持受保护。
 
 ### 验证
 
-- 新增 Star 展示账本测试，验证 2.2.0 和未来版本不会触发、2.3.0 并发请求只有一次成功、后续请求保持关闭，以及损坏 JSON 可恢复。
-- 新增弹窗契约与端到端测试，覆盖对话框无障碍属性、键盘关闭、固定 GitHub 动作、社群窗口与二维码、动画和减少动态效果，并确认代码不请求 Star 数量或引入新的运行依赖。
-- 新增真实 Windows 安装检查回归：缺失目录必须零退出，旧主程序、资源进程以及命令行明确引用安装根路径的外部后代必须结束，Windows 8.3 短路径与规范化长路径必须同时匹配，`EncodedCommand` 负载必须先解码归因，句柄访问失败必须使用 WMI 路径回退；安装目录外的同名程序、官方 Web 端和无安装路径引用的独立后代必须保留，同时验证安装器已覆盖框架默认的全局进程名检查。
-- Desktop 全量 Node 测试、发布说明门禁、官网版本门禁、脚本测试与界面截图会在发布前执行。专用截图模式使用隔离的临时用户目录强制展示弹窗，便于检查窗口最小尺寸、暗色背景、按钮焦点和内容溢出。
+- 新增回执协议测试，覆盖令牌格式、固定 TEMP 路径、必要状态、原子发布、不可覆盖已有回执、损坏回执和 Windows 安装清理降级。
+- 新增 Desktop Contract 能力快照、主/扩展 preload 表面、renderer 注册销毁、未知 surface、越权调用与稳定错误码测试。
+- 新增任务看板 Host 文件并发写、revision 递增、损坏文件保留、profile 路径约束、固定路由、loopback same-origin 防线、Host 优先、一次性复制、数量/哈希复核、旧数据保留和 Host 离线回退测试。
+- Windows Desktop CI 使用 Node.js 24，并执行标题栏与官方目录选择器真实 E2E；发布前还会运行全仓类型检查、包测试、脚本测试、运行时依赖闭包、共享源码同步、聚合包/皮肤/社区索引、双语文档、安装包校验、打包态目录选择/关机回执 E2E 和打包运行烟测。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。0.1.9 至 2.2 用户都可以直接覆盖更新；安装器会从注册表恢复旧版真实安装目录，精确结束其中仍在运行的程序及命令行明确引用该目录的外部运行时后代，而旧目录已经不存在时直接继续。应用仍会选择可用下载源，并按 `latest.yml` 中的可信摘要验证下载文件。
+下载 `DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。2.2.0 与 2.3.0 用户可直接覆盖更新；安装器会优先请求受令牌保护的完整关闭，对不支持 v2 的旧实例使用受限兼容清理。应用下载仍由 `latest.yml` 的可信摘要校验。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。请只从本项目 GitHub Release 页面获取安装包并核对 SHA-256。Star 弹窗只负责打开公开仓库或现有社群窗口，不读取 GitHub 账号、不检测用户是否点星，也不影响更新、插件、聊天记录或个人设置。
+这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”，请只从本项目 GitHub Release 获取安装包并核对 SHA-256。Desktop Contract v1 是内部功能探测接口，不是公开插件 SDK；2.4.0 不包含 Task Presets、Worktree 自动化、后台定时调度或完整模型历史持久化。任务看板 v1 数据会保留，方便降级和恢复。
 
 ## English
 
 ### Highlights
 
-- Desktop 2.3.0 shows one GitHub Star prompt after the main Harness surface first loads. The surface uses Harness light and dark theme variables with staggered entry, a slow orbit, one-shot halo, button shimmer, and a short stardust burst instead of a pronounced bounce. It removes motion when the operating system requests reduced motion. Close, backdrop, Escape, complete Tab focus cycling, and Continue all remain available.
-- The Electron main process atomically records display state under the user data directory. It grants a claim only when the running version is exactly 2.3.0 and has never shown the prompt, preventing repeats after page refreshes, runtime reloads, or later application launches. Corrupt state is rebuilt safely, while the dedicated development capture mode never writes a real user's state.
-- The primary action opens `ningbainb/deepseek-harness-desktop` through the existing fixed Help action. A new community action opens the controlled QQ community window and QR code for ongoing bug feedback. The prompt makes no GitHub API request, needs no token, displays no potentially stale star count, and never claims that starring succeeded merely because the repository was opened.
-- Fixed the reported in-place update failure. When the previous installation directory had already been removed, `cleanup-stale-processes.ps1` used mandatory `Get-Item` resolution. Its exception was collapsed into exit code 32, which NSIS incorrectly described as background processes still running. A missing or non-directory install path now succeeds immediately because no old path-owned process needs cleanup.
-- Installer process handling now uses one `customCheckAppRunning` hook instead of combining `customInit` with electron-builder's default global name check. It reads current and HKCU/HKLM legacy roots at the actual install step. Releases 0.1.9 through 2.2 use an exact-path fallback, while protocol-aware versions receive a graceful shutdown request first. Exit 32 reports real PID/path conflicts, exit 33 reports script failures, and unrelated same-name processes no longer block installation globally.
-- For the 2.2 runtime hosted by hidden PowerShell outside the install directory, preflight attributes external PowerShell, CMD, and Node descendants only when their command lines reference an install root. It decodes the Base64 payload of `-EncodedCommand` before matching and preserves both Windows 8.3 short-path references supplied by the installer or registry and their canonical long-path forms. It falls back to the WMI executable path when an elevated legacy process prevents handle access, waits for forced termination to complete, and retries transient holds with backoff. The ownership boundary remains narrow: the official web runtime, same-name applications outside the install directory, and external processes without an install-path reference are preserved.
-- Desktop always uses the isolated `profiles/desktop` profile and stores port state in that profile's private file. If the preferred port is already occupied by the official web client or another program, Desktop falls back to a system-assigned port. Retry settings and managed patch sections in the shared home directory are updated incrementally and atomically without overwriting existing user or official-client configuration, allowing both clients to run side by side.
+- Connected SSH terminals remain mounted and online while users switch among host, monitor, file, and terminal views. Returning to the terminal no longer reconnects, and paste is available through both the terminal context menu and the native Edit menu.
+- The Desktop shell continuously owns the lower-left sidebar download control. It always means a Desktop application update, even after a remote plugin upgrade or renderer refresh; community plugin updates remain confined to Extension Dock.
+- Windows runtime, terminal, and `pwsh` tool processes inherit a hidden console host, preventing extra command windows from flashing during PowerShell tool execution.
+- Skin state is written only to the private `profiles/desktop` patch. Startup migrates and removes legacy managed sections from global `~/.dsh/cordis.patch.yml`, keeps the YAML valid, and preserves coexistence with official `dsh web`.
+- In-place updates use shutdown receipt protocol v2. The installer creates a random 64-character hexadecimal token. Desktop atomically publishes a receipt at the fixed token-derived TEMP path only after the DSH runtime is stopped, extension operations are quiesced, and resources are disposed. The installer validates schema, token, expected old PID, and both completion flags before waiting for that PID to exit. Unsupported legacy releases and receipt timeouts fall back to the constrained install-root and product-identity cleanup.
+- The main surface and Extension Dock use separate preloads and register their live `webContents` identities. Main has no plugin install/remove, QQ Bot credential, or skill-import bridge; Extension Dock has no Desktop application update installer. Desktop Contract v1 exposes version `1.0.0` and capability snapshots for feature detection, while sender identity and channel allowlists remain the authorization boundary.
+- Task Board schema v2 prefers `state/task-board/tasks-v2.json` inside the active DSH profile. Host writes are serialized, verified from a complete temporary file, and atomically replaced; corrupt documents are renamed aside. The browser uses fixed loopback same-origin routes and SSE mutation events. The first migration copies localStorage v1, reads it back, verifies count and content hash, and only then records completion. Version 2.4.x retains v1 and falls back to it whenever Host storage is unavailable. Scheduling remains in the open browser page and does not gain background replay.
+- Installer preflight retains compatibility with path-drifted 2.2 processes and legacy uninstaller error code 2. The unique product executable name is the only name-based fallback, while the official web runtime and unrelated PowerShell or Node processes without an install-path reference remain protected.
 
 ### Verification
 
-- Added prompt-ledger tests proving that 2.2.0 and future versions do not trigger it, concurrent 2.3.0 claims produce exactly one success, later claims remain closed, and corrupt JSON recovers.
-- Added surface-contract and end-to-end coverage for accessibility, keyboard dismissal, fixed GitHub and community actions, the community QR window, animations, and reduced motion, including an assertion that no star count is fetched and no runtime dependency is added.
-- Added real Windows installer regressions requiring missing roots to succeed; direct old app/resource processes and external descendants whose command lines reference an install root must stop; Windows 8.3 short paths and canonical long paths must both match; encoded command payloads must be decoded; and denied handle access must use the WMI path fallback. Same-name applications, the official web runtime, and detached descendants without an install-path reference must survive. The generated installer must also replace electron-builder's default name-based check.
-- The complete Desktop Node suite, release-note gate, website version gate, script tests, and screenshot review run before publication. A dedicated capture mode forces the prompt within an isolated temporary user directory to inspect minimum-window behavior, dark backgrounds, button focus, and overflow.
+- Receipt tests cover token syntax, the fixed TEMP path, mandatory shutdown states, atomic publication, refusal to overwrite an existing receipt, corrupt input, and the Windows legacy-cleanup fallback.
+- Desktop Contract tests snapshot every capability map and cover split preload surfaces, renderer registration and destruction, unknown senders, cross-surface denial, and stable error codes.
+- Task Board tests cover concurrent Host writes, revision ordering, corrupt-file preservation, profile path validation, fixed routes, the loopback same-origin fence, Host preference, one-time copy, count/hash verification, v1 retention, and offline fallback.
+- Windows Desktop CI runs on Node.js 24 and includes real title-bar and official directory-picker E2E checks. Release gates also run repository type checks, package tests, script tests, runtime dependency closure, shared-source synchronization, aggregate/skin/community generation checks, bilingual documentation validation, packaged-payload verification, packaged directory-picker and shutdown-receipt E2E checks, and a packaged runtime smoke test.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Releases 0.1.9 through 2.2 can update directly in place. The installer recovers legacy roots from the registry, stops active executables under those roots plus external runtime descendants whose command lines explicitly reference them, and proceeds immediately when the roots are absent. Desktop still verifies the download against the trusted digest in `latest.yml`.
+Download `DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Users on 2.2.0 and 2.3.0 can install in place. The installer first requests the token-protected complete shutdown and uses the constrained compatibility cleanup only for instances that do not support v2. Downloaded artifacts remain authenticated by the trusted digest in `latest.yml`.
 
 ### Notice
 
-This is a community build and not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not signed with a commercial code-signing certificate, so Windows SmartScreen may report an unknown publisher. Obtain installers only from this project's GitHub Release page and verify the SHA-256 checksum. The Star prompt only opens the public repository or the existing community window: it does not read a GitHub account, detect whether a star was added, or affect updates, plugins, conversations, or personal settings.
+This is a community build and is not an official DeepSeek, OpenAI, or Tencent distribution. The installer does not currently use a commercial code-signing certificate, so Windows SmartScreen may show an unknown publisher. Download only from this project's GitHub Releases and verify SHA-256. Desktop Contract v1 is an internal feature-detection bridge, not a public plugin SDK. Version 2.4.0 does not include Task Presets, Worktree automation, background scheduling, or full model-history persistence. Task Board v1 data is retained for rollback and recovery.

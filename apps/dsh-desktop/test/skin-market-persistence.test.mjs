@@ -18,7 +18,7 @@ const aggregateRequire = createRequire(require.resolve('@linxin666/dsh-web-ui-al
 const skinCenterRoot = dirname(aggregateRequire.resolve('@linxin666/dsh-client-ui-skin-center/package.json'))
 const { makeSkinCenterRoutes } = await import(pathToFileURL(join(skinCenterRoot, 'lib', 'index.js')).href)
 
-test('desktop market persists a successful bundle theme switch through the shared skin state', async () => {
+test('desktop market persists a successful bundle theme switch in the desktop profile', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-market-theme-'))
   const profileDir = join(home, 'profiles', 'desktop')
   mkdirSync(profileDir, { recursive: true })
@@ -51,7 +51,7 @@ test('desktop market persists a successful bundle theme switch through the share
     assert.equal(entries[0].fiber !== undefined, true)
     assert.equal(entries[1].fiber, undefined)
     assert.equal(events[0], 'persist')
-    assert.match(readFileSync(join(home, 'cordis.patch.yml'), 'utf8'), /- id: liquid-glass\r?\n  disabled: false/u)
+    assert.match(readFileSync(join(profileDir, 'cordis.patch.yml'), 'utf8'), /- id: liquid-glass\r?\n  disabled: false/u)
   } finally {
     globalThis.fetch = originalFetch
     rmSync(home, { recursive: true, force: true })
@@ -193,7 +193,7 @@ test('packaged skin center preserves market theme ids when restoring the officia
   const profileDir = join(home, 'profiles', 'desktop')
   mkdirSync(profileDir, { recursive: true })
   writeFileSync(join(profileDir, 'package.json'), JSON.stringify({ dsh: { profile: { bundles: [] } } }))
-  const patchPath = join(home, 'cordis.patch.yml')
+  const patchPath = join(profileDir, 'cordis.patch.yml')
   writeFileSync(patchPath, '# --- dsh-skin managed (auto-generated; do not edit) ---\n- id: liquid-glass\n  disabled: false\n# --- end dsh-skin managed ---\n')
   const previousHome = process.env.DSH_HOME
   const previousProfile = process.env.DSH_PROFILE

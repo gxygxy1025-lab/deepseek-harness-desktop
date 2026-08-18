@@ -7,14 +7,16 @@ import electronPath from 'electron'
 import { _electron as electron } from 'playwright'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
+const runtimeReadyTimeoutMs = packagedExecutable ? 120_000 : 60_000
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-desktop-star-e2e-'))
 const userData = resolve(temporary, 'user-data')
 const dshHome = resolve(temporary, 'dsh-home')
 
 async function launchDesktop() {
   return electron.launch({
-    executablePath: electronPath,
-    args: [resolve(appDir, 'src', 'main.mjs')],
+    executablePath: packagedExecutable || electronPath,
+    args: packagedExecutable ? [] : [resolve(appDir, 'src', 'main.mjs')],
     cwd: appDir,
     env: {
       ...process.env,
@@ -27,7 +29,7 @@ async function launchDesktop() {
 
 async function waitForHarnessPage(electronApp) {
   const page = await electronApp.firstWindow()
-  await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: 60_000 })
+  await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
   await page.locator('#dsh-desktop-window-chrome').waitFor({ state: 'visible' })
   return page
 }
@@ -51,7 +53,7 @@ try {
   await communityPage.close()
 
   const state = JSON.parse(await readFile(resolve(userData, 'star-prompt-state.json'), 'utf8'))
-  if (state.shownVersions?.join(',') !== '2.3.0') {
+  if (state.shownVersions?.join(',') !== '2.4.0') {
     throw new Error(`unexpected Star prompt state: ${JSON.stringify(state)}`)
   }
 
@@ -68,7 +70,7 @@ try {
   if (await secondPage.locator('#dsh-desktop-star-prompt[data-open="true"]').isVisible()) {
     throw new Error('Star prompt reappeared on the next application launch')
   }
-  console.log('verified Star prompt: community action, first 2.3.0 launch only, reload-safe, restart-safe')
+  console.log('verified Star prompt: community action, first 2.4.0 launch only, reload-safe, restart-safe')
 } finally {
   await electronApp?.close()
   await rm(temporary, { recursive: true, force: true })

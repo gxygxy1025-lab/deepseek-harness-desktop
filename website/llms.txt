@@ -1,6 +1,6 @@
 # DeepSeek Harness Desktop
 
-> DeepSeek Harness Desktop 2.3.0 is a community-maintained, open-source Windows AI coding client for DeepSeek Harness. It preserves the complete Harness Web Surface and bundles the official local DSH host, plugins, Skills, 11 skins, mobile remote access, SSH operations, QQ Bot connectivity, lifecycle recovery, and automatic updates in one Windows x64 installer.
+> DeepSeek Harness Desktop 2.4.0 is a community-maintained, open-source Windows AI coding client for DeepSeek Harness. It preserves the complete Harness Web Surface and bundles the official local DSH host, plugins, Skills, 11 skins, mobile remote access, SSH operations, QQ Bot connectivity, lifecycle recovery, and automatic updates in one Windows x64 installer.
 
 ## What it is
 
@@ -15,8 +15,8 @@
 
 ## Download
 
-- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.3.0-x64.exe
-- v2.3.0 release notes and four release assets: https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.3.0
+- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe
+- v2.4.0 release notes and release assets: https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.4.0
 
 ## Source and documentation
 
@@ -28,11 +28,12 @@
 ## Key facts
 
 - Supported systems: Windows 10 and Windows 11, x64
-- Current release: v2.3.0
-- v2.3.0 adds a one-time GitHub Star prompt with a QQ community feedback action; its display state is persisted so it does not repeat after reloads or later launches
-- Installer preflight supports direct upgrades from 0.1.9 through 2.2 and attributes external PowerShell, CMD, and Node hosts only when their executable path or command line references a legacy install root
+- Current release: v2.4.0
+- v2.4.0 keeps connected SSH terminals mounted while switching among host, monitor, and terminal views, and provides native paste entry points
+- Skin state is isolated in profiles/desktop and legacy global cordis.patch.yml pollution is migrated away so the official dsh web profile remains valid
+- Installer preflight supports direct upgrades from 0.1.9 through 2.3 and closes legacy product-name processes even when their old installation path is no longer registered
 - Preflight decodes PowerShell EncodedCommand payloads, preserves Windows 8.3 short-path references, falls back to WMI paths when process handles are unavailable, and waits with backoff after forced termination
-- The cleanup boundary preserves the official web runtime, same-name applications outside the install directory, and detached processes without an install-root reference
+- The cleanup boundary preserves the official web runtime and unrelated external hosts while matching the uniquely named Desktop main process required by legacy uninstallers
 - Desktop uses the isolated profiles/desktop profile and selects an available port when the preferred port is occupied, allowing it to coexist with the official web client
 - The bundled Skin Center includes 11 selectable skins
 - Node.js is bundled; end users do not need to install it separately

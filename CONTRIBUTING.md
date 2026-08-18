@@ -4,7 +4,7 @@ Contributions to the desktop shell, plugins, skins, documentation, and tests are
 
 ## Development setup
 
-Use Windows 10 or 11, Node.js 24, and pnpm 11.21.0:
+Use Windows 10 or 11, Node.js 24, and pnpm 11.22.0:
 
 ```powershell
 corepack enable

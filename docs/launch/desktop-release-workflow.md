@@ -218,7 +218,7 @@ node --test scripts/validate-release-notes.test.mjs
 
 ## 9. 本地验证门禁
 
-支持的运行环境是 Node `^22.19.0` 或 `>=24.0.0`，CI 使用 Node 24 和 pnpm 11.21.0。不应使用 Node 23 的结果代替正式门禁。
+支持的运行环境是 Node `^22.19.0` 或 `>=24.0.0`，CI 使用 Node 24 和 pnpm 11.22.0。不应使用 Node 23 的结果代替正式门禁。
 
 先安装锁定依赖：
 
@@ -324,7 +324,7 @@ git push desktop $Tag
 
 标签会触发 `.github/workflows/desktop-release.yml`。该工作流会在 Windows Runner 上：
 
-1. 安装 Node 24、pnpm 11.21.0 和 Chromium。
+1. 安装 Node 24、pnpm 11.22.0 和 Chromium。
 2. 运行 `pnpm verify`。
 3. 构建 NSIS 安装包。
 4. 运行安装载荷验证。

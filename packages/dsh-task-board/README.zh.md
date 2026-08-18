@@ -6,7 +6,7 @@
 
 - 不修改 DSH 源码：以 cordis 插件 + 浏览器 DOM 扩展挂载（外挂形态与 `dsh-web-ui/packages/skins/skin-center` 一致）。
 - 卸载即恢复原状，其它 managed 段（dsh-skin / skin-center / 个人配置）互不干扰。
-- 任务数据本地持久化，刷新页面、重启 DSH 均不丢失。
+- 任务数据优先写入 profile 隔离的 Host 文件；Host 端点不可用时回退到保留的浏览器 v1 台账。
 
 ## 功能
 
@@ -16,6 +16,7 @@
 - **真实执行**：点「执行」后，插件通过客户端 runtime 连接工作区会话（`workspaces.connectWorkspace`，空白会话复用或 host 新建），把任务标题设为会话名，以任务 Prompt 调用 `session.prompt([{ type: 'text', text }], 'queue')` 驱动真实 agent；随后订阅该会话快照，轮次真实结束后把卡片置为 已完成/已失败 并记录执行结果。执行会话会出现在会话列表，可点进对话查看真实 transcript。
 - **状态回写**：卡片状态（进行中 → 完成/失败）由真实会话状态驱动；刷新页面/重启后，遗留的 running 任务会按会话现状自动对账（reconcile）。
 - **定时任务**：详情面板可为任务配置定时执行——启用开关 + 5 段 cron 表达式（分 时 日 月 周，支持 `*` / `*/n` / `a-b` / 逗号列表）+ 常用预设（每天 09:00、每小时、每 10 分钟、每周一 09:00）；启用即计算并持久化「下次运行时间」，卡片显示定时标识；到点自动走真实执行链路（同手动执行），执行会话照常可跳转。
+- **Host 文件持久化**：schema v2 通过固定的 loopback same-origin 路由保存到当前 profile 的 `state/task-board/tasks-v2.json`；写入串行并原子发布，损坏文件会在台账旁保留，实时变化通过 SSE 分发。
 - **系统提示词注入**：host 半边（`src/index.ts`）通过 `SystemPrompt.section` 注册 `plugin:task-board` 段（order 200），向每个 agent 声明本插件存在、能力与限制——插件在组合中（mount 后重启 DSH）即注入，移出组合（unmount 后重启）即消失，agent 无需任何外部文档就能知道如何与本看板协作。
 
 ## 目录结构
@@ -23,7 +24,7 @@
 ```
 package.json / tsconfig.json / tsdown.config.ts   # 独立仓库构建
 build/tsdown.client.ts + build/web/src/platform.ts # 从 DSH checkout 复制的 client bundle 预设（与运行版本保持同步）
-src/index.ts / src/invariant.ts                    # host 半边：仅注入 SystemPrompt section（其余无行为）
+src/index.ts / src/host/*.ts                       # host 半边：SystemPrompt + profile 文件存储 + 固定 HTTP/SSE 路由
 src/client/index.ts                                # apply(ctx)：接线 runtime 服务 + 挂载 DOM
 src/client/sidebar-entry.ts                        # 侧边栏入口注入（自愈式 MutationObserver）
 src/client/board-mount.tsx                         # 中间列看板挂载 + 显隐切换
@@ -32,7 +33,7 @@ src/client/board.module.css                        # 样式（--dsw-* token，�
 src/core/tasks.ts                                  # 任务模型 + 状态机（纯函数）
 src/core/schedule.ts                               # cron 解析 + 下次运行时刻（纯函数）
 src/core/scheduler.ts                              # 浏览器调度器（每分钟 tick 触发到期任务）
-src/core/store.ts                                  # 持久化（TaskStore 接口 + localStorage 实现）
+src/core/store.ts / src/client/host-store.ts       # 持久化接缝、Host 客户端、localStorage 回退与迁移
 src/core/execution.ts                              # 真实执行服务（会话连接/prompt/结算观察）
 src/core/controller.ts                             # 控制器（台账状态、视图状态、导航感知）
 tests/*.spec.ts                                    # 存储/状态流转/执行触发/cron/调度 自动化测试
@@ -43,11 +44,11 @@ scripts/dsh-task-board.js                          # 一键挂载/卸载/状态 
 
 - **侧边栏没有可用的外挂槽位**：侧边栏壳只声明 `sidebar.workspaces` / `sidebar.settings` 两个 single 槽位，且已被 ui-workspace / ui-settings 占用；外部插件无法注册新槽位（声明即占有，重复声明抛错）。因此入口行走 skin 先例的 **DOM 注入**，并用 MutationObserver 自愈（React 重渲染波及该节点时同帧内重新插入，无闪烁）。
 - **中间列无法通过槽位替换**：`conversation` 槽位是 single 且已被 ui-conversation 占用。看板视图以 DOM 方式挂在中间列（旧版 `[data-pane="conversation"]`，DSH 0.1.0-rc.6 AppFrame 布局为 `[class*="centerCol"]`；挂载选择器两者都保留）内（React 不管的尾部子节点），通过 `<html data-dsh-taskboard-active>` 属性切换显隐，底下的对话子树保持挂载有状态。
-- **持久化用浏览器 localStorage**：客户端插件跑在浏览器里，DSH 没有浏览器可写的文件通道（与 skin-center 对 `cordis.patch.yml` 的调研结论一致）；localStorage 也是 DSH 客户端自身快照存储（`createSnapshotStore` persist）的持久化方式。
+- **持久化使用受限 Host 通道**：Host 只暴露固定台账与事件路径，文件位置由 `DSH_HOME` 和配置的 profile 决定，浏览器不能传入文件系统路径；客户端保留 localStorage v1 作为降级与回滚来源。
 - **执行走客户端 runtime**：`ctx.sessions.list` 订阅会话状态（`running` / `byId`），`ctx.workspaces.connectWorkspace()` 创建/复用会话，`session.prompt()` 真实驱动 agent，`ctx.sessions.open()` 跳转 transcript。
 - **后台结算靠列表对账**：未打开的会话没有对话快照窗口（cold），所以执行结算以会话列表为准——每次列表变化都对账 running 任务；结果判定依次取「列表缺失→已取消 / 仍在跑→等待 / 对话快照可见→按 lastAgentError / 原始历史尾部→turn-error 节点证明失败 / 否则按成功」，对账幂等。
-- **定时任务在浏览器端调度**：插件是纯客户端（无服务端通道），所以「到点执行」由标签页内的调度器完成——每分钟 tick 一次，页面从后台恢复可见时立即补 tick；到点触发前先把「下次运行」顺延到下一个 cron 匹配点再执行，同一 tick 不会重复触发；页面加载早期（会话列表基线未就绪）不触发，避免误执行。限制：需要标签页保持打开（关闭期间错过的调度按「错过即跳过」处理，下次打开时只补跑已顺延的到期任务）；任务处于「进行中」时到点跳过本次，等下一个 cron 匹配点。
-- **多标签页同源共享同一份台账**：任一标签页的增删改通过 storage 事件同步到其他标签页（`LocalStorageTaskStore.subscribeExternal`），删除的任务不会在其他标签页的内存副本里残留触发，也不会被其他标签页的后续持久化写回复活。
+- **定时任务仍在浏览器端调度**：持久化由 Host 承担，但「到点执行」仍由标签页内调度器完成——每分钟 tick 一次，页面从后台恢复可见时立即补 tick；到点触发前先把「下次运行」顺延到下一个 cron 匹配点再执行，同一 tick 不会重复触发；页面加载早期（会话列表基线未就绪）不触发，避免误执行。限制：需要标签页保持打开（关闭期间错过的调度按「错过即跳过」处理，下次打开时只补跑已顺延的到期任务）；任务处于「进行中」时到点跳过本次，等下一个 cron 匹配点。
+- **多标签页同源共享同一份台账**：Host 变更通过 SSE 事件通知，localStorage 降级模式通过 storage 事件通知；两种通道都会重读最新台账，删除的任务不会从其他标签页的陈旧副本中被写回复活。
 
 ## 安装
 
@@ -107,9 +108,19 @@ profile 清单中注册的行：
 
 ## 数据存储位置
 
-- 任务台账存于浏览器 localStorage，键 `dsh.taskBoard.v1`（来源为 `http://127.0.0.1:<dsh web 端口>`，同一来源跨刷新/重启持久）。
-- 卸载插件后数据保留；如需清除，浏览器控制台执行 `localStorage.removeItem("dsh.taskBoard.v1")`。
-- 存储层是 `TaskStore` 接口（`src/core/store.ts`），后续可换成 IndexedDB 或 host 文件通道而不动上层逻辑。
+- 权威 v2 台账位于 `DSH_HOME/profiles/<profile>/state/task-board/tasks-v2.json`；`profileName` 默认取运行时 `DSH_PROFILE`，未提供时为 `web`。
+- Host 台账为空时只执行一次 v1 复制：从 `dsh.taskBoard.v1` 读取，回读后校验数量和内容哈希，再记录迁移完成。2.4.x 不删除 v1 键。
+- Host 端点不可用时看板使用 v1 localStorage；Host 更新通过 SSE 同步，不使用高频轮询。
+
+## 安全模型
+
+- Host 仅注册固定路由，只接受 loopback same-origin 请求，限制请求体大小，浏览器不能传入 profile 名称或文件路径。
+- 执行记录只持久化任务字段及 session/workspace/run 引用和时间戳，不复制模型消息、工具输出或完整 transcript。
+
+## 已知限制
+
+- 调度仍在浏览器端：必须保持 DSH 页面打开，页面关闭期间错过的任务会跳过，本版本没有后台调度器或补跑队列。
+- Task Presets、Worktree 自动化、后台调度与公开 Task Board SDK 不属于本契约。
 
 ## 手动验证步骤
 
@@ -123,7 +134,7 @@ profile 清单中注册的行：
 ## 验收对照
 
 - 挂载后侧边栏出现「任务看板」入口；点击切换看板，点会话项返回对话视图
-- 新建任务（标题+描述/Prompt）；刷新/重启后任务仍在（localStorage 持久化）
+- 新建任务（标题+描述/Prompt）；刷新/重启后任务仍在（profile Host 文件，localStorage 回退）
 - 点卡片开详情（内容 + 执行记录）；详情内有「执行」「删除」按钮
 - 执行真实启动会话（会话列表可见 transcript）；卡片状态随真实执行进度变化；详情可跳转到执行会话
 - 删除有确认环节，删除后本地存储同步移除

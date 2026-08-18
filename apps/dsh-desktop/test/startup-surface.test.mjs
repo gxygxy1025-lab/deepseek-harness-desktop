@@ -15,6 +15,18 @@ test('startup branding contains no decorative blue circle', async () => {
   assert.doesNotMatch(css, /\.brand-mark/u)
 })
 
+test('progress meter carries milestone ticks and a leading tip', async () => {
+  const [html, css] = await Promise.all([
+    readFile(new URL('startup.html', uiRoot), 'utf8'),
+    readFile(new URL('startup.css', uiRoot), 'utf8'),
+  ])
+  assert.match(html, /meter-tick meter-tick-1/u)
+  assert.match(html, /meter-tick meter-tick-2/u)
+  assert.match(html, /meter-tip/u)
+  assert.match(css, /\.meter\[data-phase="2"\] \.meter-tick-2/u)
+  assert.match(css, /@keyframes tip-swim/u)
+})
+
 test('whale pose stays inside the right-side swim corridor', () => {
   const width = 1440
   const height = 900

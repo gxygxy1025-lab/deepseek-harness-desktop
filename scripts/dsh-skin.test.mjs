@@ -18,15 +18,15 @@ const { SKINS, MANAGED_START, MANAGED_END, renderManaged, stripManaged, stripLeg
 // Windows (/D:/...), which node then mis-resolves as D:\D:\...
 const SCRIPT = fileURLToPath(new URL('./dsh-skin', import.meta.url))
 
-/** A throwaway DSH_HOME with a patch fixture; returns the patch path. */
+/** A throwaway DSH_HOME with an empty web profile. */
 function fakeHome() {
   const home = mkdtempSync(join(tmpdir(), 'dsh-skin-test-'))
-  mkdirSync(join(home, '.dsh'), { recursive: true })
+  mkdirSync(join(home, '.dsh', 'profiles', 'web'), { recursive: true })
   return home
 }
 
 function patchPath(home) {
-  return join(home, '.dsh', 'cordis.patch.yml')
+  return join(home, '.dsh', 'profiles', 'web', 'cordis.patch.yml')
 }
 
 test('renderManaged(null) disables every skin and inserts nothing', () => {
@@ -88,6 +88,21 @@ test('use official restores the stock look on a throwaway DSH_HOME', () => {
       encoding: 'utf8',
     })
     assert.equal(current.trim(), 'none')
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('use official repairs a polluted global patch without appending new state there', () => {
+  const home = fakeHome()
+  try {
+    const globalPatch = join(home, '.dsh', 'cordis.patch.yml')
+    writeFileSync(globalPatch, `[]\n\n${MANAGED_START}\n- id: ui-skin-xp\n  disabled: true\n${MANAGED_END}\n`)
+    execFileSync(process.execPath, [SCRIPT, 'use', 'official'], {
+      env: { ...process.env, DSH_HOME: join(home, '.dsh'), DSH_SKIN_REPO: join(home, 'code', 'dsh-web-ui') },
+    })
+    assert.equal(readFileSync(globalPatch, 'utf8'), '[]\n')
+    assert.ok(readFileSync(patchPath(home), 'utf8').includes(MANAGED_START))
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
