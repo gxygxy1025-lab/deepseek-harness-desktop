@@ -29,7 +29,7 @@ async function describeWindowsProcesses(ownedProcesses) {
     "$rows = foreach ($processId in ($env:DSH_TRACE_PIDS -split ',')) {",
     '  $dotnet = Get-Process -Id ([int] $processId) -ErrorAction SilentlyContinue',
     '  $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue',
-    '  [pscustomobject]@{ ProcessId = $processId; ProcessName = $dotnet.ProcessName; DotNetPath = $dotnet.Path; CimName = $cim.Name; CimPath = $cim.ExecutablePath }',
+    '  [pscustomobject]@{ ProcessId = $processId; ProcessName = $dotnet.ProcessName; DotNetPath = $dotnet.Path; CimName = $cim.Name; CimPath = $cim.ExecutablePath; CimCommandLine = $cim.CommandLine }',
     '}',
     '$rows | ConvertTo-Json -Compress',
   ].join('; ')
@@ -101,6 +101,8 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /GetLongPathNameW/u)
   assert.match(cleanup, /\[DshInstaller\.ProcessPath\]::TryGet/u)
   assert.match(cleanup, /\[DshInstaller\.ProcessPath\]::Canonicalize/u)
+  assert.match(cleanup, /\$installRootReferences\.Add\(\$fullPath\)/u)
+  assert.match(cleanup, /foreach \(\$reference in \$installRootReferences\)/u)
   assert.match(cleanup, /update-shutdown-v1/u)
   assert.match(cleanup, /--shutdown-for-update/u)
   assert.match(cleanup, /Start-Process[\s\S]*-WindowStyle Hidden/u)

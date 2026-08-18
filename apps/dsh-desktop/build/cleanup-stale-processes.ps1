@@ -109,16 +109,25 @@ namespace DshInstaller
   $installRoots = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
   )
+  $installRootReferences = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
 
   function Add-InstallRoot([string] $path) {
     if ([string]::IsNullOrWhiteSpace($path)) {
       return
     }
     try {
-      $fullPath = [System.IO.Path]::GetFullPath($path).TrimEnd([char[]]@('\', '/'))
-      $volumeRoot = [System.IO.Path]::GetPathRoot($fullPath).TrimEnd([char[]]@('\', '/'))
-      if (-not [string]::IsNullOrWhiteSpace($fullPath) -and $fullPath -ne $volumeRoot) {
-        [void] $installRoots.Add($fullPath)
+      $fullPath = if ([System.IO.Path]::IsPathRooted($path)) {
+        $path.TrimEnd([char[]]@('\', '/'))
+      } else {
+        [System.IO.Path]::GetFullPath($path).TrimEnd([char[]]@('\', '/'))
+      }
+      $canonicalPath = [DshInstaller.ProcessPath]::Canonicalize($fullPath).TrimEnd([char[]]@('\', '/'))
+      $volumeRoot = [System.IO.Path]::GetPathRoot($canonicalPath).TrimEnd([char[]]@('\', '/'))
+      if (-not [string]::IsNullOrWhiteSpace($canonicalPath) -and $canonicalPath -ne $volumeRoot) {
+        [void] $installRoots.Add($canonicalPath)
+        [void] $installRootReferences.Add($fullPath)
       }
     } catch {
       # A stale registry value must not turn into a false process warning.
@@ -164,6 +173,11 @@ namespace DshInstaller
   $rootVariants = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
   )
+  foreach ($reference in $installRootReferences) {
+    if (Test-Path -LiteralPath $reference -PathType Container) {
+      [void] $rootVariants.Add($reference)
+    }
+  }
   foreach ($root in $existingRoots) {
     $installItem = Get-Item -LiteralPath $root -ErrorAction SilentlyContinue
     foreach ($variant in @(
