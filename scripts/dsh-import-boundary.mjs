@@ -73,7 +73,9 @@ export function listRepositoryFiles(root) {
     child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8') })
     child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8') })
     child.once('error', reject)
-    child.once('exit', (code) => {
+    // `exit` can precede the stdio streams closing, which occasionally yielded
+    // an empty or truncated file list under concurrent Linux CI scans.
+    child.once('close', (code) => {
       if (code !== 0) reject(new Error(`git ls-files failed: ${stderr.trim()}`))
       else resolvePromise(stdout.split(/\r?\n/u).filter(Boolean))
     })
