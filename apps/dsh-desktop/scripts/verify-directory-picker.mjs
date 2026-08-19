@@ -55,7 +55,7 @@ try {
   }
   await page.waitForSelector('#dsh-desktop-window-chrome')
 
-  const addWorkspace = page.getByRole('button', { name: /add workspace|添加工作区/u })
+  const addWorkspace = page.getByRole('button', { name: /add workspace|添加工作区/iu })
   try {
     await addWorkspace.waitFor({ state: 'visible', timeout: runtimeReadyTimeoutMs })
   } catch (error) {
