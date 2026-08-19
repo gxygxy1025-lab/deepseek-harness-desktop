@@ -516,6 +516,12 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
   color: var(--dsw-alias-label-tertiary);
 }
 
+.fieldHint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .formError {
   margin: 0;
   font-size: 12px;
@@ -599,6 +605,76 @@ html[data-dsh-taskboard-active]:not([data-dsh-ssh-active]) [class*='centerCol'] 
   font-weight: 700;
   color: var(--dsw-alias-label-tertiary);
   text-transform: none;
+}
+
+/* --- Evidence review ------------------------------------------------------- */
+
+.evidencePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+}
+
+.evidenceHeader,
+.evidenceStats,
+.evidenceActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.evidenceHeader h4 {
+  flex: 1;
+  margin: 0;
+}
+
+.evidenceStats {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.evidenceFiles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  font-size: 12px;
+}
+
+.evidenceFiles li {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.evidenceFiles code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidencePreview {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: pre-wrap;
 }
 
 .detailText {

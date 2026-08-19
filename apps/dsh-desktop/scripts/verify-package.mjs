@@ -1,6 +1,6 @@
 import { access, readFile, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import YAML from 'yaml'
 
@@ -83,6 +83,17 @@ for (const namespace of WEB_UI_SETTINGS_NAMESPACES) {
     throw new Error(`packaged Host API proxy is missing settings namespace ${namespace}`)
   }
 }
+
+const packagedTaskBoard = await import(pathToFileURL(join(unpackedModules, '@linxin666', 'dsh-client-ui-task-board', 'lib', 'index.js')).href)
+const packagedGitGraph = await import(pathToFileURL(join(unpackedModules, '@linxin666', 'dsh-client-ui-git-graph', 'lib', 'index.js')).href)
+for (const [name, value] of [
+  ['Task Board WorktreeExecutionCoordinator', packagedTaskBoard.WorktreeExecutionCoordinator],
+  ['Task Board EvidenceReviewService', packagedTaskBoard.EvidenceReviewService],
+  ['Git Graph WorktreeHostService', packagedGitGraph.WorktreeHostService],
+  ['Git Graph WorktreeWorkspaceRegistry', packagedGitGraph.WorktreeWorkspaceRegistry],
+]) {
+  if (typeof value !== 'function') throw new Error(`packaged runtime is missing ${name}`)
+}
 const particlePackageRoot = join(unpackedModules, '@linxin666', 'dsh-particle-theme')
 await access(join(particlePackageRoot, 'lib', 'index.js'))
 await access(join(particlePackageRoot, 'lib', 'client.js'))
@@ -99,6 +110,29 @@ if (!settingsBridge.includes('"particle-theme"')) {
 }
 await access(join(resources, 'app.asar'))
 await access(join(resources, 'app-icon.png'))
+const telemetryConfiguration = JSON.parse(await readFile(join(resources, 'telemetry-config.json'), 'utf8'))
+if (
+  telemetryConfiguration === null
+  || typeof telemetryConfiguration !== 'object'
+  || Array.isArray(telemetryConfiguration)
+  || Object.keys(telemetryConfiguration).length !== 1
+  || typeof telemetryConfiguration.endpoint !== 'string'
+) {
+  throw new Error('packaged anonymous metrics configuration is invalid')
+}
+if (telemetryConfiguration.endpoint.length > 0) {
+  const telemetryEndpoint = new URL(telemetryConfiguration.endpoint)
+  if (
+    telemetryEndpoint.protocol !== 'https:'
+    || telemetryEndpoint.pathname !== '/v1/events'
+    || telemetryEndpoint.username
+    || telemetryEndpoint.password
+    || telemetryEndpoint.search
+    || telemetryEndpoint.hash
+  ) {
+    throw new Error('packaged anonymous metrics endpoint is invalid')
+  }
+}
 const updateShutdownProtocol = await readFile(join(resources, 'update-shutdown-v1'), 'utf8')
 if (updateShutdownProtocol.trim() !== 'dsh-desktop-update-shutdown-protocol=1') {
   throw new Error('packaged update shutdown protocol marker is invalid')
@@ -122,6 +156,9 @@ if (!packagingConfig.protocols?.some((entry) => entry.schemes?.includes('dsh')))
 }
 if (!packagingConfig.fileAssociations?.some((entry) => entry.ext === 'dshpreset' && entry.role === 'Editor')) {
   throw new Error('packaging config is missing the review-only .dshpreset association')
+}
+if (!packagingConfig.extraResources?.some((entry) => entry.to === 'telemetry-config.json')) {
+  throw new Error('packaging config is missing the anonymous metrics resource')
 }
 
 console.log(`verified ${requiredPackages.length} packaged runtime packages in ${resources}`)

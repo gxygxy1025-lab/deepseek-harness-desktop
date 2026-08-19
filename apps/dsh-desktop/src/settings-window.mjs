@@ -212,6 +212,7 @@ export function createSettingsWindowScript() {
         dialog.append(handle);
       }
       active = { dialog, layer, bounds: undefined };
+      void api.settingsOpened?.().catch(() => {});
       applyBounds(persistedBounds ?? {
         x: box.x - layerBox.x,
         y: box.y - layerBox.y,

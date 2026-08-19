@@ -16,7 +16,8 @@
 - **真实执行**：点「执行」后，插件通过客户端 runtime 连接工作区会话（`workspaces.connectWorkspace`，空白会话复用或 host 新建），把任务标题设为会话名，以任务 Prompt 调用 `session.prompt([{ type: 'text', text }], 'queue')` 驱动真实 agent；随后订阅该会话快照，轮次真实结束后把卡片置为 已完成/已失败 并记录执行结果。执行会话会出现在会话列表，可点进对话查看真实 transcript。
 - **状态回写**：卡片状态（进行中 → 完成/失败）由真实会话状态驱动；刷新页面/重启后，遗留的 running 任务会按会话现状自动对账（reconcile）。
 - **定时任务**：详情面板可为任务配置定时执行——启用开关 + 5 段 cron 表达式（分 时 日 月 周，支持 `*` / `*/n` / `a-b` / 逗号列表）+ 常用预设（每天 09:00、每小时、每 10 分钟、每周一 09:00）；启用即计算并持久化「下次运行时间」，卡片显示定时标识；到点自动走真实执行链路（同手动执行），执行会话照常可跳转。
-- **Host 文件持久化**：schema v2 通过固定的 loopback same-origin 路由保存到当前 profile 的 `state/task-board/tasks-v2.json`；写入串行并原子发布，损坏文件会在台账旁保留，实时变化通过 SSE 分发。
+- **Host 文件持久化**：Host-owned v3 台账把 Project、紧凑 Task Run 和派生 Evidence 保存到 `state/task-board/tasks-v3.json`；写入串行并原子发布，损坏文件会保留，v2 会在迁移前复制备份。旧 Host 继续使用 v2/localStorage 回退。
+- **Worktree 审核**：Desktop 2.6 任务可选择 shared-workspace 或 Git Worktree；Typed Runtime Provider 提供 workspace/session 观察能力时，Host 创建受控 Worktree，详情展示有界 Evidence 并提供 Commit、Merge、Keep、二次确认 Discard；缺少能力时明确回退到 shared-workspace。
 - **系统提示词注入**：host 半边（`src/index.ts`）通过 `SystemPrompt.section` 注册 `plugin:task-board` 段（order 200），向每个 agent 声明本插件存在、能力与限制——插件在组合中（mount 后重启 DSH）即注入，移出组合（unmount 后重启）即消失，agent 无需任何外部文档就能知道如何与本看板协作。
 
 ## 目录结构
@@ -108,19 +109,19 @@ profile 清单中注册的行：
 
 ## 数据存储位置
 
-- 权威 v2 台账位于 `DSH_HOME/profiles/<profile>/state/task-board/tasks-v2.json`；`profileName` 默认取运行时 `DSH_PROFILE`，未提供时为 `web`。
-- Host 台账为空时只执行一次 v1 复制：从 `dsh.taskBoard.v1` 读取，回读后校验数量和内容哈希，再记录迁移完成。2.4.x 不删除 v1 键。
-- Host 端点不可用时看板使用 v1 localStorage；Host 更新通过 SSE 同步，不使用高频轮询。
+- 权威 v3 台账位于 `DSH_HOME/profiles/<profile>/state/task-board/tasks-v3.json`；`profileName` 默认取运行时 `DSH_PROFILE`，未提供时为 `web`。
+- v2 文档会先复制到带时间戳的备份，迁移时不推断 Worktree 隔离，回读并校验后才写入 v3 标记；v2 源文件和浏览器 v1 键继续为旧环境保留。
+- v3 Host 端点不可用时，看板选择兼容的 v2 Host 或 v1 localStorage；Host 更新通过 SSE 同步，不使用高频轮询。
 
 ## 安全模型
 
 - Host 仅注册固定路由，只接受 loopback same-origin 请求，限制请求体大小，浏览器不能传入 profile 名称或文件路径。
-- 执行记录只持久化任务字段及 session/workspace/run 引用和时间戳，不复制模型消息、工具输出或完整 transcript。
+- Task Run 和 Evidence 只持久化任务字段、不透明的 session/workspace/run 引用、revision、有界文件摘要和能力证据，不复制模型消息、工具输出、Secret、原始 patch 或完整 transcript。
 
 ## 已知限制
 
 - 调度仍在浏览器端：必须保持 DSH 页面打开，页面关闭期间错过的任务会跳过，本版本没有后台调度器或补跑队列。
-- Task Presets、Worktree 自动化、后台调度与公开 Task Board SDK 不属于本契约。
+- Worktree 执行需要可选 Runtime Provider 能力；缺少能力时使用 shared-workspace。后台调度与公开 Task Board SDK 不属于本契约。
 
 ## 手动验证步骤
 

@@ -1,63 +1,53 @@
-# DeepSeek Harness Desktop 2.5.0
+# DeepSeek Harness Desktop 2.6.0
 
 ## 中文
 
 ### 本次亮点
 
-- Desktop 运行时接入 DSH Runtime Provider Adapter v1。生命周期、Profile 路径和可选 Workspace、Session、Host Service 能力通过显式 capability 暴露；直接 DSH import 边界、上游耦合审计、Known Good 清单和兼容补丁注册表共同约束升级范围。Stable 继续精确锁定当前验证版本，不自动追随 latest。
-- Candidate Lite 接受人工指定的精确 DSH 候选版本，在隔离 worktree 运行构建、测试、真实 Runtime 启停恢复、Profile 和打包烟测并产出 JSON/Markdown 报告。候选流程不会修改稳定依赖、lockfile、发布说明、updater 元数据或主分支。
-- PluginManager 支持批量事务。所有候选先去重、解析精确版本、读取 registry manifest、验证 Desktop/Runtime/Node/peer 与 DSH bundle，并一次预取；切换阶段只保存一次 profile manifest 和 lockfile 快照、执行一次离线安装、一次更新 bundles，并在任何失败时完整回滚。
-- Extension Dock 新增 Desktop Preset 页签。`.dshpreset` v1 可携带精确插件锁、允许的设置、无脚本 Skills、任务模板、说明和完整性清单；主进程先检查压缩大小、压缩比、路径穿越、符号链接、特殊文件、SHA-256、Secret 字段、本机路径、Git URL、脚本和版本范围，再向 Renderer 返回不含文件路径的审阅计划。
-- Preset 冲突只允许取消、跳过或采用 Preset 精确版本。确认导入后按准备、预取、停止、应用、启动、健康检查和提交执行；失败会恢复插件 manifest/lockfile、设置、Skills、任务模板和旧 Runtime。Web Profile 迁移同样先展示可安装、更新、缺失、不兼容、未声明、已满足和 Desktop 管理项目，并将所选插件与可归属的非敏感 Profile 配置一起应用或回滚。
-- 插件或 Preset 操作后，界面突出显示“刷新”；改变 Runtime bundle 图时同时显示“Restart DeepSeek Harness”。进度区明确展示准备、预取、停止、应用、启动、提交、回滚和恢复。
-- `dsh://` 只允许扩展、更新、安全 task/session ID 和 Preset 预览。Runtime 未就绪时使用有界去重队列；未知路由、查询、命令、路径、URL 和 packageSpec 全部拒绝。`.dshpreset` 文件关联只打开预览，不静默安装，也不把本机路径交给 Renderer。
-- Desktop Contract 1.1 提供结构化通知。category、id、title、body 和可选 Deep Link 均受验证；服务按 ID 去重、按分类限频、前台抑制，点击只进入白名单路由。任务、插件恢复、更新和 Preset 均可使用同一安全边界。
-- 覆盖更新彻底绕过已安装卸载器：进程与文件锁检查通过后，所有具有精确产品锚点的安装目录都会被原子迁移，精确产品注册项也会被清除。版本号和 v3 标记不再作为信任信号，因此 2.3.0/2.4.0、带标记的 2.5.0 中间构建、目录已删但卸载项残留的情况都不会再调用旧卸载器，也不会反复弹出“无法关闭”；用户 Profile 和数据目录保持不变。
-- 设置窗口支持拖动、八方向缩放、最小尺寸、响应式滚动与边界恢复；独立 `dsh-particle-theme` 将粒子鲸鱼延伸到主界面，并会在输入、弹窗、减少动态效果或后台状态下降低负载。更新窗口明确提供 GitHub 下载、用户群和稍后更新三条路径。
+- Task Board v3 提供 Project、Task Run、派生 Evidence 和 Git Worktree 审核流。任务可明确选择 shared-workspace 或 Git Worktree，旧任务继续使用 shared-workspace。
+- v2 账本复制迁移到 Host-owned `tasks-v3.json`，原文件先备份；原子写入、回读校验和迁移标记让失败恢复保持可诊断。
+- Git Graph Host 提供受控 Worktree 创建、状态、差异、提交、合并和移除。Renderer 只传不透明 id，不传路径和任意 Git 参数；Discard 需要二次确认。
+- Runtime Provider 缺少 Worktree 所需能力时返回明确原因并回退现有 shared-workspace；Provider 返回的 Session CWD 与 Worktree 不一致时阻断，不伪造隔离。
+- Evidence 面板展示有限文件摘要、增删统计、差异预览、revision、Session/运行入口和能力证据，不保存完整会话、工具结果或 Secret。运行通知支持 `dsh://run/<safe-id>`。
+- 官方正式版默认启用有界匿名产品统计且不提供应用内关闭开关，仅记录固定类别和区间的产品事件及官网安装包点击汇总。统计不包含持久标识、IP、对话、文件、路径、凭据、日志或堆栈，原始事件不落库，按日汇总最长保留 365 天；源码、开发、测试与 Fork 构建不包含官方统计端点。
 
 ### 验证
 
-- 新增 Adapter capability、错误翻译、真实启停恢复、import allow/deny fixture、patch registry schema、Known Good 与 Candidate Lite 成功和故障报告测试。
-- 新增批量去重、兼容失败、预取失败、第二包失败、Runtime 启动失败、回滚失败聚合、单次 stop/start 和完整 progress 顺序测试。
-- 新增 Preset round-trip、完整性篡改、Secret、绝对路径、Git URL、脚本、版本范围、settings allowlist、路径穿越、符号链接、压缩炸弹、Skill 冲突恢复、capability 缺失和全状态故障恢复测试。
-- 新增 Deep Link 白名单、恶意参数、重复、Runtime 前队列、文件关联只预览、通知去重、限频、前台抑制和点击路由测试。发布门禁继续执行类型检查、全仓测试、文档、安装包内容校验、Windows 打包 E2E 和真实 Runtime 烟测。
-- 新增旧版卸载器祖先进程排除、无标记旧安装、带标记 2.5.0、残留注册项、文件锁与静默安装回归测试；在真实 2.3.0 安装上完成 2.5.0 覆盖升级，并用最终安装包成功覆盖已安装且带标记的 2.5.0，安装文件与本地构建哈希一致。
+- Task Board 与 Git Graph 类型检查通过，新增 v3 migration、Worktree execution、Worktree Host service、review 和 Evidence 测试。
+- Candidate fixture 使用真实临时 Git 仓库验证注册参数、Session CWD、started/completed/cancelled 事件、取消语义和重启恢复；失败 Candidate 不改变 Stable 元数据。
+- 深链和通知回归覆盖 `run` 路由、ID 校验、去重、限频、前台抑制和点击白名单；发布门禁继续执行类型检查、全仓测试、文档、安装包内容校验、Windows 打包 E2E 和真实 Runtime 烟测。
+- 匿名统计客户端、固定事件词汇、发布配置、网站下载 Beacon 和 Cloudflare 聚合 Worker 均有自动化覆盖；Worker 的 17 项测试验证来源、字段、大小、认证、聚合与保留边界。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。2.3.0、2.4.0 用户可直接覆盖更新；遇到旧卸载器问题的早期 2.5.0 构建也可直接运行本安装包修复。应用内下载继续由 `latest.yml` 的 SHA-512 摘要校验，安装仍需用户明确确认。
+下载 `DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。安装器 SHA-256 以发布页相邻校验文件为准。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。安装包当前未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”，请只从项目 GitHub Release 下载并核对 SHA-256。Preset 的完整性校验不代表发布者身份可信，capability 也不是安全身份；Preset 不导出 Secret，文件关联不静默安装。Desktop Stable 不自动追随上游 latest，候选报告也不会自动晋升稳定版。
+这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。安装包当前未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”，请仅从项目 GitHub Release 下载并核对 SHA-256。Task Board 的 Worktree 功能按 Runtime Provider capability 协商；Stable 未提供可选能力时会安全回退到 shared-workspace。下载安装、启动或继续使用官方正式版，即表示已阅读并在适用法律允许的范围内同意仓库及官网公开的隐私政策；统计数据仅用于产品改进。
 
 ## English
 
 ### Highlights
 
-- Desktop runtime access now passes through DSH Runtime Provider Adapter v1. Lifecycle, profile paths, and optional Workspace, Session, and Host Service operations are represented as explicit capabilities. A direct-import boundary, upstream coupling audit, Known Good manifest, and compatibility patch registry constrain the upgrade surface. Stable remains exactly pinned to the verified graph instead of following latest.
-- Candidate Lite evaluates a manually supplied exact DSH candidate in an isolated worktree. It runs builds, tests, real Runtime start-stop-recover, profile checks, and packaged smoke checks, then produces JSON and Markdown reports. Candidate work cannot change Stable dependencies, the lockfile, release notes, updater metadata, or the main branch.
-- PluginManager supports atomic package batches. Every candidate is deduplicated, resolved to an exact version, inspected through the registry, checked for DSH bundle and Desktop, Runtime, Node, and peer compatibility, and prefetched before downtime. The switch takes one manifest and lockfile snapshot, performs one offline install and one bundle update, and restores the same snapshot after any failure.
-- Extension Dock has a Desktop Preset tab. `.dshpreset` v1 can carry exact plugin locks, allowlisted settings, script-free Skills, task templates, human notes, and an integrity manifest. Before a renderer sees a plan, the main process checks archive size, compression ratio, traversal, symbolic links, special files, SHA-256, Secret-bearing fields, local paths, Git URLs, scripts, and version ranges. The renderer never receives the selected path.
-- Preset conflicts allow only cancel, skip, or the Preset exact item. A confirmed import prepares, prefetches, stops, applies, starts, health-checks, and commits as one outer transaction. Failure restores the plugin manifest and lockfile, settings, Skills, task templates, and the previous Runtime. Web Profile migration uses the same review-first model, distinguishes every compatibility state, and applies attributable non-sensitive profile configuration in the same rollback boundary as selected packages.
-- Extension and Preset operations now present a prominent Refresh follow-up. Changes to the Runtime bundle graph also present Restart DeepSeek Harness. The progress surface names preparation, prefetch, stop, apply, start, commit, rollback, and restore phases.
-- `dsh://` is limited to extensions, updates, safe task or session identifiers, and Preset preview. A bounded deduplicating queue waits for Runtime readiness. Unknown routes, queries, commands, paths, URLs, and package specifications are rejected. The `.dshpreset` file association opens review only, never silently installs, and never passes the local path to renderer code.
-- Desktop Contract 1.1 provides structured notifications. Category, ID, title, body, and optional deep link are validated. The service deduplicates IDs, rate-limits each category, suppresses notifications while Desktop is focused, and routes clicks only through the deep-link allowlist. Task, plugin recovery, update, and Preset consumers share this boundary.
-- In-place updates now bypass every installed uninstaller. After process and file-lock checks, every root with the exact product anchors is atomically staged and only the exact product registry entries are removed. Version numbers and the v3 marker are never trusted, so 2.3.0/2.4.0, marker-bearing 2.5.0 intermediates, and stale uninstall registrations cannot invoke an old uninstaller or repeat the cannot-close prompt. Profile and user-data directories remain untouched.
-- The settings window adds dragging, eight resize directions, minimum dimensions, responsive scrolling, and recovered bounds. The independent `dsh-particle-theme` extends the particle whale into the main surface and lowers work during text input, dialogs, reduced motion, or background use. The update surface clearly offers GitHub download, user-group, and update-later paths.
+- Task Board v3 adds Projects, compact Task Runs, derived Evidence, and explicit Git Worktree review. Each task chooses shared-workspace or Git Worktree, while legacy tasks remain shared-workspace.
+- The v2 ledger migrates copy-first to the Host-owned `tasks-v3.json`; the source is backed up before an atomic write, read-back verification, and migration marker are recorded.
+- Git Graph Host provides controlled Worktree create, status, diff, commit, merge, and remove operations. Renderers send opaque ids only, never paths or arbitrary Git arguments; Discard requires a second confirmation.
+- Missing Worktree capabilities return a bounded reason and use the existing shared-workspace executor. A Session CWD that differs from the controlled Worktree path is blocked rather than reported as isolated.
+- The Evidence panel shows bounded file summaries, additions/deletions, diff preview, revisions, Session/run links, and capability evidence without storing full history, tool results, or Secrets. Run notifications support `dsh://run/<safe-id>`.
+- Official release builds enable bounded anonymous product metrics by default without an in-app off switch. They record only fixed product categories, duration buckets, and aggregate installer-link clicks. Metrics exclude persistent identifiers, IP addresses, conversations, files, paths, credentials, logs, and stack traces; raw events are not retained, daily aggregates expire after at most 365 days, and source, development, test, and Fork builds contain no official endpoint.
 
 ### Verification
 
-- Adapter coverage includes capability absence, error translation, real lifecycle recovery, import allow and deny fixtures, compatibility patch schema, Known Good evidence, and Candidate Lite success and failure reports.
-- Batch coverage includes deduplication, compatibility and prefetch failures, a failing second package, Runtime startup failure, aggregate rollback failure, one successful stop/start cycle, and the complete progress sequence.
-- Preset coverage includes round trip, integrity tampering, Secret values, absolute paths, Git URLs, executable scripts, version ranges, the settings allowlist, traversal, symbolic links, compression bombs, Skill conflict restoration, missing capabilities, and full-state fault recovery.
-- Deep-link tests cover every allowed route, malicious parameters, duplicates, the pre-Runtime queue, and file-association preview only. Notification tests cover validation, deduplication, rate limits, foreground suppression, and click routing. Release gates retain repository type checks, all tests, documentation, packaged payload verification, Windows E2E checks, and a real Runtime smoke test.
-- Installer coverage now includes old-uninstaller ancestor exclusion, unmarked legacy roots, marker-bearing 2.5.0 roots, stale registrations, file locks, and silent mode. Verification includes a real 2.3.0-to-2.5.0 upgrade and a successful final-package repair over an installed marker-bearing 2.5.0 whose installed files exactly match the local build hashes.
+- Task Board and Git Graph typechecks pass, with focused coverage for v3 migration, Worktree execution, Host Worktree service, review, and Evidence.
+- The Candidate fixture uses a real temporary Git repository to verify registration arguments, exact Session CWD, started/completed/cancelled events, cancellation semantics, and restart reconciliation. A failing Candidate cannot change Stable metadata.
+- Deep-link and notification regressions cover the `run` route, safe ids, deduplication, rate limits, foreground suppression, and allowlisted click routing. Release gates retain repository type checks, all tests, documentation, packaged payload verification, Windows E2E checks, and a real Runtime smoke test.
+- Automated coverage includes the metrics client, closed event vocabulary, release configuration, website download beacon, and aggregate Cloudflare Worker. The Worker's 17 tests verify origin, field, size, authentication, aggregation, and retention boundaries.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Users on 2.3.0 or 2.4.0 can install in place, and early 2.5.0 builds affected by an old uninstaller can run this installer directly to repair themselves. In-app downloads remain authenticated by the SHA-512 digest in `latest.yml`, and installation still requires explicit user confirmation.
+Download `DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Treat the adjacent checksum file as authoritative for the installer SHA-256.
 
 ### Notice
 
-This is a community build, not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not currently signed with a commercial code-signing certificate, so Windows SmartScreen may display an unknown publisher. Download only from the project GitHub Release and verify SHA-256. Preset integrity does not establish publisher identity, and a capability is not a security identity. Presets do not export Secret values, and file association never installs silently. Desktop Stable does not follow upstream latest automatically, and Candidate reports never promote themselves to Stable.
+This is a community build, not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not currently signed with a commercial code-signing certificate, so Windows SmartScreen may display an unknown publisher. Download only from the project GitHub Release and verify SHA-256. Worktree support is negotiated by Runtime Provider capabilities; Stable safely falls back to shared-workspace when optional capabilities are absent. Installing, launching, or continuing to use an official release means that you have read and, where applicable law permits, agree to the privacy policy published in the repository and on the website; metrics are used only to improve the product.

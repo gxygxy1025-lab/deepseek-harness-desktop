@@ -14,10 +14,14 @@
  * navigation, reconciliation).
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
+import { collectEvidence, type EvidenceStore } from './evidence.ts'
+import type { EvidenceReviewService } from './review.ts'
+import { createTaskRunReference, type Evidence, type Project, type ReviewResult, type TaskRunReference } from './runs.ts'
 import type { TaskStore } from './store.ts'
+import type { WorktreeExecutionResult } from './worktree-execution.ts'
 import {
   settleExecution, startExecution, withStatus,
-  type NewTaskInput, type TaskRecord, type TaskStatus,
+  type ExecutionRecord, type NewTaskInput, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 import { applyCreateTask } from './use-cases/task-create.ts'
 import { applyDeleteTask } from './use-cases/task-delete.ts'
@@ -32,6 +36,12 @@ export interface SessionsControllerFace {
   }
   /** Select a session as current (navigates the conversation view). */
   open(id: string): void
+}
+
+export interface WorktreeAvailability {
+  available: boolean
+  /** User-readable bounded reason when isolation is unavailable. */
+  reason?: string
 }
 /** Controller dependencies (all swappable in tests). */
 export interface ControllerDeps {
@@ -52,6 +62,17 @@ export interface ControllerDeps {
     outcome: 'succeeded' | 'failed' | 'cancelled'
     error?: string
   }>) => void | Promise<void>
+  /** Optional derived Evidence store; absent for legacy shared-workspace web. */
+  evidenceStore?: EvidenceStore
+  reviewService?: EvidenceReviewService
+  /** Optional 2.6 Worktree driver; shared-workspace remains the default. */
+  worktreeExecution?: {
+    runTask: (task: TaskRecord, execution: ExecutionRecord, project: Project | undefined, onEvent: (event: ExecutionEvent) => void) => Promise<WorktreeExecutionResult>
+    reconcileTask?: (task: TaskRecord, execution: ExecutionRecord, project: Project | undefined) => Promise<WorktreeExecutionResult | undefined>
+    resolveProject?: (task: TaskRecord) => Project | undefined
+  }
+  /** Combined Git Graph + provider capability + Git-repository preflight. */
+  worktreeAvailability?: WorktreeAvailability | (() => WorktreeAvailability)
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -100,6 +121,7 @@ export class BoardController {
   private disposers: Array<() => void> = []
   private readonly now: () => number
   private readonly uuid: () => string
+  private evidences: Evidence[] = []
 
   /** @param deps - store, execution service, and the sessions navigation face. */
   constructor(private readonly deps: ControllerDeps) {
@@ -121,6 +143,7 @@ export class BoardController {
   /** Complete startup synchronously for local stores and after await for Host stores. */
   private finishStart(tasks: TaskRecord[]): void {
     this.tasks = tasks
+    void this.loadEvidence()
     void this.reconcileRunningTasks()
     // A sibling tab may have edited or deleted the ledger (same origin,
     // storage events). Reload on external change so a task deleted in
@@ -163,6 +186,62 @@ export class BoardController {
       boardOpen: this.boardOpen,
       selectedTaskId: this.selectedTaskId,
     }
+  }
+
+  /** Latest derived Evidence for a task, if the optional store is wired. */
+  getLatestEvidence(taskId: string): Evidence | undefined {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return undefined
+    const runIds = new Set([
+      ...(task.runs ?? []).map(run => run.runId),
+      ...task.executions.map(execution => execution.runId ?? execution.id),
+    ])
+    return [...this.evidences].reverse().find(evidence => runIds.has(evidence.runId))
+  }
+
+  async commitEvidence(evidenceId: string, message = 'Task Board: accept reviewed changes'): Promise<ReviewResult | undefined> {
+    const result = await (this.deps.reviewService?.commit(evidenceId, message) ?? Promise.resolve(undefined))
+    await this.refreshEvidence(evidenceId)
+    this.applyReviewResult(evidenceId, result)
+    return result
+  }
+
+  async mergeEvidence(evidenceId: string, targetBranch = 'main'): Promise<ReviewResult | undefined> {
+    const result = await (this.deps.reviewService?.merge(evidenceId, targetBranch) ?? Promise.resolve(undefined))
+    await this.refreshEvidence(evidenceId)
+    this.applyReviewResult(evidenceId, result)
+    return result
+  }
+
+  async keepEvidence(evidenceId: string): Promise<ReviewResult | undefined> {
+    const result = await (this.deps.reviewService?.keep(evidenceId) ?? Promise.resolve(undefined))
+    await this.refreshEvidence(evidenceId)
+    this.applyReviewResult(evidenceId, result)
+    return result
+  }
+
+  async discardEvidence(evidenceId: string, confirmed: boolean): Promise<ReviewResult | undefined> {
+    const result = await (this.deps.reviewService?.discard(evidenceId, confirmed) ?? Promise.resolve(undefined))
+    await this.refreshEvidence(evidenceId)
+    this.applyReviewResult(evidenceId, result)
+    return result
+  }
+
+  hasReviewService(): boolean {
+    return this.deps.reviewService !== undefined
+  }
+
+  getWorktreeAvailability(): WorktreeAvailability {
+    if (this.deps.worktreeExecution === undefined) {
+      return { available: false, reason: 'Runtime Provider Worktree execution is not wired; shared workspace will be used' }
+    }
+    const configured = typeof this.deps.worktreeAvailability === 'function'
+      ? this.deps.worktreeAvailability()
+      : this.deps.worktreeAvailability
+    if (configured?.available !== true) {
+      return { available: false, reason: configured?.reason?.slice(0, 500) ?? 'Git Graph, provider capabilities, or Git repository preflight is unavailable' }
+    }
+    return { available: true }
   }
 
   subscribe(fn: () => void): () => void {
@@ -282,7 +361,14 @@ export class BoardController {
   async runTask(id: string): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined || task.status === 'running') return false
-    const { task: next, execution } = startExecution(task, this.now(), this.uuid())
+    const { task: started, execution } = startExecution(task, this.now(), this.uuid())
+    const next = addTaskRunReference(started, createTaskRunReference({
+      runId: execution.runId ?? execution.id,
+      workspaceId: execution.workspaceId ?? 'shared',
+      startedAt: execution.startedAt,
+      resultStatus: 'running',
+      runtimeProviderEvidence: { note: 'shared-workspace execution' },
+    }))
     this.tasks = this.tasks.map(candidate => candidate.id === id ? next : candidate)
     this.persistAndNotify()
     // This page owns the settlement of its own launches: the live watch
@@ -290,8 +376,33 @@ export class BoardController {
     // reconciliation must not pre-empt it with a session that has not
     // started a turn yet (its list row is idle, not completed).
     this.activeExecutionIds.add(execution.id)
-    await this.deps.exec.run(next, execution, (event) => { this.handleExecutionEvent(event) })
+    const worktree = this.deps.worktreeExecution
+    if (task.isolationMode === 'git-worktree' && worktree !== undefined) {
+      const result = await worktree.runTask(next, execution, worktree.resolveProject?.(task), event => { this.handleExecutionEvent(event) })
+      if (result.mode === 'shared-workspace-fallback') {
+        this.annotateRunFallback(execution.id, result.fallbackReason ?? 'Worktree execution unavailable; shared workspace used', result.capabilityEvidence)
+        await this.deps.exec.run(this.tasks.find(candidate => candidate.id === id) ?? next, execution, event => { this.handleExecutionEvent(event) })
+      } else if (result.mode === 'blocked') {
+        if (result.run !== undefined) this.attachRunResult(execution.id, result.run)
+        else this.annotateRunFallback(execution.id, result.fallbackReason ?? 'Worktree execution blocked', result.capabilityEvidence)
+        this.handleExecutionEvent({ kind: 'settled', taskId: id, executionId: execution.id, outcome: 'failed', error: result.fallbackReason ?? 'Worktree execution blocked' })
+      } else if (result.run !== undefined) {
+        this.attachRunResult(execution.id, result.run)
+      }
+    } else {
+      if (task.isolationMode === 'git-worktree') this.annotateRunFallback(execution.id, 'Worktree capability is not wired in this Runtime Provider; shared workspace used')
+      await this.deps.exec.run(this.tasks.find(candidate => candidate.id === id) ?? next, execution, event => { this.handleExecutionEvent(event) })
+    }
     return true
+  }
+
+  /** Resolve an opaque Run deep link back to its task/Evidence review view. */
+  openRun(runId: string): void {
+    const task = this.tasks.find(candidate => (candidate.runs ?? []).some(run => run.runId === runId))
+    if (task === undefined) return
+    this.boardOpen = true
+    this.selectedTaskId = task.id
+    this.notify()
   }
 
   /** Re-run a settled task: move it back to 'todo' first, then execute. */
@@ -308,7 +419,7 @@ export class BoardController {
   private handleExecutionEvent(event: ExecutionEvent): void {
     if (event.kind === 'started') {
       this.tasks = this.tasks.map(task => task.id === event.taskId
-        ? attachSessionId(task, event.executionId, event.sessionId, event.workspaceId, this.now())
+        ? attachSessionId(attachRunSession(task, event.executionId, event.sessionId, event.workspaceId, this.now()), event.executionId, event.sessionId, event.workspaceId, this.now())
         : task)
       this.persistAndNotify()
       return
@@ -316,9 +427,12 @@ export class BoardController {
     this.activeExecutionIds.delete(event.executionId)
     const task = this.tasks.find(candidate => candidate.id === event.taskId)
     this.tasks = this.tasks.map(task => task.id === event.taskId
-      ? settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
+      ? settleRunReference(settleExecution(task, event.executionId, event.outcome, this.now(), event.error), event.executionId, event.outcome, this.now(), event.error)
       : task)
     this.persistAndNotify()
+    if (task !== undefined && this.shouldPersistSharedEvidence(task, event.executionId)) {
+      void this.persistSharedEvidence(task, event)
+    }
     if (task !== undefined) this.notifyExecutionSettled(task, event)
   }
 
@@ -375,6 +489,30 @@ export class BoardController {
         // Runs launched on this page settle through their live watch (turn
         // boundary); reconciliation exists for background/leftover runs.
         if (execution !== undefined && this.activeExecutionIds.has(execution.id)) continue
+        const runId = execution?.runId ?? execution?.id
+        const run = runId === undefined ? undefined : task.runs?.find(candidate => candidate.runId === runId)
+        const worktree = this.deps.worktreeExecution
+        if (execution !== undefined && run?.worktreeId !== undefined && worktree?.reconcileTask !== undefined) {
+          this.activeExecutionIds.add(execution.id)
+          void worktree.reconcileTask(task, execution, worktree.resolveProject?.(task)).then((result) => {
+            if (result === undefined) return
+            this.attachRunResult(execution.id, result.run)
+            const status = result.resultStatus ?? result.run.resultStatus
+            const outcome = status === 'cancelled' ? 'cancelled' : status === 'failed' ? 'failed' : 'succeeded'
+            this.handleExecutionEvent({
+              kind: 'settled',
+              taskId: task.id,
+              executionId: execution.id,
+              outcome,
+              ...(result.fallbackReason === undefined ? {} : { error: result.fallbackReason }),
+            })
+          }).catch((error) => {
+            const reason = error instanceof Error ? error.message : String(error)
+            this.annotateRunFallback(execution.id, `Worktree reconciliation failed: ${reason}`)
+            this.handleExecutionEvent({ kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed', error: reason })
+          })
+          continue
+        }
         const event = await this.deps.exec.reconcile(task)
         if (event !== undefined && event.kind === 'settled') events.push({ taskId: task.id, event })
       }
@@ -387,7 +525,7 @@ export class BoardController {
         // overwrite fields the sibling wrote.
         const task = this.tasks.find(candidate => candidate.id === taskId)
         if (task === undefined) continue
-        const next = settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
+        const next = settleRunReference(settleExecution(task, event.executionId, event.outcome, this.now(), event.error), event.executionId, event.outcome, this.now(), event.error)
         if (next === task) continue
         this.tasks = this.tasks.map(candidate => candidate.id === taskId ? next : candidate)
         this.notifyExecutionSettled(task, event)
@@ -421,6 +559,112 @@ export class BoardController {
     })
   }
 
+  private async loadEvidence(): Promise<void> {
+    const store = this.deps.evidenceStore
+    if (store?.list === undefined) return
+    try {
+      this.evidences = await store.list()
+      this.notify()
+    } catch (error) {
+      console.error('[dsh-task-board] evidence load failed', error)
+    }
+  }
+
+  private async refreshEvidence(evidenceId: string): Promise<void> {
+    const store = this.deps.evidenceStore
+    if (store === undefined) return
+    try {
+      const evidence = await store.get(evidenceId)
+      if (evidence === undefined) return
+      this.evidences = [...this.evidences.filter(candidate => candidate.evidenceId !== evidenceId), evidence]
+      this.notify()
+    } catch (error) {
+      console.error('[dsh-task-board] evidence refresh failed', error)
+    }
+  }
+
+  /** Keep the TaskRun reference in lockstep with the reviewed Evidence. */
+  private applyReviewResult(evidenceId: string, result: ReviewResult | undefined): void {
+    if (result?.ok !== true) return
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      let taskChanged = false
+      const runs = (task.runs ?? []).map((run) => {
+        if (run.evidenceId !== evidenceId || run.resultStatus === result.status) return run
+        changed = true
+        taskChanged = true
+        return { ...run, resultStatus: result.status }
+      })
+      return taskChanged ? { ...task, runs, updatedAt: this.now() } : task
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /** Shared-workspace runs have no Git diff, but still receive bounded Evidence. */
+  private shouldPersistSharedEvidence(task: TaskRecord, executionId: string): boolean {
+    const run = task.runs?.find(candidate => candidate.runId === executionId)
+    if (run?.evidenceId !== undefined) return false
+    if (run?.worktreeId !== undefined) return false
+    // A real worktree driver writes its own Git-backed Evidence before the
+    // controller attaches the completed run.  Skip the compact event here so
+    // it cannot be overwritten by an unavailable shared-workspace summary.
+    if (task.isolationMode === 'git-worktree' && this.deps.worktreeExecution !== undefined && run?.fallbackReason === undefined) return false
+    return this.deps.evidenceStore !== undefined
+  }
+
+  private async persistSharedEvidence(task: TaskRecord, event: Extract<ExecutionEvent, { kind: 'settled' }>): Promise<void> {
+    const store = this.deps.evidenceStore
+    if (store === undefined) return
+    const execution = task.executions.find(candidate => candidate.id === event.executionId)
+    if (execution === undefined) return
+    const runId = execution.runId ?? execution.id
+    const run = task.runs?.find(candidate => candidate.runId === runId)
+    if (run?.evidenceId !== undefined) return
+    const finishedAt = this.now()
+    const evidence = collectEvidence({
+      evidenceId: `ev-${runId}`,
+      runId,
+      ...(execution.sessionId === undefined ? {} : { sessionId: execution.sessionId }),
+      ...(task.projectId === undefined ? {} : { projectId: task.projectId }),
+      workspaceId: execution.workspaceId ?? run?.workspaceId ?? 'shared',
+      startedAt: execution.startedAt,
+      finishedAt,
+      resultStatus: event.outcome === 'succeeded' ? 'awaiting-review' : event.outcome,
+      status: { clean: true, dirty: false },
+      runtimeProviderEvidence: run?.runtimeProviderEvidence ?? { note: 'shared-workspace execution' },
+    })
+    try {
+      await store.put(evidence)
+      this.evidences = [...this.evidences.filter(candidate => candidate.evidenceId !== evidence.evidenceId), evidence]
+      this.tasks = this.tasks.map(candidate => candidate.id === task.id
+        ? { ...candidate, runs: (candidate.runs ?? []).map(candidateRun => candidateRun.runId === runId ? { ...candidateRun, evidenceId: evidence.evidenceId } : candidateRun) }
+        : candidate)
+      this.persistAndNotify()
+    } catch (error) {
+      console.error('[dsh-task-board] shared execution evidence write failed', error)
+    }
+  }
+
+  private annotateRunFallback(executionId: string, reason: string, capabilityEvidence?: unknown): void {
+    this.tasks = this.tasks.map(task => ({
+      ...task,
+      runs: (task.runs ?? []).map(run => run.runId === executionId
+        ? { ...run, fallbackReason: reason, runtimeProviderEvidence: capabilityEvidence && typeof capabilityEvidence === 'object' ? { ...run.runtimeProviderEvidence, ...(capabilityEvidence as Record<string, unknown>) } : { ...run.runtimeProviderEvidence, note: reason } }
+        : run),
+    }))
+    this.persistAndNotify()
+  }
+
+  private attachRunResult(executionId: string, result: TaskRunReference): void {
+    this.tasks = this.tasks.map(task => ({
+      ...task,
+      runs: (task.runs ?? []).map(run => run.runId === executionId
+        ? { ...run, ...result }
+        : run),
+    }))
+    this.persistAndNotify()
+  }
+
   private notify(): void {
     for (const fn of [...this.listeners]) fn()
   }
@@ -439,5 +683,47 @@ function attachSessionId(
     updatedAt: now,
     executions: task.executions.map(execution =>
       execution.id === executionId ? { ...execution, sessionId, workspaceId } : execution),
+  }
+}
+
+function addTaskRunReference(task: TaskRecord, run: TaskRunReference): TaskRecord {
+  return { ...task, runs: [...(task.runs ?? []), run] }
+}
+
+function attachRunSession(
+  task: TaskRecord,
+  executionId: string,
+  sessionId: string,
+  workspaceId: string | undefined,
+  now: number,
+): TaskRecord {
+  const runId = executionId
+  return {
+    ...task,
+    runs: (task.runs ?? []).map(run => run.runId === runId
+      ? { ...run, sessionId, ...(workspaceId === undefined ? {} : { workspaceId }) }
+      : run),
+    updatedAt: now,
+  }
+}
+
+function settleRunReference(
+  task: TaskRecord,
+  executionId: string,
+  outcome: 'succeeded' | 'failed' | 'cancelled',
+  now: number,
+  error: string | undefined,
+): TaskRecord {
+  const resultStatus: TaskRunReference['resultStatus'] = outcome === 'succeeded' ? 'awaiting-review' : outcome
+  return {
+    ...task,
+    runs: (task.runs ?? []).map(run => run.runId === executionId
+      ? {
+        ...run,
+        finishedAt: now,
+        resultStatus,
+        ...(error === undefined ? {} : { fallbackReason: error }),
+      }
+      : run),
   }
 }

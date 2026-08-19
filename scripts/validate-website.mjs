@@ -5,6 +5,7 @@ import process from 'node:process'
 const root = path.resolve(import.meta.dirname, '..')
 const websiteRoot = path.join(root, 'website')
 const htmlPath = path.join(websiteRoot, 'index.html')
+const privacyPath = path.join(websiteRoot, 'privacy.html')
 const sitemapPath = path.join(websiteRoot, 'sitemap.xml')
 const robotsPath = path.join(websiteRoot, 'robots.txt')
 const llmsPath = path.join(websiteRoot, 'llms.txt')
@@ -47,6 +48,10 @@ export async function collectWebsiteErrors(html, expectedVersion) {
     ['GitHub Star count', /\bdata-star-count\b/i],
     ['release download count', /\bdata-download-count\b/i],
     ['cumulative download label', /累计安装包下载/],
+    ['navigation download source', /\bdata-download-source=["']nav["']/i],
+    ['hero download source', /\bdata-download-source=["']hero["']/i],
+    ['terminal download source', /\bdata-download-source=["']terminal["']/i],
+    ['install download source', /\bdata-download-source=["']install["']/i],
   ]
 
   for (const [label, pattern] of requiredMarkers) {
@@ -110,6 +115,12 @@ export async function collectWebsiteErrors(html, expectedVersion) {
     if (!/\balt=["'][^"']*["']/i.test(image[0])) errors.push(`image is missing alt text: ${image[0]}`)
   }
 
+  for (const match of html.matchAll(/<a\b[^>]*\bdata-download-source=["'][^"']+["'][^>]*>/gi)) {
+    if (!/\bhref=["']https:\/\/github\.com\/ningbainb\/deepseek-harness-desktop\/releases\/(?:latest\/)?download\//i.test(match[0])) {
+      errors.push(`tracked installer link must remain a direct GitHub download: ${match[0]}`)
+    }
+  }
+
   const blankLinks = [...html.matchAll(/<a\b[^>]*\btarget=["']_blank["'][^>]*>/gi)]
   for (const match of blankLinks) {
     if (!/\brel=["'][^"']*\bnoreferrer\b[^"']*["']/i.test(match[0])) {
@@ -138,22 +149,54 @@ export async function collectWebsiteErrors(html, expectedVersion) {
   return errors
 }
 
+export function collectPrivacyErrors(html) {
+  const errors = []
+  const requiredMarkers = [
+    ['privacy canonical URL', /<link\b[^>]*\brel=["']canonical["'][^>]*\bhref=["']https:\/\/ningbainb\.github\.io\/deepseek-harness-desktop\/privacy\.html["']/i],
+    ['default-on disclosure', /默认开启，不提供应用内关闭开关/u],
+    ['use disclosure', /使用官方正式版即表示/u],
+    ['source build boundary', /普通源码构建、开发构建、测试构建和 Fork 构建/u],
+    ['conversation exclusion', /对话、提示词、AI 回复/u],
+    ['connection identifier exclusion', /IP 地址、User-Agent/u],
+    ['aggregate retention', /365 天/u],
+    ['infrastructure processor', /Cloudflare/u],
+    ['country aggregate disclosure', /两位国家代码/u],
+    ['download click boundary', /下载点击而不是完整下载成功/u],
+    ['non-blocking direct download', /不会取消、替换或延迟 GitHub 安装包直链/u],
+  ]
+  for (const [label, pattern] of requiredMarkers) {
+    if (!pattern.test(html)) errors.push(`privacy page is missing required marker: ${label}`)
+  }
+  if (/\b(?:href|src)\s*=\s*["']javascript:/i.test(html)) {
+    errors.push('privacy page contains a javascript: URL')
+  }
+  for (const match of html.matchAll(/<a\b[^>]*\btarget=["']_blank["'][^>]*>/gi)) {
+    if (!/\brel=["'][^"']*\bnoreferrer\b[^"']*["']/i.test(match[0])) {
+      errors.push(`privacy target=_blank link is missing rel=noreferrer: ${match[0]}`)
+    }
+  }
+  return errors
+}
+
 export function collectDiscoveryErrors(sitemap, robots, llms, keyFile, expectedVersion) {
   const errors = []
   if (!sitemap.includes(`<loc>${canonicalUrl}</loc>`)) errors.push('sitemap must include the canonical homepage')
+  if (!sitemap.includes(`<loc>${canonicalUrl}privacy.html</loc>`)) errors.push('sitemap must include the privacy policy')
   if (!sitemap.includes('<lastmod>')) errors.push('sitemap must include lastmod')
   if (!robots.includes('User-agent: OAI-SearchBot') || !robots.includes('Allow: /')) errors.push('robots.txt must allow OAI-SearchBot')
   if (!robots.includes(`Sitemap: ${canonicalUrl}sitemap.xml`)) errors.push('robots.txt must identify the sitemap')
   if (!llms.includes(canonicalUrl)) errors.push('llms.txt must include the canonical homepage')
   if (!llms.includes('https://github.com/ningbainb/deepseek-harness-desktop')) errors.push('llms.txt must include the source repository')
+  if (!llms.includes(`${canonicalUrl}privacy.html`)) errors.push('llms.txt must include the privacy policy')
   if (expectedVersion && !llms.includes(`Setup-${expectedVersion}-x64.exe`)) errors.push(`llms.txt must target installer ${expectedVersion}`)
   if (keyFile.trim() !== indexNowKey) errors.push('IndexNow key file must match its filename')
   return errors
 }
 
 export async function validateWebsite() {
-  const [html, sitemap, robots, llms, keyFile, desktopPackage] = await Promise.all([
+  const [html, privacy, sitemap, robots, llms, keyFile, desktopPackage] = await Promise.all([
     readFile(htmlPath, 'utf8'),
+    readFile(privacyPath, 'utf8'),
     readFile(sitemapPath, 'utf8'),
     readFile(robotsPath, 'utf8'),
     readFile(llmsPath, 'utf8'),
@@ -163,6 +206,7 @@ export async function validateWebsite() {
   const version = JSON.parse(desktopPackage).version
   const errors = [
     ...await collectWebsiteErrors(html, version),
+    ...collectPrivacyErrors(privacy),
     ...collectDiscoveryErrors(sitemap, robots, llms, keyFile, version),
   ]
   if (errors.length > 0) {

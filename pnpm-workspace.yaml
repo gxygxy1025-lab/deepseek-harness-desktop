@@ -16,11 +16,13 @@ patchedDependencies:
   '@linxin666/dsh-web-ui-all@0.1.18': patches/@linxin666__dsh-web-ui-all@0.1.18.patch
   dshmarket@1.9.0: patches/dshmarket@1.9.0.patch
 
-# Desktop pins the published aggregate at 0.1.18, while the SSH and Task Board
-# dependencies use reviewed workspace builds for Desktop 2.4 release fixes.
+# Desktop pins the published aggregate at 0.1.18, while the SSH, Task Board,
+# and Git Graph dependencies use reviewed workspace builds for Desktop-owned
+# fixes and the 2.6 Worktree/Evidence boundary.
 overrides:
   '@linxin666/dsh-web-ui-all>@linxin666/dsh-ssh': 'link:./packages/dsh-ssh'
   '@linxin666/dsh-web-ui-all>@linxin666/dsh-client-ui-task-board': 'link:./packages/dsh-task-board'
+  '@linxin666/dsh-web-ui-all>@linxin666/dsh-client-ui-git-graph': 'link:./packages/dsh-git-graph'
 
 allowBuilds:
   # The cloudflared postinstall downloads the platform binary (the auto-tunnel

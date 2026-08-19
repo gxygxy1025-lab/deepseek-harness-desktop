@@ -7,6 +7,7 @@ settings:
 overrides:
   '@linxin666/dsh-web-ui-all>@linxin666/dsh-ssh': link:./packages/dsh-ssh
   '@linxin666/dsh-web-ui-all>@linxin666/dsh-client-ui-task-board': link:./packages/dsh-task-board
+  '@linxin666/dsh-web-ui-all>@linxin666/dsh-client-ui-git-graph': link:./packages/dsh-git-graph
 
 patchedDependencies:
   '@deepseek-ai/dsh-host-apiproxy@0.1.0-rc.6': 5315b1a2ae59b7dd822dde639513a529c2ae89c087645229725acb19a69d6d42
@@ -188,6 +189,8 @@ importers:
       playwright:
         specifier: 1.62.1
         version: 1.62.1
+
+  apps/dsh-telemetry-worker: {}
 
   packages/dsh-aionui-panel:
     devDependencies:
@@ -962,7 +965,7 @@ importers:
         specifier: workspace:*
         version: link:../dsh-aionui-panel
       '@linxin666/dsh-client-ui-git-graph':
-        specifier: workspace:*
+        specifier: link:../dsh-git-graph
         version: link:../dsh-git-graph
       '@linxin666/dsh-client-ui-mode-switcher':
         specifier: workspace:*
@@ -4058,12 +4061,6 @@ packages:
 
   '@linxin666/dsh-client-ui-community-plugins@0.1.18':
     resolution: {integrity: sha512-/Z/KPNgstjUpfCfHAWj53Z9MtmlZvQWMswwxYv+MP8luLWjvyCgOVaf0hYkaTMWlyEyYzyntnKPUURDOToKLhw==}
-    peerDependencies:
-      react: ^18.2.0
-
-  '@linxin666/dsh-client-ui-git-graph@0.1.18':
-    resolution: {integrity: sha512-2CbwlTNQqPIRouBVSI0euVdmzr5W225U8Plbyf3JmyeTiFyhcrDA7gHCNdoMkEhF5WLiUbeDsfwIjVbWMD38vQ==}
-    engines: {node: ^22.19.0 || >=24.0.0}
     peerDependencies:
       react: ^18.2.0
 
@@ -11248,10 +11245,6 @@ snapshots:
       react: 18.3.1
       schemastery: 3.18.0
 
-  '@linxin666/dsh-client-ui-git-graph@0.1.18(react@18.3.1)':
-    dependencies:
-      react: 18.3.1
-
   '@linxin666/dsh-client-ui-skin-center@0.1.18(patch_hash=101376a25b9be32d858b90bedc08736f57767e4d1013c60426e84d1fb99691ef)(react@18.3.1)':
     dependencies:
       react: 18.3.1
@@ -11303,7 +11296,7 @@ snapshots:
     dependencies:
       '@linxin666/dsh-client-ui-aionui-panel': 0.1.18(react@18.3.1)
       '@linxin666/dsh-client-ui-community-plugins': 0.1.18(react@18.3.1)
-      '@linxin666/dsh-client-ui-git-graph': 0.1.18(react@18.3.1)
+      '@linxin666/dsh-client-ui-git-graph': link:packages/dsh-git-graph
       '@linxin666/dsh-client-ui-skin-center': 0.1.18(patch_hash=101376a25b9be32d858b90bedc08736f57767e4d1013c60426e84d1fb99691ef)(react@18.3.1)
       '@linxin666/dsh-client-ui-task-board': link:packages/dsh-task-board
       '@linxin666/dsh-client-ui-web-ui-settings': 0.1.18(react@18.3.1)

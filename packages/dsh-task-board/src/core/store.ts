@@ -9,6 +9,7 @@
  * in-memory, localStorage, remote Host, and atomic Host-file implementations.
  */
 import { isValidCron } from './schedule.ts'
+import { isIsolationMode, normalizeTaskRun } from './runs.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
 import { isTaskStatus } from './tasks.ts'
 
@@ -70,6 +71,9 @@ function isTaskRecordShape(value: unknown): value is Omit<TaskRecord, 'status'> 
   if (typeof record.prompt !== 'string') return false
   if (typeof record.createdAt !== 'number') return false
   if (typeof record.updatedAt !== 'number') return false
+  if (record.projectId !== undefined && typeof record.projectId !== 'string') return false
+  if (record.isolationMode !== undefined && !isIsolationMode(record.isolationMode)) return false
+  if (record.runs !== undefined && (!Array.isArray(record.runs) || record.runs.some(run => normalizeTaskRun(run) === undefined))) return false
   if (!Array.isArray(record.executions)) return false
   for (const execution of record.executions) {
     if (typeof execution !== 'object' || execution === null) return false
@@ -143,7 +147,14 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     }
     // Always (re)assign the schedule: a repair that returns undefined must
     // clear a malformed persisted rule rather than leave it in the row.
-    const task: TaskRecord = { ...row, status: normalizeStatus(row.status) }
+    const task: TaskRecord = {
+      ...row,
+      status: normalizeStatus(row.status),
+      ...(Array.isArray(row.runs) ? { runs: row.runs.flatMap(run => {
+        const normalized = normalizeTaskRun(run)
+        return normalized === undefined ? [] : [normalized]
+      }) } : {}),
+    }
     task.schedule = normalizeSchedule(row.schedule)
     tasks.push(task)
   }

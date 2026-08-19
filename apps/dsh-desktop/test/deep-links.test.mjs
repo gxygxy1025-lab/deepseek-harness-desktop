@@ -12,6 +12,9 @@ test('deep links expose only fixed navigation routes and bounded safe identifier
   assert.deepEqual(normalizeDeepLink('dsh://session/session_1'), {
     kind: 'session', id: 'session_1', href: 'dsh://session/session_1',
   })
+  assert.deepEqual(normalizeDeepLink('dsh://run/run_1'), {
+    kind: 'run', id: 'run_1', href: 'dsh://run/run_1',
+  })
   assert.deepEqual(normalizeDeepLink('dsh://preset/preview'), {
     kind: 'preset-preview', href: 'dsh://preset/preview',
   })

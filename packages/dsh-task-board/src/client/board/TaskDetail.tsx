@@ -6,12 +6,14 @@
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
+import type { Evidence } from '../../core/runs.ts'
 import { isValidCron } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { formatTime } from './TaskCard.tsx'
+import { EvidencePanel } from './EvidencePanel.tsx'
 
 /** Execution outcome → locale key. */
 const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
@@ -167,7 +169,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
 }
 
 /** Task detail overlay. */
-export function TaskDetail({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+export function TaskDetail({ controller, task, evidence }: { controller: BoardController; task: TaskRecord; evidence?: Evidence }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const running = task.status === 'running'
 
@@ -175,6 +177,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
   const [latest, setLatest] = useState(task)
   useEffect(() => { setLatest(task) }, [task])
   const current = latest
+  const latestRun = current.runs?.at(-1)
 
   return (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
@@ -204,6 +207,28 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
           </section>
 
           <ScheduleSection controller={controller} task={current} />
+
+          <section className={css.detailSection}>
+            <h4>{t('detail.isolation')}</h4>
+            <p className={css.detailText}>
+              {current.isolationMode === 'git-worktree' ? t('detail.isolation.worktree') : t('detail.isolation.shared')}
+            </p>
+            {latestRun?.fallbackReason !== undefined && (
+              <p className={css.executionError}>{t('detail.isolation.fallback')}: {latestRun.fallbackReason}</p>
+            )}
+          </section>
+
+          {evidence !== undefined && (
+            <EvidencePanel
+              evidence={evidence}
+              onOpenSession={sessionId => { controller.openSession(sessionId) }}
+              onOpenWorktree={() => { controller.openRun(evidence.runId) }}
+              onCommit={controller.hasReviewService() ? async evidenceId => { await controller.commitEvidence(evidenceId) } : undefined}
+              onMerge={controller.hasReviewService() ? async evidenceId => { await controller.mergeEvidence(evidenceId) } : undefined}
+              onKeep={controller.hasReviewService() ? async evidenceId => { await controller.keepEvidence(evidenceId) } : undefined}
+              onDiscard={controller.hasReviewService() ? async evidenceId => { await controller.discardEvidence(evidenceId, true) } : undefined}
+            />
+          )}
 
           <section className={css.detailSection}>
             <h4>{t('detail.execution')}</h4>

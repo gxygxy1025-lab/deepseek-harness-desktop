@@ -4,6 +4,7 @@ export const NOTIFICATION_CATEGORIES = Object.freeze([
   'plugin-recovery',
   'preset',
   'task',
+  'run',
   'update',
 ])
 

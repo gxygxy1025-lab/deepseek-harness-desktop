@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "private": true,
   "description": "Lossless desktop shell for DeepSeek Harness and the complete dsh-web-ui plugin collection",
   "author": "DeepSeek Harness Desktop contributors",
@@ -26,6 +26,7 @@
     "test:profile-migration:e2e": "node scripts/verify-profile-migration.mjs",
     "test:preset-deep-link:e2e": "node scripts/verify-preset-deep-link.mjs",
     "test:runtime-provider:e2e": "node scripts/verify-runtime-provider.mjs",
+    "test:task-board-worktree:e2e": "node scripts/verify-task-board-worktree.mjs",
     "test:update-shutdown:e2e": "node scripts/verify-update-shutdown.mjs",
     "test:star-prompt:e2e": "node scripts/verify-star-prompt.mjs",
     "test": "node --test test/*.test.mjs",

@@ -1,6 +1,6 @@
 # DeepSeek Harness Desktop
 
-> DeepSeek Harness Desktop 2.5.0 is a community-maintained, open-source Windows AI coding client for DeepSeek Harness. It preserves the complete Harness Web Surface and adds secure Presets, Web Profile migration, atomic plugin batches, compatibility defenses, and controlled operating-system integration.
+> DeepSeek Harness Desktop 2.6.0 is a community-maintained, open-source Windows AI coding client for DeepSeek Harness. It preserves the complete Harness Web Surface and adds Task Board v3, Git Worktree isolation, derived Evidence, explicit review actions, capability-safe fallback, and bounded anonymous product metrics.
 
 ## What it is
 
@@ -15,8 +15,8 @@
 
 ## Download
 
-- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe
-- v2.5.0 release notes and release assets: https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.5.0
+- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe
+- v2.6.0 release notes and release assets: https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.6.0
 
 ## Source and documentation
 
@@ -28,8 +28,9 @@
 ## Key facts
 
 - Supported systems: Windows 10 and Windows 11, x64
-- Current release: v2.5.0
-- v2.5.0 adds review-first `.dshpreset` import/export, selective Web Profile migration, whole-environment rollback, strict deep links and file association, and structured notifications
+- Current release: v2.6.0
+- v2.6.0 adds Task Board v3 Projects and compact Runs, real Git Worktree execution, derived Evidence, explicit Commit/Merge/Keep/Discard review, capability-safe fallback, and Candidate execution gates
+- Official release builds enable bounded anonymous product metrics by default for product improvement; source and Fork builds contain no official endpoint, and the complete boundary is published in the privacy policy
 - Skin state is isolated in profiles/desktop and legacy global cordis.patch.yml pollution is migrated away so the official dsh web profile remains valid
 - Installer preflight supports direct upgrades from 0.1.9 through 2.3 and closes legacy product-name processes even when their old installation path is no longer registered
 - Preflight decodes PowerShell EncodedCommand payloads, preserves Windows 8.3 short-path references, falls back to WMI paths when process handles are unavailable, and waits with backoff after forced termination
@@ -59,3 +60,5 @@
 ## Preferred citation
 
 DeepSeek Harness Desktop, community-maintained open-source Windows desktop distribution for DeepSeek Harness: https://ningbainb.github.io/deepseek-harness-desktop/
+
+Privacy policy and anonymous product metrics boundary: https://ningbainb.github.io/deepseek-harness-desktop/privacy.html

@@ -26,7 +26,7 @@ The DSH home remains `DSH_HOME` or `~/.dsh`. The desktop app runs the managed `~
 | Update handoff | Token-bound shutdown receipt v2, verified runtime/extension quiescence, constrained legacy cleanup fallback |
 | Renderer bridge | Contract v1 capability discovery, structured notifications, split main/extension preloads, sender-identity enforcement |
 | OS integration | Strict `dsh://` route allowlist, `.dshpreset` preview association, deduplicated foreground-aware notifications |
-| Task Board | Profile-isolated Host file ledger, copy-first localStorage migration, SSE synchronization; browser scheduler unchanged |
+| Task Board | Host-owned v3 Projects/Task Runs/Evidence ledger, copy-first v2 migration, explicit Worktree review, ID-only Host routes, SSE synchronization; browser scheduler unchanged |
 | Visual system | Solid native/injected title-bar alignment, system-style Extension Dock, bounded particle-whale startup surface, page-aware full-interface particle theme |
 | Security | Sandbox, context isolation, no Node integration, per-window preload APIs, sender registry, loopback navigation allowlist, denied permissions |
 
@@ -88,7 +88,7 @@ The same tab can preview the fixed `profiles/web` source and selectively migrate
 
 After extension changes, Extension Dock presents a prominent Refresh action. Changes that alter the Runtime bundle graph also present **Restart DeepSeek Harness**, so the required follow-up is explicit.
 
-Protocol, file-association, and notification boundaries are documented in [Desktop deep links, file association, and notifications](deep-links.md).
+Task Board v3 behavior is documented in [Task Board v3](task-board-v3.md), [Git Worktree execution and review](worktrees.md), [Task Runs and Evidence](task-runs-and-evidence.md), and [Runtime Provider capability fallback](provider-capability-fallback.md). Protocol, file-association, and notification boundaries are documented in [Desktop deep links, file association, and notifications](deep-links.md).
 
 ## Build from source
 

@@ -7,7 +7,7 @@ import {
 import { normalizeDesktopNotification } from './notifications.mjs'
 
 const ACTIONS = new Set(['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'exit'])
-const HELP_ACTIONS = new Set(['community', 'downloads', 'feedback', 'project', 'updates'])
+const HELP_ACTIONS = new Set(['community', 'downloads', 'feedback', 'project', 'privacy', 'updates'])
 const TOOL_ACTIONS = new Set(['extensions'])
 const WINDOW_CHROME_THEMES = new Set(['light', 'dark'])
 const UPDATE_PHASES = new Set(['idle', 'checking', 'downloading', 'installing', 'current', 'ready', 'unavailable', 'error'])
@@ -114,6 +114,9 @@ export function registerDesktopIpc({
   getUpdateController,
   getSettingsWindowBounds = async () => undefined,
   setSettingsWindowBounds = async () => undefined,
+  onRecoveryAction = () => {},
+  onSettingsOpened = () => {},
+  onUpdateCheck = () => {},
   listSkills = async () => ({ skills: [] }),
   showNotification = async () => false,
   notificationService,
@@ -135,6 +138,7 @@ export function registerDesktopIpc({
     'desktop:update-install',
     'desktop:settings-window-bounds-get',
     'desktop:settings-window-bounds-set',
+    'desktop:settings-opened',
     'desktop:skills-list',
     'desktop:notification-show',
   ]
@@ -173,6 +177,9 @@ export function registerDesktopIpc({
   handle('desktop:status', [main, extensions], () => getPublicStatus())
   handle('desktop:action', main, async (_event, _surface, rawAction) => {
     const action = normalizeDesktopAction(rawAction)
+    if (['retry', 'repair', 'disable-plugin', 'safe-mode'].includes(action)) {
+      try { onRecoveryAction(action) } catch {}
+    }
     if (action === 'retry') return controller.restart()
     if (action === 'repair') {
       await controller.stop()
@@ -201,10 +208,17 @@ export function registerDesktopIpc({
   })
   handle('desktop:star-prompt-claim', main, async () => await claimStarPrompt?.() === true)
   handle('desktop:update-status', main, () => publicUpdateStatus(getUpdateController?.()?.getStatus?.()))
-  handle('desktop:update-check', main, () => getUpdateController?.()?.check?.({ manual: true }))
+  handle('desktop:update-check', main, () => {
+    try { onUpdateCheck() } catch {}
+    return getUpdateController?.()?.check?.({ manual: true })
+  })
   handle('desktop:update-install', main, () => getUpdateController?.()?.install?.())
   handle('desktop:settings-window-bounds-get', main, () => getSettingsWindowBounds())
   handle('desktop:settings-window-bounds-set', main, (_event, _surface, bounds) => setSettingsWindowBounds(bounds))
+  handle('desktop:settings-opened', main, () => {
+    try { onSettingsOpened() } catch {}
+    return true
+  })
   handle('desktop:skills-list', main, () => listSkills())
   handle('desktop:notification-show', [main, extensions], (_event, _surface, value) => {
     if (typeof notificationService?.show === 'function') return notificationService.show(value)

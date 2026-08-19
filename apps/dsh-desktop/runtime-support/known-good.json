@@ -8,8 +8,8 @@
     "runtimePackageManifest": "apps/dsh-desktop/node_modules/@deepseek-ai/dsh/package.json"
   },
   "desktop": {
-    "version": "2.5.0",
-    "rootVersion": "2.5.0",
+    "version": "2.6.0",
+    "rootVersion": "2.6.0",
     "nodeEngine": "^22.19.0 || >=24.0.0",
     "packageManager": "pnpm@11.22.0"
   },
@@ -24,7 +24,7 @@
     "peerDependencies": {}
   },
   "lockfile": {
-    "sha256": "a11a9d38bf8e0df4cbffca85a337de194a3dac0aa835fb50dc445e09720f923a"
+    "sha256": "c403249b0708588a11620c15178500ef2e57e01974e6d87b55b90a3f1ee56df7"
   },
   "provider": {
     "providerId": "dsh-cli-provider-v1",
