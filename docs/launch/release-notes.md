@@ -12,7 +12,7 @@
 - 插件或 Preset 操作后，界面突出显示“刷新”；改变 Runtime bundle 图时同时显示“Restart DeepSeek Harness”。进度区明确展示准备、预取、停止、应用、启动、提交、回滚和恢复。
 - `dsh://` 只允许扩展、更新、安全 task/session ID 和 Preset 预览。Runtime 未就绪时使用有界去重队列；未知路由、查询、命令、路径、URL 和 packageSpec 全部拒绝。`.dshpreset` 文件关联只打开预览，不静默安装，也不把本机路径交给 Renderer。
 - Desktop Contract 1.1 提供结构化通知。category、id、title、body 和可选 Deep Link 均受验证；服务按 ID 去重、按分类限频、前台抑制，点击只进入白名单路由。任务、插件恢复、更新和 Preset 均可使用同一安全边界。
-- 覆盖安装兼容 2.3.0 等旧版：安装器不会再把旧卸载器的祖先进程误判为残留应用，也不会反复弹出“无法关闭”。未带 v3 标记的旧安装只会在进程与文件锁检查通过后安全迁移，用户 Profile 和数据目录保持不变。
+- 覆盖更新彻底绕过已安装卸载器：进程与文件锁检查通过后，所有具有精确产品锚点的安装目录都会被原子迁移，精确产品注册项也会被清除。版本号和 v3 标记不再作为信任信号，因此 2.3.0/2.4.0、带标记的 2.5.0 中间构建、目录已删但卸载项残留的情况都不会再调用旧卸载器，也不会反复弹出“无法关闭”；用户 Profile 和数据目录保持不变。
 - 设置窗口支持拖动、八方向缩放、最小尺寸、响应式滚动与边界恢复；独立 `dsh-particle-theme` 将粒子鲸鱼延伸到主界面，并会在输入、弹窗、减少动态效果或后台状态下降低负载。更新窗口明确提供 GitHub 下载、用户群和稍后更新三条路径。
 
 ### 验证
@@ -21,11 +21,11 @@
 - 新增批量去重、兼容失败、预取失败、第二包失败、Runtime 启动失败、回滚失败聚合、单次 stop/start 和完整 progress 顺序测试。
 - 新增 Preset round-trip、完整性篡改、Secret、绝对路径、Git URL、脚本、版本范围、settings allowlist、路径穿越、符号链接、压缩炸弹、Skill 冲突恢复、capability 缺失和全状态故障恢复测试。
 - 新增 Deep Link 白名单、恶意参数、重复、Runtime 前队列、文件关联只预览、通知去重、限频、前台抑制和点击路由测试。发布门禁继续执行类型检查、全仓测试、文档、安装包内容校验、Windows 打包 E2E 和真实 Runtime 烟测。
-- 新增旧版卸载器祖先进程排除、旧安装安全迁移、文件锁与静默安装回归测试，并在真实 2.3.0 安装上完成 2.5.0 覆盖升级。
+- 新增旧版卸载器祖先进程排除、无标记旧安装、带标记 2.5.0、残留注册项、文件锁与静默安装回归测试；在真实 2.3.0 安装上完成 2.5.0 覆盖升级，并用最终安装包成功覆盖已安装且带标记的 2.5.0，安装文件与本地构建哈希一致。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。2.3.0 和 2.4.0 用户可直接覆盖更新；应用内下载继续由 `latest.yml` 的 SHA-512 摘要校验，安装仍需用户明确确认。
+下载 `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。2.3.0、2.4.0 用户可直接覆盖更新；遇到旧卸载器问题的早期 2.5.0 构建也可直接运行本安装包修复。应用内下载继续由 `latest.yml` 的 SHA-512 摘要校验，安装仍需用户明确确认。
 
 ### 说明
 
@@ -43,7 +43,7 @@
 - Extension and Preset operations now present a prominent Refresh follow-up. Changes to the Runtime bundle graph also present Restart DeepSeek Harness. The progress surface names preparation, prefetch, stop, apply, start, commit, rollback, and restore phases.
 - `dsh://` is limited to extensions, updates, safe task or session identifiers, and Preset preview. A bounded deduplicating queue waits for Runtime readiness. Unknown routes, queries, commands, paths, URLs, and package specifications are rejected. The `.dshpreset` file association opens review only, never silently installs, and never passes the local path to renderer code.
 - Desktop Contract 1.1 provides structured notifications. Category, ID, title, body, and optional deep link are validated. The service deduplicates IDs, rate-limits each category, suppresses notifications while Desktop is focused, and routes clicks only through the deep-link allowlist. Task, plugin recovery, update, and Preset consumers share this boundary.
-- In-place upgrades now support 2.3.0 and other legacy builds without mistaking the old uninstaller's ancestor process for a running application or repeatedly showing a cannot-close prompt. Unmarked legacy installations are staged only after process and file-lock checks, while profile and user-data directories remain untouched.
+- In-place updates now bypass every installed uninstaller. After process and file-lock checks, every root with the exact product anchors is atomically staged and only the exact product registry entries are removed. Version numbers and the v3 marker are never trusted, so 2.3.0/2.4.0, marker-bearing 2.5.0 intermediates, and stale uninstall registrations cannot invoke an old uninstaller or repeat the cannot-close prompt. Profile and user-data directories remain untouched.
 - The settings window adds dragging, eight resize directions, minimum dimensions, responsive scrolling, and recovered bounds. The independent `dsh-particle-theme` extends the particle whale into the main surface and lowers work during text input, dialogs, reduced motion, or background use. The update surface clearly offers GitHub download, user-group, and update-later paths.
 
 ### Verification
@@ -52,11 +52,11 @@
 - Batch coverage includes deduplication, compatibility and prefetch failures, a failing second package, Runtime startup failure, aggregate rollback failure, one successful stop/start cycle, and the complete progress sequence.
 - Preset coverage includes round trip, integrity tampering, Secret values, absolute paths, Git URLs, executable scripts, version ranges, the settings allowlist, traversal, symbolic links, compression bombs, Skill conflict restoration, missing capabilities, and full-state fault recovery.
 - Deep-link tests cover every allowed route, malicious parameters, duplicates, the pre-Runtime queue, and file-association preview only. Notification tests cover validation, deduplication, rate limits, foreground suppression, and click routing. Release gates retain repository type checks, all tests, documentation, packaged payload verification, Windows E2E checks, and a real Runtime smoke test.
-- Installer coverage now includes old-uninstaller ancestor exclusion, safe legacy staging, file-lock handling, and silent-mode behavior, plus a successful real in-place upgrade from an installed 2.3.0 build to 2.5.0.
+- Installer coverage now includes old-uninstaller ancestor exclusion, unmarked legacy roots, marker-bearing 2.5.0 roots, stale registrations, file locks, and silent mode. Verification includes a real 2.3.0-to-2.5.0 upgrade and a successful final-package repair over an installed marker-bearing 2.5.0 whose installed files exactly match the local build hashes.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Users on 2.3.0 or 2.4.0 can install in place. In-app downloads remain authenticated by the SHA-512 digest in `latest.yml`, and installation still requires explicit user confirmation.
+Download `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Users on 2.3.0 or 2.4.0 can install in place, and early 2.5.0 builds affected by an old uninstaller can run this installer directly to repair themselves. In-app downloads remain authenticated by the SHA-512 digest in `latest.yml`, and installation still requires explicit user confirmation.
 
 ### Notice
 

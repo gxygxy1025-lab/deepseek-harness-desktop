@@ -56,6 +56,7 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 - **Full-page particle theme**: the particle whale now extends from startup into the main interface and automatically lowers density, opacity, and speed during ordinary browsing, focused editing, dialogs, reduced motion, and background states. Toggle and tune it under **Settings > Plugin config > Particle theme**.
 - **Adjustable settings window**: drag the settings panel, resize it from all eight edges and corners, and reopen it at the last saved position and size. Minimum dimensions, responsive layout, and viewport constraints prevent overlap, overflow, or off-screen placement.
 - **Clear update download paths**: GitHub Releases is the only default source. The update window provides **Download from GitHub**, **Join user group**, and **Update later**. If GitHub is slow, the QQ user group provides a synchronized installer.
+- **In-place updates no longer depend on old uninstallers**: after strict process and file-lock checks, the installer stages the old program and removes only the exact product registrations. Even a marker-bearing early 2.5.0 build cannot re-enter its defective uninstall path.
 
 ![DeepSeek Harness Desktop 2.3.0 GitHub Star and community feedback prompt](docs/screenshots/desktop-2.3.0-star-community-prompt.png)
 

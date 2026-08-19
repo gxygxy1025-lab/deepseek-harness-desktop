@@ -6,7 +6,8 @@ param(
 
   [string] $UninstallRegistryKey = '',
 
-  [switch] $PrepareLegacyUpgrade
+  [Alias('PrepareLegacyUpgrade')]
+  [switch] $PrepareExistingUpgrade
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,8 +15,6 @@ $mainExecutableName = 'DeepSeek Harness Desktop.exe'
 $shutdownProtocolMarker = 'resources\update-shutdown-v1'
 $shutdownReceiptMarker = 'resources\update-shutdown-v2'
 $shutdownReceiptMarkerValue = 'dsh-desktop-update-shutdown-receipt=2'
-$installerUpgradeMarker = 'resources\installer-upgrade-v3'
-$installerUpgradeMarkerValue = 'dsh-desktop-installer-upgrade=3'
 $gracefulShutdownTimeoutMs = 7000
 $receiptShutdownTimeoutMs = 15000
 $receiptProcessExitTimeoutMs = 5000
@@ -187,9 +186,6 @@ namespace DshInstaller
   $existingRoots = @($installRoots | Where-Object {
     Test-Path -LiteralPath $_ -PathType Container
   })
-  if ($existingRoots.Count -eq 0) {
-    exit 0
-  }
 
   $rootVariants = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
@@ -475,38 +471,44 @@ namespace DshInstaller
     })
   }
 
-  function Test-InstallerUpgradeMarker([string] $root) {
-    try {
-      $marker = Join-Path $root $installerUpgradeMarker
-      (Get-Content -LiteralPath $marker -Raw -Encoding UTF8).Trim() -ceq $installerUpgradeMarkerValue
-    } catch {
-      $false
-    }
-  }
-
-  function Test-LegacyInstallRoot([string] $root) {
-    if (Test-InstallerUpgradeMarker $root) {
-      return $false
-    }
+  function Test-UpgradeInstallRoot([string] $root) {
     (Test-Path -LiteralPath (Join-Path $root $mainExecutableName) -PathType Leaf) -and
       (Test-Path -LiteralPath (Join-Path $root 'resources\app.asar') -PathType Leaf)
   }
 
-  function Stage-LegacyUpgrade {
-    $legacyRoots = @($existingRoots | Where-Object { Test-LegacyInstallRoot $_ })
-    if ($legacyRoots.Count -eq 0) {
+  function Move-UpgradeInstallRoot([string] $root, [string] $quarantine) {
+    $moveError = $null
+    for ($attempt = 0; $attempt -lt 5; $attempt += 1) {
+      try {
+        [System.IO.Directory]::Move($root, $quarantine)
+        return
+      } catch [System.UnauthorizedAccessException] {
+        $moveError = $_.Exception
+      } catch [System.IO.IOException] {
+        $moveError = $_.Exception
+      }
+      if ($attempt -lt 4) {
+        Start-Sleep -Milliseconds 250
+      }
+    }
+    throw $moveError
+  }
+
+  function Stage-UpgradeInstalls {
+    $upgradeRoots = @($existingRoots | Where-Object { Test-UpgradeInstallRoot $_ })
+    if ($upgradeRoots.Count -eq 0 -and $registryPaths.Count -eq 0) {
       return
     }
 
     $staged = [System.Collections.Generic.List[object]]::new()
     try {
-      foreach ($root in $legacyRoots) {
+      foreach ($root in $upgradeRoots) {
         $parent = [System.IO.Path]::GetDirectoryName($root)
         if ([string]::IsNullOrWhiteSpace($parent)) {
-          throw "unsafe legacy install root: $root"
+          throw "unsafe upgrade install root: $root"
         }
         $quarantine = Join-Path $parent ".dsh-desktop-update-old-$([System.Guid]::NewGuid().ToString('N'))"
-        Move-Item -LiteralPath $root -Destination $quarantine -ErrorAction Stop
+        Move-UpgradeInstallRoot $root $quarantine
         $staged.Add([pscustomobject]@{ Root = $root; Quarantine = $quarantine })
       }
 
@@ -519,10 +521,14 @@ namespace DshInstaller
       for ($index = $staged.Count - 1; $index -ge 0; $index -= 1) {
         $entry = $staged[$index]
         if ((Test-Path -LiteralPath $entry.Quarantine) -and -not (Test-Path -LiteralPath $entry.Root)) {
-          Move-Item -LiteralPath $entry.Quarantine -Destination $entry.Root -ErrorAction SilentlyContinue
+          try {
+            [System.IO.Directory]::Move($entry.Quarantine, $entry.Root)
+          } catch {
+            Write-Output "upgrade-install-restore-error root=$($entry.Root): $($_.Exception.Message)"
+          }
         }
       }
-      Write-Output "legacy-upgrade-error: $($_.Exception.Message)"
+      Write-Output "upgrade-install-error: $($_.Exception.Message)"
       exit 34
     }
 
@@ -547,12 +553,12 @@ namespace DshInstaller
             [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
             [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
           )
-          Write-Output "legacy-upgrade-quarantine-recycled path=$($entry.Quarantine)"
+          Write-Output "upgrade-install-quarantine-recycled path=$($entry.Quarantine)"
         } catch {
-          Write-Output "legacy-upgrade-quarantine-retained path=$($entry.Quarantine): $removeError; $($_.Exception.Message)"
+          Write-Output "upgrade-install-quarantine-retained path=$($entry.Quarantine): $removeError; $($_.Exception.Message)"
         }
       }
-      Write-Output "legacy-upgrade-staged root=$($entry.Root)"
+      Write-Output "upgrade-install-staged root=$($entry.Root)"
     }
   }
 
@@ -561,8 +567,8 @@ namespace DshInstaller
     for ($attempt = 0; $attempt -lt 10; $attempt += 1) {
       $blockers = @(Get-ReplacementFileBlockers)
       if ($blockers.Count -eq 0) {
-        if ($PrepareLegacyUpgrade) {
-          Stage-LegacyUpgrade
+        if ($PrepareExistingUpgrade) {
+          Stage-UpgradeInstalls
         }
         exit 0
       }

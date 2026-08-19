@@ -18,27 +18,27 @@ const SCANNED_SOURCE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx',
 const SEAM_PATTERNS = Object.freeze([
   {
     category: 'slot',
-    pattern: /\b(?:slots?\.(?:inject|register)|ctx\.slots\.(?:inject|register))\s*\(\s*['"]([^'"]+)['"]/gu,
+    source: String.raw`\b(?:slots?\.(?:inject|register)|ctx\.slots\.(?:inject|register))\s*\(\s*['"]([^'"]+)['"]`,
   },
   {
     category: 'host-service',
-    pattern: /\b(?:inject\s*=\s*\[[^\]]*|registerHostService\s*\()[\s\S]{0,200}?['"]([a-z][a-z0-9.-]{1,80})['"]/gu,
+    source: String.raw`\b(?:inject\s*=\s*\[[^\]]*|registerHostService\s*\()[\s\S]{0,200}?['"]([a-z][a-z0-9.-]{1,80})['"]`,
   },
   {
     category: 'runtime-lifecycle',
-    pattern: /\b(?:controller|runtimeProvider|rawRuntimeController)\.(start|stop|restart|recover)\s*\(/gu,
+    source: String.raw`\b(?:controller|runtimeProvider|rawRuntimeController)\.(start|stop|restart|recover)\s*\(`,
   },
   {
     category: 'profile-home',
-    pattern: /\b(ensureDesktopProfile|resolveRuntimePackages|resolveDshCliPath|DSH_HOME|DSH_PROFILE|profileDir|runtimeHome)\b/gu,
+    source: String.raw`\b(ensureDesktopProfile|resolveRuntimePackages|resolveDshCliPath|DSH_HOME|DSH_PROFILE|profileDir|runtimeHome)\b`,
   },
   {
     category: 'workspace',
-    pattern: /\b(?:ctx\.)?workspaces?\.(register|create|get|open|watch|list)\s*\(/gu,
+    source: String.raw`\b(?:ctx\.)?workspaces?\.(register|create|get|open|watch|list)\s*\(`,
   },
   {
     category: 'session',
-    pattern: /\b(?:ctx\.)?sessions?\.(create|subscribe|get|watch|prompt|list)\s*\(/gu,
+    source: String.raw`\b(?:ctx\.)?sessions?\.(create|subscribe|get|watch|prompt|list)\s*\(`,
   },
 ])
 
@@ -72,7 +72,10 @@ export async function scanRuntimeSeams(root = REPOSITORY_ROOT) {
   const results = []
   for (const path of paths) {
     const source = await readFile(resolve(root, path), 'utf8')
-    for (const { category, pattern } of SEAM_PATTERNS) {
+    for (const { category, source: patternSource } of SEAM_PATTERNS) {
+      // Construct a fresh matcher for every file. Shared global RegExp instances
+      // carry mutable lastIndex state and made the Linux full-suite audit flaky.
+      const pattern = new RegExp(patternSource, 'gu')
       for (const match of source.matchAll(pattern)) {
         results.push({
           category,
@@ -162,7 +165,7 @@ export function renderCouplingAuditMarkdown(audit) {
     ...audit.seams.map((item) => `| ${item.category} | ${markdownCell(item.path)} | ${item.line} | ${markdownCell(item.operation)} |`),
     '',
   ]
-  return `${lines.join('\n')}\n`
+  return lines.join('\n')
 }
 
 async function atomicWrite(path, content) {

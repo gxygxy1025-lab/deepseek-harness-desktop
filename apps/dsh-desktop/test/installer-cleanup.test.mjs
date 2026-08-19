@@ -96,8 +96,8 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.doesNotMatch(include, /SetOutPath "\$PLUGINSDIR"/u)
   assert.match(include, /-InstallRegistryKey "\$\{INSTALL_REGISTRY_KEY\}"/u)
   assert.match(include, /-UninstallRegistryKey "\$\{UNINSTALL_REGISTRY_KEY\}"/u)
-  assert.match(include, /-PrepareLegacyUpgrade/u)
-  assert.match(include, /!ifdef BUILD_UNINSTALLER[\s\S]*!else[\s\S]*-PrepareLegacyUpgrade/u)
+  assert.match(include, /-PrepareExistingUpgrade/u)
+  assert.match(include, /!ifdef BUILD_UNINSTALLER[\s\S]*!else[\s\S]*-PrepareExistingUpgrade/u)
   assert.match(cleanup, /DeepSeek Harness Desktop\.exe/u)
   assert.match(cleanup, /Registry::\$hive\\\$InstallRegistryKey/u)
   assert.match(cleanup, /Get-UninstallerDirectory/u)
@@ -128,8 +128,9 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /\$selfPid/u)
   assert.match(cleanup, /Get-AncestorProcessIds/u)
   assert.match(cleanup, /\$excludedProcessIds\.Contains\(\$processId\)/u)
-  assert.match(cleanup, /installer-upgrade-v3/u)
-  assert.match(cleanup, /Stage-LegacyUpgrade/u)
+  assert.doesNotMatch(cleanup, /Test-InstallerUpgradeMarker|installerUpgradeMarker/u)
+  assert.match(cleanup, /Stage-UpgradeInstalls/u)
+  assert.match(cleanup, /\[System\.IO\.Directory\]::Move/u)
   assert.match(cleanup, /RecycleOption\]::SendToRecycleBin/u)
   assert.match(cleanup, /IndexOf\(\$root, \$comparison\)/u)
   assert.match(cleanup, /Get-CommandLineVariants/u)
@@ -255,7 +256,20 @@ test('Windows installer preflight accepts a missing previous install directory',
 }, async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-missing-'))
   const missingInstallDirectory = join(temporary, 'already-removed')
+  const registryRoot = `Software\\DeepSeekHarnessDesktopTests\\missing-${process.pid}-${Date.now()}`
+  const uninstallRegistryKey = `${registryRoot}\\Uninstall`
   try {
+    await execFileAsync('reg.exe', [
+      'ADD',
+      `HKCU\\${uninstallRegistryKey}`,
+      '/v',
+      'UninstallString',
+      '/t',
+      'REG_SZ',
+      '/d',
+      `"${join(missingInstallDirectory, 'Uninstall DeepSeek Harness Desktop.exe')}" /currentuser`,
+      '/f',
+    ], { timeout: 5_000, windowsHide: true })
     await execFileAsync(
       'powershell.exe',
       [
@@ -268,10 +282,21 @@ test('Windows installer preflight accepts a missing previous install directory',
         join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
         '-InstallDirectory',
         missingInstallDirectory,
+        '-UninstallRegistryKey',
+        uninstallRegistryKey,
+        '-PrepareExistingUpgrade',
       ],
       { timeout: 10_000, windowsHide: true },
     )
+    await assert.rejects(
+      execFileAsync('reg.exe', ['QUERY', `HKCU\\${uninstallRegistryKey}`], { windowsHide: true }),
+      error => error?.code === 1,
+    )
   } finally {
+    await execFileAsync('reg.exe', ['DELETE', `HKCU\\${registryRoot}`, '/f'], {
+      timeout: 5_000,
+      windowsHide: true,
+    }).catch(() => {})
     await rm(temporary, { recursive: true, force: true })
   }
 })
@@ -360,10 +385,10 @@ test('Windows installer stages an unmarked legacy install before electron-builde
       installRegistryKey,
       '-UninstallRegistryKey',
       uninstallRegistryKey,
-      '-PrepareLegacyUpgrade',
+      '-PrepareExistingUpgrade',
     ], { timeout: 15_000, windowsHide: true })
 
-    assert.match(stdout, /legacy-upgrade-staged root=/u)
+    assert.match(stdout, /upgrade-install-staged root=/u)
     await assert.rejects(readFile(join(resources, 'app.asar')), error => error?.code === 'ENOENT')
     assert.equal(await readFile(preservedUserData, 'utf8'), '{"preserved":true}\n')
     await assert.rejects(
@@ -387,7 +412,7 @@ test('Windows installer stages an unmarked legacy install before electron-builde
   }
 })
 
-test('Windows installer keeps a marked modern install for its safe uninstaller', {
+test('Windows installer stages a marked 2.5 install instead of trusting its old uninstaller', {
   skip: process.platform !== 'win32',
   timeout: 15_000,
 }, async () => {
@@ -399,7 +424,7 @@ test('Windows installer keeps a marked modern install for its safe uninstaller',
     await writeFile(join(installDirectory, 'DeepSeek Harness Desktop.exe'), 'modern executable', 'utf8')
     await writeFile(join(resources, 'app.asar'), 'modern app archive', 'utf8')
     await writeFile(join(resources, 'installer-upgrade-v3'), 'dsh-desktop-installer-upgrade=3\n', 'utf8')
-    await execFileAsync('powershell.exe', [
+    const { stdout } = await execFileAsync('powershell.exe', [
       '-NoLogo',
       '-NoProfile',
       '-NonInteractive',
@@ -409,9 +434,14 @@ test('Windows installer keeps a marked modern install for its safe uninstaller',
       join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
       '-InstallDirectory',
       installDirectory,
-      '-PrepareLegacyUpgrade',
+      '-PrepareExistingUpgrade',
     ], { timeout: 10_000, windowsHide: true })
-    assert.equal(await readFile(join(resources, 'app.asar'), 'utf8'), 'modern app archive')
+    assert.match(stdout, /upgrade-install-staged root=/u)
+    await assert.rejects(readFile(join(resources, 'app.asar')), error => error?.code === 'ENOENT')
+    assert.deepEqual(
+      (await readdir(temporary)).filter(name => name.startsWith('.dsh-desktop-update-old-')),
+      [],
+    )
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }

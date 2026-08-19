@@ -16,7 +16,7 @@ English: No changes yet.
 - 插件变更后明确显示“刷新”和按需“Restart DeepSeek Harness”，Preset 导入展示准备、预取、停止、应用、启动、提交和回滚进度。
 - `dsh://` 只接受扩展、更新、安全任务/会话 ID 与 Preset 预览路由；`.dshpreset` 文件关联只打开预览，不静默安装，也不把文件路径交给 Renderer。
 - Desktop Contract 1.1 增加结构化通知实现：分类、ID、文本与 Deep Link 均受验证，并提供同 ID 去重、分类间隔、前台抑制和白名单点击路由。
-- 修复 2.3.0 等旧版覆盖安装时，旧卸载器把自身祖先进程误判为残留应用并反复弹出“无法关闭”的问题；安装器会在无进程、无文件锁后安全迁移未带 v3 标记的旧安装，新卸载器排除自己的完整祖先进程链，用户数据保持不变。
+- 彻底绕过覆盖更新中的已安装卸载器：安装器在无进程、无文件锁后原子迁移所有具有精确产品锚点的旧安装，并清除精确产品注册项；版本号和 v3 标记不再作为信任信号，因此旧版、带标记的 2.5.0 中间构建和目录已删但卸载项残留的情况都不会再次调用旧卸载器，用户数据保持不变。
 - 更新窗口新增“前往 GitHub 下载”“加入用户群”“稍后更新”三条清晰路径；GitHub Releases 保持唯一默认下载源，下载较慢时可通过 QQ 用户群获取同步安装包，不默认宣传或启用第三方镜像。
 - 设置窗口支持拖动、八方向边缘/角落缩放、最小尺寸、响应式内容滚动和跨重开位置/尺寸恢复，并在窗口尺寸与 DPI 变化时自动约束到可见区域。
 - 新增独立 `dsh-particle-theme` 全页粒子主题，将粒子鲸鱼延伸到主界面；输入聚焦、对话框、减少动态效果和后台页面会自动降低或停止密度、透明度与速度，并提供开关和性能自适应扩展接口。
@@ -29,7 +29,7 @@ English:
 - Extension mutations now present explicit Refresh and conditional Restart DeepSeek Harness actions. Preset imports expose preparation, prefetch, stop, apply, start, commit, and rollback progress.
 - `dsh://` accepts only extensions, updates, safe task/session identifiers, and Preset preview. The `.dshpreset` association opens review only, never installs silently, and never gives the file path to a renderer.
 - Desktop Contract 1.1 adds structured notifications with validated category, ID, text, and deep link plus ID deduplication, category intervals, foreground suppression, and allowlisted click routing.
-- Fixed in-place upgrades from 2.3.0 and other legacy builds where the old uninstaller mistook its own ancestor process for a running app and repeatedly showed “cannot be closed.” The installer safely stages unmarked legacy installations only after process and file-lock checks, while v3 uninstallers exclude their full ancestor chain and preserve user data.
+- In-place updates now bypass every installed uninstaller. After process and file-lock checks, the installer atomically stages every root with the exact product anchors and removes only the exact product registry entries. Version numbers and the v3 marker are never trusted, so legacy builds, marker-bearing 2.5.0 intermediates, and stale uninstall registrations cannot invoke an old uninstaller again; user data remains unchanged.
 - The update surface now offers clear **Download from GitHub**, **Join user group**, and **Update later** paths. GitHub Releases remains the only default download source; users with a slow route can obtain the synchronized installer from the QQ group, without built-in promotion or activation of third-party mirrors.
 - The settings window now supports dragging, eight edge/corner resize handles, minimum dimensions, responsive scrolling, and persisted bounds across reopen. It clamps itself to the visible viewport when the app window or DPI changes.
 - Added the independent `dsh-particle-theme` full-page particle theme, extending the particle whale into the main interface. Focused editing, dialogs, reduced-motion preference, and hidden pages automatically reduce or stop density, opacity, and speed, with a settings toggle and an adaptive extension seam.
