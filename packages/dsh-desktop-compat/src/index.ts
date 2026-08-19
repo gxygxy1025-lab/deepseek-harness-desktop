@@ -44,3 +44,9 @@ export {
   type DesktopSkinStateFace,
   type SkinLoaderEntry,
 } from './skin-state.ts'
+
+export {
+  DESKTOP_COMPAT_PATCHES,
+  validateCompatPatchRegistry,
+  type DesktopCompatPatch,
+} from './patch-registry.ts'

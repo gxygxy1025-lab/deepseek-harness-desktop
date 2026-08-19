@@ -103,6 +103,7 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-liangshen',
   '@linxin666/dsh-live-stats',
   '@linxin666/dsh-pet',
+  '@linxin666/dsh-particle-theme',
   '@linxin666/dsh-remote-web-ui',
   '@linxin666/dsh-skins',
   '@linxin666/dsh-ssh',
@@ -125,6 +126,7 @@ const BUNDLED_SKIN_PACKAGE_PREFIX = '@linxin666/dsh-client-ui-skin-'
 // mounted as top-level bundles. Old top-level rows must still be migrated away.
 export const DEPENDENCY_ONLY_BUNDLES = Object.freeze([
   '@linxin666/dsh-client-ui-mode-switcher',
+  '@linxin666/dsh-particle-theme',
 ].toSorted())
 
 // Compatibility dependencies for supported community plugins whose published
@@ -132,6 +134,13 @@ export const DEPENDENCY_ONLY_BUNDLES = Object.freeze([
 // into the isolated desktop profile so pnpm's strict resolution can find them.
 export const DESKTOP_PLUGIN_COMPAT_PACKAGES = Object.freeze([
   'schemastery',
+].toSorted())
+
+// Desktop carries a newer compatibility bridge than the released aggregate.
+// Resolve these direct application dependencies before consulting the pinned
+// aggregate's dependency tree so fresh and packaged profiles use that bridge.
+export const DESKTOP_RUNTIME_OVERRIDE_PACKAGES = Object.freeze([
+  '@linxin666/dsh-client-ui-web-ui-settings',
 ].toSorted())
 
 // Desktop 2.1 first claimed this package as a managed compatibility link, but
@@ -671,6 +680,15 @@ export function resolveRuntimePackages(
       pending.delete(aggregateName)
       anchors.unshift(join(aggregateRoot, 'package.json'))
     }
+  }
+
+  for (const packageName of DESKTOP_RUNTIME_OVERRIDE_PACKAGES) {
+    if (!pending.has(packageName)) continue
+    const overrideRoot = resolvePackageRoot(packageName, [initialAnchor])
+    if (overrideRoot === undefined) continue
+    resolved.set(packageName, overrideRoot)
+    pending.delete(packageName)
+    anchors.push(join(overrideRoot, 'package.json'))
   }
 
   while (pending.size > 0) {

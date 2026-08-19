@@ -15,6 +15,7 @@ patchFrom:
   - ../dsh-git-graph
   - ../dsh-mode-switcher
   - ../dsh-pet
+  - ../dsh-particle-theme
   - ../dsh-remote-web-ui
   - ../dsh-live-stats
   - ../dsh-ssh
@@ -29,6 +30,7 @@ deps:
   - ../dsh-git-graph
   - ../dsh-mode-switcher
   - ../dsh-pet
+  - ../dsh-particle-theme
   - ../dsh-remote-web-ui
   - ../dsh-live-stats
   - ../dsh-ssh

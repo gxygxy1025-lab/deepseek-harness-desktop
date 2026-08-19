@@ -15,17 +15,19 @@ The DSH home remains `DSH_HOME` or `~/.dsh`. The desktop app runs the managed `~
 | Conversation continuity | FIFO next-turn queue, automatic continuation after cancellation, normalized user-cancellation feedback |
 | Model recovery | Bounded backoff for rate limits, timeouts, network loss, and retryable server errors; immediate manual cancellation |
 | Recovery | Critical-file preflight, startup status, sanitized recent error, retry, profile repair, logs, exit |
-| Plugins | Actual version inventory, Desktop-managed built-ins, lazy community update checks, three-state compatibility, offline exact switch, rollback |
+| Plugins | Actual version inventory, Desktop-managed built-ins, lazy community update checks, atomic exact-version batches, progress, rollback |
+| Presets | Review-only file ingress, bounded archive validation, integrity and trust summary, staged multi-surface rollback |
 | Skills | Project/DSH/Agents root discovery, safe folder import, searchable conversation menu, recent-use ordering, full keyboard control |
 | Reasoning | Sticky disclosure control keeps long reasoning collapsible without scrolling back to its start |
 | SSH operations | Three-second Linux telemetry for CPU, memory, disk, load, processes, and failed services, plus confirmed process and systemd actions |
-| Window | Single instance, persisted visible geometry, native menu, download destination prompt |
+| Window | Single instance, persisted visible main geometry, native menu, download destination prompt; movable/resizable settings panel with minimum and persisted bounds |
 | Community | Help-menu QQ group QR and one-click join, direct GitHub issue feedback |
-| Updates | Stable GitHub Releases, background download, user-confirmed restart/install, release notes, taskbar progress |
+| Updates | GitHub Releases first and by default, background download, user-confirmed restart/install, release notes, taskbar progress, QR-backed user-group installer fallback |
 | Update handoff | Token-bound shutdown receipt v2, verified runtime/extension quiescence, constrained legacy cleanup fallback |
-| Renderer bridge | Contract v1 capability discovery, split main/extension preloads, sender-identity enforcement |
+| Renderer bridge | Contract v1 capability discovery, structured notifications, split main/extension preloads, sender-identity enforcement |
+| OS integration | Strict `dsh://` route allowlist, `.dshpreset` preview association, deduplicated foreground-aware notifications |
 | Task Board | Profile-isolated Host file ledger, copy-first localStorage migration, SSE synchronization; browser scheduler unchanged |
-| Visual system | Solid native/injected title-bar alignment, system-style Extension Dock, bounded animated particle-whale startup surface |
+| Visual system | Solid native/injected title-bar alignment, system-style Extension Dock, bounded particle-whale startup surface, page-aware full-interface particle theme |
 | Security | Sandbox, context isolation, no Node integration, per-window preload APIs, sender registry, loopback navigation allowlist, denied permissions |
 
 ## Desktop 2.0 screenshots
@@ -58,7 +60,15 @@ Download the x64 installer from GitHub Releases and verify its SHA-256 against `
 
 No separate Node.js or pnpm installation is required for release users.
 
-The installed app checks stable GitHub Releases after startup and every six hours, then downloads a discovered release in the background. Open `Help > Check for Updates` to check immediately. Installation still requires an explicit `Restart and install` action. Desktop stops and reaps the DSH child process before handing control to the installer. Automatic check failures remain in the desktop log; manual check failures are shown to the user.
+The installed app checks stable GitHub Releases after startup and every six hours, then downloads a discovered release in the background. Open `Help > Check for Updates` to check immediately. The update surface offers **Download from GitHub**, **Join user group**, and **Update later**. GitHub Releases is the only built-in/default transport. If GitHub is slow, the QR-backed QQ group `1105158177` provides a synchronized installer; the app does not enable or advertise third-party mirrors as a faster route. Administrators may explicitly opt in trusted HTTPS fallbacks through `DSH_DESKTOP_UPDATE_MIRRORS`, but those sources remain secondary to GitHub.
+
+Installation still requires an explicit **Restart and install** action. Desktop stops and reaps the DSH child process before handing control to the installer. Automatic check failures remain in the desktop log; manual check failures are shown to the user.
+
+## Settings window and particle theme
+
+The upstream settings dialog remains the settings implementation, while the desktop renderer adds window behavior around it. Drag its existing header to move it and use any edge or corner to resize it. Bounds are stored under the Desktop user-data directory and restored on reopen. A 520 × 360 minimum, responsive navigation/content layout, independent scrolling, viewport clamping, and resize/DPI revalidation keep controls visible without overlap or off-screen placement.
+
+`@linxin666/dsh-particle-theme` is a normal Web UI bundle rather than a mutually exclusive skin. Its fixed, pointer-transparent canvas extends the startup whale language into the main interface. Page profiles reduce density, opacity, and speed while an editable control is focused or a dialog is open, stop animation for a hidden page, and honor `prefers-reduced-motion`. Users can disable the canvas or tune density, opacity, and speed in **Settings > Plugin config > Particle theme**. Device-pixel ratio is capped and sustained slow frames lower scene quality; new scenes can register through `ParticleThemeRegistry` without changing the page controller.
 
 ## Extension Dock
 
@@ -71,6 +81,14 @@ Opening Extension Dock checks only community packages for updates; normal applic
 The built-in Tencent QQ Bot integration is disabled until it is bound from Extension Dock. Binding uses the official QR connector inside the desktop main process. The AppSecret is encrypted with the operating-system credential store, is never sent to renderer code, and is supplied to the DSH child process only through its environment. Unbinding deletes the encrypted credential, disables the profile row, and restarts DSH.
 
 Skill discovery scans project `.dsh/skills`, project `.agents/skills`, user DSH skills, and user Agents skills in precedence order. Import copies one validated skill folder into `~/.dsh/skills` without overwriting an existing name.
+
+The Preset tab exports and previews `.dshpreset` v1 without exposing a selected path to renderer code. Its plan shows Manifest metadata, integrity-only trust, required Secret names, capability gaps, exact package changes, skills, settings, templates, and conflicts. Import requires explicit confirmation and uses one Runtime stop/start transaction; details are in [Desktop Presets](presets.md).
+
+The same tab can preview the fixed `profiles/web` source and selectively migrate compatible exact-version plugins into the isolated Desktop profile. It also identifies profile-patch configuration attributable to selected package names or bundle IDs, skips credential-bearing fragments, keeps values in the main process, and rolls the Desktop patch back with the package transaction. Missing, incompatible, non-exact, already-installed, and Desktop-managed entries remain visible and are handled separately instead of being silently copied.
+
+After extension changes, Extension Dock presents a prominent Refresh action. Changes that alter the Runtime bundle graph also present **Restart DeepSeek Harness**, so the required follow-up is explicit.
+
+Protocol, file-association, and notification boundaries are documented in [Desktop deep links, file association, and notifications](deep-links.md).
 
 ## Build from source
 

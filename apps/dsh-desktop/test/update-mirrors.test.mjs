@@ -14,12 +14,14 @@ import {
 const OFFICIAL_ASSET = 'https://github.com/ningbainb/deepseek-harness-desktop/releases/download/v2.1.0/DeepSeek-Harness-Desktop-Setup-2.1.0-x64.exe'
 
 test('mirror configuration is HTTPS-only and can be disabled', () => {
-  assert.ok(DEFAULT_UPDATE_MIRRORS.length >= 2)
+  assert.deepEqual(DEFAULT_UPDATE_MIRRORS, [])
+  assert.deepEqual(parseUpdateMirrors(undefined), [])
+  assert.deepEqual(parseUpdateMirrors(''), [])
   assert.deepEqual(parseUpdateMirrors('official'), [])
   assert.deepEqual(parseUpdateMirrors('off'), [])
   assert.deepEqual(
     parseUpdateMirrors('https://mirror.example/;http://unsafe.example/;https://user:secret@private.example/'),
-    [{ id: 'mirror.example', label: '国内镜像 mirror.example', prefix: 'https://mirror.example/' }],
+    [{ id: 'mirror.example', label: '备用线路 mirror.example', prefix: 'https://mirror.example/' }],
   )
 })
 
@@ -72,7 +74,7 @@ test('source probe reads only a bounded range and rejects HTML responses', async
   assert.equal(html.ok, false)
 })
 
-test('responsive sources are ranked by probe time and unavailable sources remain fallbacks', async () => {
+test('GitHub official stays first while opt-in fallback sources are ranked by availability', async () => {
   const mirrors = [
     { id: 'slow', label: '国内镜像 slow.example', prefix: 'https://slow.example/' },
     { id: 'fast', label: '国内镜像 fast.example', prefix: 'https://fast.example/' },
@@ -85,10 +87,10 @@ test('responsive sources are ranked by probe time and unavailable sources remain
       elapsedMs: source.id === 'fast' ? 20 : source.id === 'github' ? 80 : 5,
     }),
   })
-  assert.deepEqual(ranked.map((source) => source.id), ['fast', 'github', 'slow'])
+  assert.deepEqual(ranked.map((source) => source.id), ['github', 'fast', 'slow'])
 })
 
-test('download router preserves checksums, retries mirrors, and restores the provider', async () => {
+test('download router preserves checksums, tries GitHub before opt-in mirrors, and restores the provider', async () => {
   const info = {
     tag: 'v2.1.0',
     version: '2.1.0',
@@ -107,8 +109,8 @@ test('download router preserves checksums, retries mirrors, and restores the pro
     async downloadUpdate() {
       const resolved = provider.resolveFiles(info)[0]
       this.attempts.push(resolved)
-      if (resolved.url.hostname === 'fast.example') {
-        const error = new Error('mirror unavailable')
+      if (resolved.url.hostname === 'github.com') {
+        const error = new Error('GitHub unavailable')
         this.emit('error', error)
         throw error
       }
@@ -130,9 +132,10 @@ test('download router preserves checksums, retries mirrors, and restores the pro
   })
 
   assert.deepEqual(result, ['downloaded.exe'])
-  assert.deepEqual(sources, ['fast', 'github'])
+  assert.deepEqual(sources, ['github', 'fast'])
   assert.deepEqual(retryableErrors, [true])
   assert.equal(updater.attempts[0].info.sha512, 'trusted-checksum')
-  assert.equal(updater.attempts[1].url.href, OFFICIAL_ASSET)
+  assert.equal(updater.attempts[0].url.href, OFFICIAL_ASSET)
+  assert.equal(updater.attempts[1].url.hostname, 'fast.example')
   assert.equal(provider.resolveFiles, originalResolveFiles)
 })

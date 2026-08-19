@@ -15,6 +15,8 @@ extraResources:
     to: update-shutdown-v1
   - from: build/update-shutdown-v2
     to: update-shutdown-v2
+  - from: build/installer-upgrade-v3
+    to: installer-upgrade-v3
 
 directories:
   output: dist
@@ -54,3 +56,10 @@ protocols:
   - name: DeepSeek Harness Desktop
     schemes:
       - dsh
+
+fileAssociations:
+  - ext: dshpreset
+    name: DeepSeek Harness Desktop Preset
+    description: Reviewable DeepSeek Harness Desktop environment preset
+    icon: build/icon.ico
+    role: Editor

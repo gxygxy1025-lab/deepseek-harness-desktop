@@ -38,6 +38,7 @@
     "@linxin666/dsh-client-ui-git-graph": "workspace:*",
     "@linxin666/dsh-client-ui-mode-switcher": "workspace:*",
     "@linxin666/dsh-pet": "workspace:*",
+    "@linxin666/dsh-particle-theme": "workspace:*",
     "@linxin666/dsh-remote-web-ui": "workspace:*",
     "@linxin666/dsh-live-stats": "workspace:*",
     "@linxin666/dsh-ssh": "workspace:*",

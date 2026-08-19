@@ -20,13 +20,14 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 
 If this project helps you, Star the [GitHub repository](https://github.com/ningbainb/deepseek-harness-desktop) so more desktop users can discover it.
 
-### Latest release: 2.4.0
+### Latest release: 2.5.0
 
-`desktop-v2.4.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.4.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/SHA256SUMS.txt)
+`desktop-v2.5.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.5.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/SHA256SUMS.txt)
 
 | Version | Highlights |
 | --- | --- |
-| **2.4.0** | Keeps SSH terminals connected across internal views and adds paste entry points; hides PowerShell tool windows; isolates skin state in the desktop profile and removes global patch pollution; closes path-drifted 2.2 remnants during in-place upgrades. |
+| **2.5.0** | Adds the Runtime Adapter and upstream compatibility defenses, secure `.dshpreset` and Web Profile migration, atomic plugin batches, strict deep-link/file ingress, and structured notifications. |
+| **2.4.0** | Added reliable update-shutdown receipt v2, split Main/Extension Dock permissions, Desktop Contract v1, and Task Board Host-file storage v2. |
 | **2.3.0** | Adds a one-time GitHub Star and community prompt; recognizes external PowerShell/CMD/Node hosts, EncodedCommand payloads, and Windows short paths during preflight; supports direct 0.1.9 upgrades; and coexists with the official web client through an isolated profile and port fallback. |
 | **2.2.0** | Hides Windows terminal descendants, cleans up attributed app/plugin background processes, migrates recognized dependencies and legacy safe-mode false positives, reuses the runtime port, and adds visible one-click safe-mode recovery. |
 | **2.1.0** | Adds measured mainland-China update mirrors, snapshot/isolation/safe-mode plugin recovery, unified skin persistence, reliable update-process cleanup, quiet background commands, Unicode-workspace restart protection, and a visible Tools menu entry for Extension Dock. |
@@ -39,16 +40,23 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 | **0.1.4** | Moves the pet to the global Shell Overlay so it appears on home and settings screens, restores all five Web UI plugin settings cards, and lists all nine packaged skins in Skin Center. |
 | **0.1.3** | Adds stable GitHub Release checks, bilingual update notes, user-confirmed downloads, taskbar progress, and a second confirmation before installation. |
 
-### 2.4.0 Highlights
+### 2.5.0 Highlights
 
-- **Persistent SSH terminals and paste**: connected sessions remain mounted while switching among host, monitor, and terminal views. Paste is available from both the terminal context menu and the native Edit menu.
-- **Profile-local skin state**: skin switching writes only to the private `profiles/desktop` patch and migrates legacy managed sections out of global `cordis.patch.yml`, so official `dsh web` remains valid.
-- **Hidden tool hosts**: Windows runtime, terminal, and `pwsh` tools share a hidden console host and no longer flash a command window.
-- **Legacy in-place upgrade compatibility**: installer preflight adds a unique product-name fallback beyond path attribution, closing path-drifted 2.2 remnants before the old uninstaller can return code 2.
-- **Verifiable update handoff**: the installer uses a random token and shutdown receipt v2, proceeding only after the runtime, extension operations, and resources fully stop; legacy releases retain the constrained cleanup path.
-- **Partitioned Desktop bridge**: Main and Extension Dock use separate preloads with renderer-identity enforcement for sensitive IPC. Desktop Contract 1.0.0 provides stable capability discovery.
-- **Task Board Host storage**: the board ledger is a schema v2 file in the `desktop` profile, written atomically and synchronized through SSE. localStorage v1 is copied only after verification, retained, and used when Host storage is unavailable.
-- **One-time community guidance**: on the first 2.4.0 launch, users can open GitHub to Star the project, join the QQ community to report an issue, or continue working. The main process records the display atomically so reloads and later launches do not repeat it.
+- **Runtime compatibility defenses**: Adapter v1, the direct-import boundary, Known Good, patch registry, and coupling audit protect the Stable DSH graph. Candidate Lite reports but never auto-promotes.
+- **Secure Desktop Presets**: `.dshpreset` v1 validates integrity, paths, compression, scripts, Secrets, Git URLs, and exact versions in the main process; renderers receive only a review plan.
+- **Whole-environment rollback**: package batches, settings, Skills, and task templates use one Runtime stop/start transaction, restoring the old environment after any package or health failure.
+- **Selective Web Profile migration**: preview installable, updatable, missing, incompatible, undeclared, satisfied, and Desktop-managed entries; selected packages and attributable non-sensitive profile configuration apply or roll back together.
+- **Explicit follow-up actions**: extension changes prominently offer Refresh, bundle-graph changes also offer Restart DeepSeek Harness, and Preset progress names commit or restoration.
+- **Strict operating-system ingress**: `dsh://` accepts only fixed navigation and safe IDs. Double-clicking `.dshpreset` opens review without exposing the path or silently installing.
+- **Structured notifications**: Desktop Contract 1.1 validates notification category, ID, text, and deep link with deduplication, rate limits, foreground suppression, and allowlisted click routing.
+- **Stable does not follow latest**: the Runtime remains exactly pinned to its verified version, and a failed Candidate cannot affect main, the lockfile, release notes, or updater metadata.
+
+### 2.5.0 Experience and update improvements
+
+- **Full-page particle theme**: the particle whale now extends from startup into the main interface and automatically lowers density, opacity, and speed during ordinary browsing, focused editing, dialogs, reduced motion, and background states. Toggle and tune it under **Settings > Plugin config > Particle theme**.
+- **Adjustable settings window**: drag the settings panel, resize it from all eight edges and corners, and reopen it at the last saved position and size. Minimum dimensions, responsive layout, and viewport constraints prevent overlap, overflow, or off-screen placement.
+- **Clear update download paths**: GitHub Releases is the only default source. The update window provides **Download from GitHub**, **Join user group**, and **Update later**. If GitHub is slow, the QQ user group provides a synchronized installer.
+- **In-place updates no longer depend on old uninstallers**: after strict process and file-lock checks, the installer stages the old program and removes only the exact product registrations. Even a marker-bearing early 2.5.0 build cannot re-enter its defective uninstall path.
 
 ![DeepSeek Harness Desktop 2.3.0 GitHub Star and community feedback prompt](docs/screenshots/desktop-2.3.0-star-community-prompt.png)
 
@@ -60,8 +68,8 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 - **Live SSH monitoring and safe operations**: refresh CPU, memory, disk, load, process, and failed-service data every three seconds, then confirm before terminating a process or restarting a systemd service.
 - **Collapsible long reasoning**: the disclosure control stays pinned at the top of the conversation while a long reasoning block is open.
 - **Runtime integrity preflight**: critical packaged files are checked before launch; an incomplete installation stops cleanly with a repair message instead of entering a restart loop.
-- **More reliable updates and installation**: new releases download in the background, installation waits for confirmation, and Desktop fully reaps the DSH child process before exit to reduce false file-in-use reports.
-- **Native Harness visual system**: the title bar, Extension Dock, and startup surface share one restrained system style, with a particle whale that swims, breathes, and moves its tail.
+- **More reliable updates and installation**: the official GitHub source stays first, new releases download in the background, installation waits for confirmation, and the user group provides a synchronized installer when GitHub is slow. Desktop fully reaps the DSH child process before exit.
+- **Native Harness visual system**: the title bar, Extension Dock, startup surface, and main interface share one restrained system style. The full-page particle whale quiets itself around active work and respects reduced-motion preferences.
 
 #### Harness Interface
 
@@ -73,7 +81,7 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 | --- | --- |
 | ![DeepSeek Harness Desktop 2.3.0 particle-whale startup](docs/screenshots/desktop-2.3.0-startup.png) | ![DeepSeek Harness Desktop 2.3.0 plugin and skill Extension Dock](docs/screenshots/desktop-2.3.0-extension-dock.png) |
 
-- Bundles the dsh-web-ui 0.1.18 suite with the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, plus Describe Image and the Liangshen agent;
+- Bundles the dsh-web-ui 0.1.18 suite with the task board, Git graph, right panel, SSH, mobile remote, live stats, pet, plus the independent full-page particle theme, Describe Image, and the Liangshen agent;
 - Bundles Tencent's official QQ Bot, with in-dock QR binding for QQ direct messages and group chats — no YAML editing or background terminal required;
 - Bundles ChatGPT OAuth, OpenAI Codex models, and a reasoning-effort slider; sign-in uses the system browser and credentials stay local;
 - Uses an isolated `desktop` profile without overwriting an existing DSH setup, and binds only to loopback;
@@ -82,7 +90,7 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 - Adds a dock for transactional community DSH bundle management, built-in plugin stores, and safe discovery/import of project, DSH, and Agents skills;
 - Bundles official DSH, pnpm, and native dependencies, so users do not need a separate Node.js installation.
 
-The desktop app already includes the task board, Git graph, right panel, mobile remote control, remote connection, whale-girl pet, live token statistics, Codex Connect, the reasoning-effort slider, plugin market, and Skin Center. Install the EXE and start working — no separate DSH or Node.js setup and no plugin commands are required.
+The desktop app already includes the task board, Git graph, right panel, mobile remote control, remote connection, whale-girl pet, full-page particle theme, live token statistics, Codex Connect, the reasoning-effort slider, plugin market, and Skin Center. Install the EXE and start working — no separate DSH or Node.js setup and no plugin commands are required.
 
 ## Feature Plugins
 
@@ -162,7 +170,7 @@ The "SSH" sidebar entry opens the remote-ops panel. Hosts support key / password
 
 ### Settings Hub
 
-All family plugins' toggles and parameters live under "Settings > Plugin config", and changes apply immediately. The desktop app explicitly exposes all five bundled cards — Remote Control, Skin Center, Live Token Estimates, Task Board, and Pet — instead of losing entries to the DSH Host settings-namespace filter.
+All family plugins' toggles and parameters live under "Settings > Plugin config", and changes apply immediately. The desktop app explicitly exposes all six bundled cards — Remote Control, Skin Center, Live Token Estimates, Task Board, Pet, and Particle Theme — instead of losing entries to the DSH Host settings-namespace filter. The settings window itself can be dragged and resized from an edge or corner, then reopens at its last saved bounds. Responsive reflow and scrolling keep it usable in small windows and at high DPI.
 
 ![Plugin config hub](docs/screenshots/02-settings-web-ui-plugins.png)
 
@@ -218,7 +226,9 @@ Three more: QQ2008 Retro (crystal blue with penguin motifs), Tonghuashun Trading
 2. Run `DeepSeek-Harness-Desktop-Setup-<version>-x64.exe`. DSH, plugins, skins, pnpm, and native dependencies are all included in the installer.
 3. To verify file integrity, download `SHA256SUMS.txt` from the same Release and compare the installer's SHA-256 digest.
 
-The app checks stable GitHub Releases, displays bilingual update notes, and asks for confirmation before both downloading and restarting to install. In-place upgrades preserve the existing `DSH_HOME`, desktop profile, community bundles, pet state, skin configuration, and encrypted QQ Bot credentials.
+GitHub Releases is the only download source built in and enabled by default. If GitHub is slow, use **Join user group** in the update window and obtain the synchronized latest installer from QQ group `1105158177`. The app does not enable or market third-party mirrors as a “faster” route by default.
+
+The app checks stable GitHub Releases, displays bilingual update notes, and offers **Download from GitHub**, **Join user group**, and **Update later**. Installation still requires explicit confirmation. In-place upgrades preserve the existing `DSH_HOME`, desktop profile, community bundles, pet state, skin configuration, and encrypted QQ Bot credentials.
 
 The installer is not commercially code-signed, so Windows SmartScreen may report an unknown publisher. Use only the installer linked from this project's Release page. The default install path is recommended to avoid legacy Win32 path-length limits.
 
@@ -226,6 +236,6 @@ The installer is not commercially code-signed, so Windows SmartScreen may report
 
 | Package | Origin | License |
 | --- | --- | --- |
-| dsh-task-board / dsh-git-graph / dsh-aionui-panel / dsh-pet / dsh-remote-web-ui / dsh-live-stats / dsh-web-ui-settings / dsh-skins / dsh-web-ui-all / skins | Authored by zhu1090093659 | BSD-3-Clause (zhu1090093659) |
+| dsh-task-board / dsh-git-graph / dsh-aionui-panel / dsh-pet / dsh-particle-theme / dsh-remote-web-ui / dsh-live-stats / dsh-web-ui-settings / dsh-skins / dsh-web-ui-all / skins | Authored by zhu1090093659 | BSD-3-Clause (zhu1090093659) |
 
 Third-party code merged in must keep its LICENSE and attribution; active third parties with an upstream are forked or referenced as dependencies instead of vendored.

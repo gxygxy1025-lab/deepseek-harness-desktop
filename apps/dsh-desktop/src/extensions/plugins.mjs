@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import semver from 'semver'
+import { parse as parseYaml } from 'yaml'
 
 import {
   AGGREGATED_BUNDLES,
@@ -21,6 +22,7 @@ const PROTECTED_PACKAGES = new Set([
   ...DESKTOP_SUPPORT_PACKAGES,
 ])
 const VERSION_PATTERN = /^[a-z0-9][a-z0-9._+~^*<>=|-]*$/i
+const SHA512_INTEGRITY_PATTERN = /^sha512-[a-z0-9+/]+={0,2}$/iu
 const UNKNOWN_COMPATIBILITY = Object.freeze({
   status: 'unknown',
   reasons: Object.freeze([Object.freeze({ code: 'compatibility-undeclared' })]),
@@ -232,6 +234,26 @@ export class PluginManager {
     return this.#inventoryNow()
   }
 
+  async portablePackages() {
+    await this.queue
+    const manifest = await readManifest(this.profileDir)
+    const lock = await readOptionalFile(join(this.profileDir, 'pnpm-lock.yaml'))
+    if (lock === undefined) throw new Error('desktop profile lockfile is required for preset export')
+    const names = Object.keys(manifest.dependencies ?? {})
+      .filter((name) => !PROTECTED_PACKAGES.has(name))
+      .toSorted()
+    const installed = await readInstalledManifests(this.profileDir, names)
+    return Object.freeze(names.map((name) => {
+      const version = installed.get(name)?.version
+      if (typeof version !== 'string' || semver.valid(version) === null) {
+        throw new Error(`installed version is unavailable for ${name}`)
+      }
+      const integrity = lockfileIntegrity(lock, name, version)
+      if (integrity === undefined) throw new Error(`lockfile integrity is unavailable for ${name}@${version}`)
+      return Object.freeze({ name, version, integrity })
+    }))
+  }
+
   captureSnapshot() {
     return this.#enqueue(() => captureProfileSnapshot(this.profileDir))
   }
@@ -342,6 +364,107 @@ export class PluginManager {
     })
   }
 
+  prepareMany(rawSpecs, { allowUnknown = false } = {}) {
+    return this.#enqueue(async () => {
+      if (!Array.isArray(rawSpecs) || rawSpecs.length === 0) {
+        throw new TypeError('plugin batch must contain at least one package spec')
+      }
+      if (typeof allowUnknown !== 'boolean') throw new TypeError('allowUnknown must be a boolean')
+
+      const parsedByName = new Map()
+      for (const rawSpec of rawSpecs) {
+        const parsed = validatePluginSpec(rawSpec)
+        const exactVersion = requestedVersion(parsed)
+        if (semver.valid(exactVersion) === null || parsed.spec !== `${parsed.name}@${exactVersion}`) {
+          throw new TypeError(`plugin batch requires an exact version for ${parsed.name}`)
+        }
+        const previous = parsedByName.get(parsed.name)
+        if (previous !== undefined) {
+          if (previous.spec !== parsed.spec) {
+            throw new TypeError(`conflicting duplicate plugin specs for ${parsed.name}`)
+          }
+          continue
+        }
+        if (PROTECTED_PACKAGES.has(parsed.name)) {
+          throw new Error(`${parsed.name} is a built-in desktop plugin`)
+        }
+        parsedByName.set(parsed.name, parsed)
+      }
+
+      const candidates = await Promise.all([...parsedByName.values()].map(async (parsed) => {
+        const candidate = await this.registry.fetchManifest(parsed.name, requestedVersion(parsed))
+        if (
+          candidate?.name !== parsed.name
+          || typeof candidate.version !== 'string'
+          || semver.valid(candidate.version) === null
+          || candidate.version !== requestedVersion(parsed)
+        ) {
+          throw new Error(`registry candidate identity does not match ${parsed.spec}`)
+        }
+        const compatibility = await this.#assess(candidate)
+        if (compatibility.status === 'incompatible') {
+          throw compatibilityError(
+            `${parsed.name}@${candidate.version} is incompatible with this desktop runtime`,
+            'plugin-incompatible',
+            compatibility,
+          )
+        }
+        if (compatibility.status === 'unknown' && !allowUnknown) {
+          throw compatibilityError(
+            `${parsed.name}@${candidate.version} does not declare desktop compatibility`,
+            'plugin-compatibility-unknown',
+            compatibility,
+          )
+        }
+        const integrity = candidate.dist?.integrity
+        if (typeof integrity !== 'string' || !SHA512_INTEGRITY_PATTERN.test(integrity)) {
+          throw new Error(`${parsed.name}@${candidate.version} does not publish a valid sha512 integrity`)
+        }
+        return Object.freeze({
+          name: parsed.name,
+          version: candidate.version,
+          spec: `${parsed.name}@${candidate.version}`,
+          integrity,
+          manifest: candidate,
+          compatibility,
+        })
+      }))
+
+      await this.runner({
+        pnpmCli: this.pnpmCli,
+        profileDir: this.profileDir,
+        executable: this.executable,
+        args: ['store', 'add', ...candidates.map((candidate) => candidate.spec)],
+      })
+      return Object.freeze({ items: Object.freeze(candidates) })
+    })
+  }
+
+  inspect(rawSpec) {
+    const parsed = validatePluginSpec(rawSpec)
+    return this.#enqueue(async () => {
+      if (PROTECTED_PACKAGES.has(parsed.name)) {
+        return Object.freeze({ name: parsed.name, requestedSpec: parsed.spec, status: 'managed' })
+      }
+      const candidate = await this.registry.fetchManifest(parsed.name, requestedVersion(parsed))
+      if (candidate?.name !== parsed.name || typeof candidate.version !== 'string' || semver.valid(candidate.version) === null) {
+        throw new Error(`registry candidate identity does not match ${parsed.spec}`)
+      }
+      const compatibility = await this.#assess(candidate)
+      const integrity = candidate.dist?.integrity
+      return Object.freeze({
+        name: parsed.name,
+        requestedSpec: parsed.spec,
+        version: candidate.version,
+        spec: `${parsed.name}@${candidate.version}`,
+        integrity: typeof integrity === 'string' && SHA512_INTEGRITY_PATTERN.test(integrity) ? integrity : undefined,
+        bundle: typeof candidate.dsh?.bundle?.patch === 'string',
+        compatibility,
+        status: compatibility.status,
+      })
+    })
+  }
+
   async #restoreProfileSnapshot(snapshot) {
     const manifestPath = join(this.profileDir, 'package.json')
     const lockPath = join(this.profileDir, 'pnpm-lock.yaml')
@@ -436,6 +559,106 @@ export class PluginManager {
         }
         throw new Error(
           `plugin mutation failed and was rolled back: ${String(error?.message ?? error).slice(0, 1_000)}`,
+          { cause: error },
+        )
+      }
+    })
+  }
+
+  applyPreparedBatch(prepared) {
+    let items
+    try {
+      items = validatePreparedBatch(prepared)
+    } catch (error) {
+      return Promise.reject(error)
+    }
+    return this.#enqueue(async () => {
+      for (const item of items) {
+        if (PROTECTED_PACKAGES.has(item.name)) throw new Error(`${item.name} is a built-in desktop plugin`)
+      }
+      const names = items.map((item) => item.name)
+      const versions = items.map((item) => item.version)
+      await this.beforeMutation({ type: 'install-batch', names, versions })
+      const snapshot = await captureProfileSnapshot(this.profileDir)
+      const previous = await readInstalledManifests(this.profileDir, names)
+      try {
+        await this.runner({
+          pnpmCli: this.pnpmCli,
+          profileDir: this.profileDir,
+          executable: this.executable,
+          args: ['add', ...items.map((item) => item.spec), '--save-exact', '--offline'],
+        })
+        const lock = await readOptionalFile(join(this.profileDir, 'pnpm-lock.yaml'))
+        if (lock === undefined) throw new Error('installed lockfile is missing')
+        for (const item of items) {
+          if (!lock.includes(item.integrity)) {
+            throw new Error(`installed lockfile integrity does not match ${item.spec}`)
+          }
+          const installed = await readInstalledManifest(this.profileDir, item.name)
+          if (installed?.name !== item.name || installed?.version !== item.version) {
+            throw new Error(`installed package identity does not match ${item.spec}`)
+          }
+          if (typeof installed.dsh?.bundle?.patch !== 'string') {
+            throw new Error(`${item.name} is not a DSH bundle package`)
+          }
+          const compatibility = await this.#assess(installed)
+          if (compatibility.status === 'incompatible') {
+            throw new Error(`${item.spec} became incompatible after installation`)
+          }
+        }
+
+        const manifest = await readManifest(this.profileDir)
+        const profile = manifest.dsh?.profile ?? {}
+        const bundles = new Set(profile.bundles ?? [])
+        for (const item of items) bundles.add(item.name)
+        manifest.dsh = {
+          ...(manifest.dsh ?? {}),
+          profile: { ...profile, bundles: [...bundles] },
+        }
+        await writeManifest(this.profileDir, manifest)
+        for (const name of names) this.updateStates.delete(name)
+
+        let active = true
+        const rollback = () => this.#enqueue(async () => {
+          if (!active) return false
+          active = false
+          await this.#restoreProfileSnapshot(snapshot)
+          for (const name of names) this.updateStates.delete(name)
+          return true
+        })
+        return Object.freeze({
+          result: Object.freeze({
+            plugins: Object.freeze(items.map((item) => Object.freeze({
+              name: item.name,
+              version: item.version,
+              previousVersion: typeof previous.get(item.name)?.version === 'string'
+                ? previous.get(item.name).version
+                : undefined,
+            }))),
+            restartRequired: true,
+            activation: Object.freeze({
+              mode: 'restart',
+              reason: 'runtime-bundle-graph-changed',
+            }),
+          }),
+          commit() {
+            if (!active) return false
+            active = false
+            return true
+          },
+          rollback,
+        })
+      } catch (error) {
+        try {
+          await this.#restoreProfileSnapshot(snapshot)
+        } catch (rollbackError) {
+          throw new Error(
+            `plugin batch mutation failed and rollback failed: ${String(error?.message ?? error).slice(0, 1_000)}; ${String(rollbackError?.message ?? rollbackError).slice(0, 1_000)}`,
+            { cause: new AggregateError([error, rollbackError]) },
+          )
+        }
+        throw new Error(
+          `plugin batch mutation failed and was rolled back: ${String(error?.message ?? error).slice(0, 1_000)}`,
           { cause: error },
         )
       }
@@ -704,4 +927,64 @@ export class PluginManager {
       })
     })
   }
+}
+
+function lockfileIntegrity(lock, name, version) {
+  let document
+  try {
+    document = parseYaml(lock)
+  } catch (error) {
+    throw new Error('desktop profile lockfile is invalid', { cause: error })
+  }
+  const packages = document?.packages
+  if (packages === null || typeof packages !== 'object' || Array.isArray(packages)) return undefined
+  const prefix = `${name}@${version}`
+  for (const [key, value] of Object.entries(packages)) {
+    if (key !== prefix && !key.startsWith(`${prefix}(`)) continue
+    const integrity = value?.resolution?.integrity
+    if (typeof integrity === 'string' && SHA512_INTEGRITY_PATTERN.test(integrity)) return integrity
+  }
+  return undefined
+}
+
+function validatePreparedBatchItem(item) {
+  if (item === null || typeof item !== 'object') {
+    throw new TypeError('prepared plugin batch item is required')
+  }
+  const parsed = validatePluginSpec(item.spec)
+  if (
+    parsed.name !== item.name
+    || semver.valid(item.version) === null
+    || item.spec !== `${item.name}@${item.version}`
+  ) {
+    throw new TypeError('prepared plugin batch item identity is invalid')
+  }
+  if (typeof item.integrity !== 'string' || !SHA512_INTEGRITY_PATTERN.test(item.integrity)) {
+    throw new TypeError(`prepared plugin batch item integrity is invalid for ${item.name}`)
+  }
+  return Object.freeze({
+    name: item.name,
+    version: item.version,
+    spec: item.spec,
+    integrity: item.integrity,
+    ...(item.manifest === undefined ? {} : { manifest: item.manifest }),
+    ...(item.compatibility === undefined ? {} : { compatibility: item.compatibility }),
+  })
+}
+
+function validatePreparedBatch(prepared) {
+  if (prepared === null || typeof prepared !== 'object' || !Array.isArray(prepared.items)) {
+    throw new TypeError('prepared plugin batch is required')
+  }
+  if (prepared.items.length === 0) throw new TypeError('prepared plugin batch must not be empty')
+  const names = new Set()
+  const items = prepared.items.map((item) => {
+    const validated = validatePreparedBatchItem(item)
+    if (names.has(validated.name)) {
+      throw new TypeError(`prepared plugin batch contains duplicate package ${validated.name}`)
+    }
+    names.add(validated.name)
+    return validated
+  })
+  return Object.freeze(items)
 }

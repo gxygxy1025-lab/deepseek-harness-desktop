@@ -1,6 +1,6 @@
 # DeepSeek Harness Desktop
 
-> DeepSeek Harness Desktop 2.4.0 is a community-maintained, open-source Windows AI coding client for DeepSeek Harness. It preserves the complete Harness Web Surface and bundles the official local DSH host, plugins, Skills, 11 skins, mobile remote access, SSH operations, QQ Bot connectivity, lifecycle recovery, and automatic updates in one Windows x64 installer.
+> DeepSeek Harness Desktop 2.5.0 is a community-maintained, open-source Windows AI coding client for DeepSeek Harness. It preserves the complete Harness Web Surface and adds secure Presets, Web Profile migration, atomic plugin batches, compatibility defenses, and controlled operating-system integration.
 
 ## What it is
 
@@ -15,8 +15,8 @@
 
 ## Download
 
-- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe
-- v2.4.0 release notes and release assets: https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.4.0
+- Latest Windows x64 installer: https://github.com/ningbainb/deepseek-harness-desktop/releases/latest/download/DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe
+- v2.5.0 release notes and release assets: https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.5.0
 
 ## Source and documentation
 
@@ -28,8 +28,8 @@
 ## Key facts
 
 - Supported systems: Windows 10 and Windows 11, x64
-- Current release: v2.4.0
-- v2.4.0 keeps connected SSH terminals mounted while switching among host, monitor, and terminal views, and provides native paste entry points
+- Current release: v2.5.0
+- v2.5.0 adds review-first `.dshpreset` import/export, selective Web Profile migration, whole-environment rollback, strict deep links and file association, and structured notifications
 - Skin state is isolated in profiles/desktop and legacy global cordis.patch.yml pollution is migrated away so the official dsh web profile remains valid
 - Installer preflight supports direct upgrades from 0.1.9 through 2.3 and closes legacy product-name processes even when their old installation path is no longer registered
 - Preflight decodes PowerShell EncodedCommand payloads, preserves Windows 8.3 short-path references, falls back to WMI paths when process handles are unavailable, and waits with backoff after forced termination

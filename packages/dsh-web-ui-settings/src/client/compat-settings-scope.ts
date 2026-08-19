@@ -42,6 +42,14 @@ export interface BridgeSettingsFace {
   }
 }
 
+/** True only for browser hostnames that resolve to the local machine. */
+export function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost'
+    || hostname === '::1'
+    || hostname === '[::1]'
+    || /^127(?:\.\d{1,3}){3}$/u.test(hostname)
+}
+
 /** One settled bridge POST, always shaped as an RPC result envelope. */
 interface EnvelopedResult {
   result: BridgeDescribeResult | BridgeMutateResult
@@ -295,7 +303,11 @@ export class WebUiSettingsBinder extends Service {
     const primary = official.bind(spec)
     const connectionValue = ctx.get('connection')
     const connection = isConnectionHandle(connectionValue) ? connectionValue : undefined
+    // rc.6 Electron connections can omit or misreport isLoopback. The browser
+    // URL is still an independent process-local boundary: a remote deployment
+    // cannot reach these bridge routes from a non-loopback origin.
     const loopback = connection?.isLoopback === true
+      || isLoopbackHostname(globalThis.location?.hostname ?? '')
     const scope = createCompatScope<T>({
       namespace: spec.namespace,
       primary,

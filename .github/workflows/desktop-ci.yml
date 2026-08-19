@@ -25,10 +25,15 @@ jobs:
       - run: pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:window-chrome:e2e
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:directory-picker:e2e
+      - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
+      - run: pnpm --filter @deepseek-ai/dsh-desktop test:preset-deep-link:e2e
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:scripts
       - run: pnpm runtime-deps:check
+      - run: pnpm dsh-imports:check
+      - run: pnpm dsh-audit:check
+      - run: pnpm runtime-support:check
       - run: pnpm sync-shared:check
       - run: pnpm release:notes:check
       - run: pnpm website:check

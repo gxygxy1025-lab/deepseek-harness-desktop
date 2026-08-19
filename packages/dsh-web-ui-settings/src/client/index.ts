@@ -13,6 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the settings-surface SlotMap merge (the 'settings.section'
 // entry) and the ctx.settingsScope Context merge.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import { installParticleThemeClient } from '@linxin666/dsh-particle-theme/src/client/index.ts'
 import { WebUiSettingsBinder } from './compat-settings-scope.ts'
 import { WebUIPluginsCard } from './WebUIPluginsCard.tsx'
 import { CommunityPluginsCard } from './CommunityPluginsCard.tsx'
@@ -63,7 +64,7 @@ export function apply(ctx: ClientContext): void {
   // The rc.6 compatibility binder: family plugins read ctx.get('webUiSettings')
   // and fall back to the official settings scope on hosts that expose their
   // namespaces natively.
-  new WebUiSettingsBinder(ctx)
+  const settingsBinder = new WebUiSettingsBinder(ctx)
 
   ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
     name: 'settings.plugin.item',
@@ -83,4 +84,9 @@ export function apply(ctx: ClientContext): void {
     locale: 'community-plugins',
     inject: () => ({}),
   }, CommunityPluginsCard))
+
+  // Desktop's pinned aggregate predates the standalone particle loader row.
+  // The particle installer is document-idempotent, so newer aggregates that
+  // do carry that row still end up with exactly one canvas and settings card.
+  installParticleThemeClient(ctx, settingsBinder)
 }

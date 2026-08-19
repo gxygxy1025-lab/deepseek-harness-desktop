@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-settings'
+import { installParticleThemeSettings } from '@linxin666/dsh-particle-theme'
 import { makeBridgeRoutes } from './bridge.ts'
 
 /** Required services before the bridge routes can mount. */
@@ -25,6 +26,10 @@ export const inject = ['webServer'] as const
  * @param ctx - host plugin context.
  */
 export function apply(ctx: Context): void {
+  // Desktop's pinned aggregate predates the particle host row. Register the
+  // section here; the particle bundle's guarded installer remains idempotent
+  // when a newer aggregate mounts the host row itself.
+  installParticleThemeSettings(ctx)
   ctx.inject(['settings'], (sctx) => {
     const settingsYamlPath = sctx.settings.documentPath ?? join(homedir(), '.dsh', 'settings.yaml')
     sctx.effect(() => {

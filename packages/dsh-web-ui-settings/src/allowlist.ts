@@ -20,6 +20,7 @@ export const FAMILY_NAMESPACES = [
   'remote-web-ui',
   'live-stats',
   'pet',
+  'particle-theme',
   'describe-image',
   'skin-background',
 ] as const
@@ -41,6 +42,8 @@ const NAMESPACE_ALIASES: Readonly<Record<string, string | null>> = {
   'remote-web-ui': 'remote-web-ui',
   'dsh-pet': 'pet',
   pet: 'pet',
+  'dsh-particle-theme': 'particle-theme',
+  'particle-theme': 'particle-theme',
   'dsh-skins': 'skin-background',
   'dsh-client-ui-skin-center': 'skin-background',
   'skin-center': 'skin-background',

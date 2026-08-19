@@ -19,14 +19,19 @@
           <button type="button" class="tab active" id="plugins-tab" role="tab" aria-controls="plugins" aria-selected="true" data-tab="plugins"><span>插件</span><small id="plugin-count">0</small></button>
           <button type="button" class="tab" id="recovery-tab" role="tab" aria-controls="recovery" aria-selected="false" tabindex="-1" data-tab="recovery"><span>插件恢复</span><small id="recovery-count">0</small></button>
           <button type="button" class="tab" id="skills-tab" role="tab" aria-controls="skills" aria-selected="false" tabindex="-1" data-tab="skills"><span>技能</span><small id="skill-count">0</small></button>
+          <button type="button" class="tab" id="presets-tab" role="tab" aria-controls="presets" aria-selected="false" tabindex="-1" data-tab="presets"><span>Preset</span><small>V1</small></button>
         </nav>
         <p class="sidebar-note">内置能力受保护，所有改动仅作用于桌面版配置。</p>
       </aside>
 
       <main>
         <div class="content-toolbar">
-          <button type="button" class="refresh" id="refresh">刷新</button>
+          <button type="button" class="primary refresh" id="refresh">刷新 Refresh</button>
         </div>
+      <section class="activation-banner" id="activation-banner" aria-live="polite" hidden>
+        <div><strong>后续动作</strong><p id="activation-message">扩展状态已改变。</p></div>
+        <div class="item-actions"><button type="button" class="primary" id="activation-refresh">刷新</button><button type="button" class="secondary" id="restart-runtime">Restart DeepSeek Harness</button></div>
+      </section>
       <section id="plugins" class="panel active" role="tabpanel" aria-labelledby="plugins-tab">
         <div class="panel-head">
           <div><h2 id="plugin-heading">插件</h2></div>
@@ -120,6 +125,44 @@
           <button type="button" class="secondary" id="open-skill-root">打开用户技能目录</button>
         </div>
         <div class="list" id="skill-list" aria-live="polite"></div>
+      </section>
+
+      <section id="presets" class="panel" role="tabpanel" aria-labelledby="presets-tab" hidden>
+        <div class="panel-head">
+          <div><h2>Desktop Preset</h2></div>
+          <p>导出或恢复允许的插件、设置、技能与任务模板。Preset 不包含 Secret，也不会静默安装。</p>
+        </div>
+        <div class="preset-trust-note">完整性校验只能证明文件未在传输中损坏，不代表发布者身份可信。导入前请逐项审阅。</div>
+        <div class="skill-actions">
+          <button type="button" class="secondary" id="export-preset">导出当前环境</button>
+          <button type="button" class="primary" id="select-preset">选择 .dshpreset</button>
+        </div>
+        <section class="migration-card">
+          <div><h3>Web Profile → Desktop Profile</h3><p>先预览旧 Web Profile 的插件，选择要迁移的项目；缺失、不兼容和 Desktop 管理项不会被静默导入。</p></div>
+          <button type="button" class="secondary" id="preview-migration">查看迁移内容</button>
+        </section>
+        <section class="preset-plan" id="migration-plan" hidden>
+          <div class="preset-summary"><div><span class="meta">MIGRATION PREVIEW</span><strong>选择迁移项</strong></div><label class="risk-check"><input type="checkbox" id="migration-allow-unknown">允许迁移未声明兼容范围的插件</label></div>
+          <div class="list preset-list" id="migration-items"></div>
+          <div class="preset-actions"><button type="button" class="primary" id="apply-migration">迁移所选插件</button></div>
+        </section>
+        <section class="preset-plan" id="preset-plan" hidden>
+          <div class="preset-summary">
+            <div><span class="meta">MANIFEST</span><strong id="preset-name">--</strong><p id="preset-description"></p></div>
+            <span class="badge unknown" id="preset-trust">未信任</span>
+          </div>
+          <div class="preset-facts" id="preset-facts"></div>
+          <h3>插件计划</h3>
+          <div class="list preset-list" id="preset-packages"></div>
+          <h3>技能与配置</h3>
+          <div class="list preset-list" id="preset-config"></div>
+          <label class="risk-check preset-confirm"><input type="checkbox" id="preset-confirm">我已查看 Manifest、requiredSecrets、冲突和信任摘要，并确认导入</label>
+          <div class="preset-actions"><button type="button" class="primary" id="import-preset">确认并导入</button></div>
+        </section>
+        <section class="preset-progress" id="preset-progress" aria-live="polite" hidden>
+          <span class="meta">IMPORT PROGRESS</span>
+          <ol id="preset-progress-steps"></ol>
+        </section>
       </section>
       </main>
     </div>

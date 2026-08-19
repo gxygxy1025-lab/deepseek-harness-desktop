@@ -6,6 +6,34 @@
 
 English: No changes yet.
 
+## 2.5.0 - 2026-08-19
+
+中文：
+
+- 新增 DSH Runtime Provider Adapter v1、直接 import 边界、上游耦合审计、Known Good 证据、兼容补丁注册表和只生成报告的 Candidate Lite 工作流，稳定版继续精确锁定已验证 DSH，不追随 latest。
+- PluginManager 支持多包精确预取和单快照离线事务，完整验证安装身份、SHA-512、bundle 与兼容性；任一包或 Runtime 健康检查失败都会恢复同一 manifest、lockfile 和旧 Runtime。
+- Extension Dock 新增安全的 `.dshpreset` v1 导出、预览与确认导入，覆盖插件、允许设置、Skills 和任务模板；压缩包、路径、脚本、Secret、版本与完整性边界在主进程校验，并提供插件与可归属配置一并回滚的 Web Profile 到 Desktop Profile 选择性迁移。
+- 插件变更后明确显示“刷新”和按需“Restart DeepSeek Harness”，Preset 导入展示准备、预取、停止、应用、启动、提交和回滚进度。
+- `dsh://` 只接受扩展、更新、安全任务/会话 ID 与 Preset 预览路由；`.dshpreset` 文件关联只打开预览，不静默安装，也不把文件路径交给 Renderer。
+- Desktop Contract 1.1 增加结构化通知实现：分类、ID、文本与 Deep Link 均受验证，并提供同 ID 去重、分类间隔、前台抑制和白名单点击路由。
+- 彻底绕过覆盖更新中的已安装卸载器：安装器在无进程、无文件锁后原子迁移所有具有精确产品锚点的旧安装，并清除精确产品注册项；版本号和 v3 标记不再作为信任信号，因此旧版、带标记的 2.5.0 中间构建和目录已删但卸载项残留的情况都不会再次调用旧卸载器，用户数据保持不变。
+- 更新窗口新增“前往 GitHub 下载”“加入用户群”“稍后更新”三条清晰路径；GitHub Releases 保持唯一默认下载源，下载较慢时可通过 QQ 用户群获取同步安装包，不默认宣传或启用第三方镜像。
+- 设置窗口支持拖动、八方向边缘/角落缩放、最小尺寸、响应式内容滚动和跨重开位置/尺寸恢复，并在窗口尺寸与 DPI 变化时自动约束到可见区域。
+- 新增独立 `dsh-particle-theme` 全页粒子主题，将粒子鲸鱼延伸到主界面；输入聚焦、对话框、减少动态效果和后台页面会自动降低或停止密度、透明度与速度，并提供开关和性能自适应扩展接口。
+
+English:
+
+- Added DSH Runtime Provider Adapter v1, a direct-import boundary, upstream coupling audit, Known Good evidence, compatibility patch registry, and report-only Candidate Lite workflow. Stable remains pinned to the verified DSH graph instead of following latest.
+- PluginManager now prepares exact multi-package candidates and applies one-snapshot offline transactions with installed identity, SHA-512, bundle, and compatibility verification. Any package or Runtime health failure restores the same manifest, lockfile, and previous Runtime.
+- Extension Dock adds secure `.dshpreset` v1 export, preview, and confirmed import for plugins, allowlisted settings, Skills, and task templates. Archive, path, script, Secret, version, and integrity boundaries stay in the main process, alongside selective Web-to-Desktop Profile migration that rolls attributable configuration back with packages.
+- Extension mutations now present explicit Refresh and conditional Restart DeepSeek Harness actions. Preset imports expose preparation, prefetch, stop, apply, start, commit, and rollback progress.
+- `dsh://` accepts only extensions, updates, safe task/session identifiers, and Preset preview. The `.dshpreset` association opens review only, never installs silently, and never gives the file path to a renderer.
+- Desktop Contract 1.1 adds structured notifications with validated category, ID, text, and deep link plus ID deduplication, category intervals, foreground suppression, and allowlisted click routing.
+- In-place updates now bypass every installed uninstaller. After process and file-lock checks, the installer atomically stages every root with the exact product anchors and removes only the exact product registry entries. Version numbers and the v3 marker are never trusted, so legacy builds, marker-bearing 2.5.0 intermediates, and stale uninstall registrations cannot invoke an old uninstaller again; user data remains unchanged.
+- The update surface now offers clear **Download from GitHub**, **Join user group**, and **Update later** paths. GitHub Releases remains the only default download source; users with a slow route can obtain the synchronized installer from the QQ group, without built-in promotion or activation of third-party mirrors.
+- The settings window now supports dragging, eight edge/corner resize handles, minimum dimensions, responsive scrolling, and persisted bounds across reopen. It clamps itself to the visible viewport when the app window or DPI changes.
+- Added the independent `dsh-particle-theme` full-page particle theme, extending the particle whale into the main interface. Focused editing, dialogs, reduced-motion preference, and hidden pages automatically reduce or stop density, opacity, and speed, with a settings toggle and an adaptive extension seam.
+
 ## 2.4.0 - 2026-08-18
 
 中文：

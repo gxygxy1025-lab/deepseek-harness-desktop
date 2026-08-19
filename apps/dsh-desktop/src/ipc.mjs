@@ -4,9 +4,10 @@ import {
   DesktopContractError,
   desktopContractForSurface,
 } from './desktop-contract.mjs'
+import { normalizeDesktopNotification } from './notifications.mjs'
 
 const ACTIONS = new Set(['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'exit'])
-const HELP_ACTIONS = new Set(['community', 'feedback', 'project', 'updates'])
+const HELP_ACTIONS = new Set(['community', 'downloads', 'feedback', 'project', 'updates'])
 const TOOL_ACTIONS = new Set(['extensions'])
 const WINDOW_CHROME_THEMES = new Set(['light', 'dark'])
 const UPDATE_PHASES = new Set(['idle', 'checking', 'downloading', 'installing', 'current', 'ready', 'unavailable', 'error'])
@@ -40,11 +41,7 @@ export function normalizeToolAction(value) {
 }
 
 export function normalizeNotification(value) {
-  if (typeof value !== 'object' || value === null) throw new TypeError('invalid desktop notification')
-  const title = typeof value.title === 'string' ? value.title.trim().slice(0, 160) : ''
-  const body = typeof value.body === 'string' ? value.body.trim().slice(0, 1_000) : ''
-  if (title === '' || body === '') throw new TypeError('invalid desktop notification')
-  return { title, body }
+  return normalizeDesktopNotification(value)
 }
 
 export function publicRecoveryStatus(status) {
@@ -101,6 +98,7 @@ export function registerDesktopIpc({
   ipcMain,
   surfaceRegistry = ipcMain.surfaceRegistry,
   controller,
+  runtimeProvider = controller,
   getWindow,
   metadata,
   version,
@@ -114,8 +112,11 @@ export function registerDesktopIpc({
   setWindowChromeTheme,
   claimStarPrompt,
   getUpdateController,
+  getSettingsWindowBounds = async () => undefined,
+  setSettingsWindowBounds = async () => undefined,
   listSkills = async () => ({ skills: [] }),
   showNotification = async () => false,
+  notificationService,
 }) {
   if (typeof surfaceRegistry?.assert !== 'function' || typeof surfaceRegistry?.surfaceOf !== 'function') {
     throw new TypeError('desktop IPC requires a desktop surface registry')
@@ -132,6 +133,8 @@ export function registerDesktopIpc({
     'desktop:update-status',
     'desktop:update-check',
     'desktop:update-install',
+    'desktop:settings-window-bounds-get',
+    'desktop:settings-window-bounds-set',
     'desktop:skills-list',
     'desktop:notification-show',
   ]
@@ -153,7 +156,10 @@ export function registerDesktopIpc({
   const extensions = DESKTOP_SURFACES.EXTENSIONS
   const registered = [main, extensions, DESKTOP_SURFACES.COMMUNITY]
 
-  handle('desktop:contract', registered, (_event, surface) => desktopContractForSurface(surface))
+  handle('desktop:contract', registered, (_event, surface) => desktopContractForSurface(
+    surface,
+    typeof runtimeProvider?.probe === 'function' ? { runtimeProvider } : undefined,
+  ))
   handle('desktop:info', [main, extensions], () => ({
     appId: metadata.appId,
     productName: metadata.productName,
@@ -197,8 +203,11 @@ export function registerDesktopIpc({
   handle('desktop:update-status', main, () => publicUpdateStatus(getUpdateController?.()?.getStatus?.()))
   handle('desktop:update-check', main, () => getUpdateController?.()?.check?.({ manual: true }))
   handle('desktop:update-install', main, () => getUpdateController?.()?.install?.())
+  handle('desktop:settings-window-bounds-get', main, () => getSettingsWindowBounds())
+  handle('desktop:settings-window-bounds-set', main, (_event, _surface, bounds) => setSettingsWindowBounds(bounds))
   handle('desktop:skills-list', main, () => listSkills())
   handle('desktop:notification-show', [main, extensions], (_event, _surface, value) => {
+    if (typeof notificationService?.show === 'function') return notificationService.show(value)
     return showNotification(normalizeNotification(value))
   })
   const publishStatus = async (status = controller.status) => {

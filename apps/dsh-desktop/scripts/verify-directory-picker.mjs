@@ -55,7 +55,7 @@ try {
   }
   await page.waitForSelector('#dsh-desktop-window-chrome')
 
-  const addWorkspace = page.getByRole('button', { name: /add workspace|添加工作区/u })
+  const addWorkspace = page.getByRole('button', { name: /add workspace|添加工作区/iu })
   try {
     await addWorkspace.waitFor({ state: 'visible', timeout: runtimeReadyTimeoutMs })
   } catch (error) {
@@ -83,17 +83,17 @@ try {
   assert.equal(await addWorkspace.count(), 1, 'add workspace button not found')
   await addWorkspace.dispatchEvent('click')
 
-  const dialog = page.getByRole('dialog').filter({ hasText: /folder|directory|文件夹|目录/u })
+  const dialog = page.getByRole('dialog').filter({ hasText: /folder|directory|文件夹|目录/iu })
   await dialog.waitFor({ timeout: 10_000 })
   const dialogText = await dialog.textContent()
-  assert.match(dialogText ?? '', /folder|directory|文件夹|目录/u)
-  assert.doesNotMatch(dialogText ?? '', /win32 folder dialog worker|directory picker failed/u)
+  assert.match(dialogText ?? '', /folder|directory|文件夹|目录/iu)
+  assert.doesNotMatch(dialogText ?? '', /win32 folder dialog worker|directory picker failed/iu)
   assert.equal(
-    await dialog.getByRole('button', { name: /new folder|新建文件夹/u }).count(),
+    await dialog.getByRole('button', { name: /new folder|新建文件夹/iu }).count(),
     1,
     'browse picker should expose folder creation',
   )
-  await dialog.getByRole('button', { name: /edit path|编辑路径/u }).click()
+  await dialog.getByRole('button', { name: /edit path|编辑路径/iu }).click()
   assert.equal(await dialog.locator('input').count(), 1, 'browse picker should expose a path editor')
   console.log('verified official in-app directory browser without the native Win32 worker')
 } finally {

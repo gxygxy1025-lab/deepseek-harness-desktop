@@ -27,11 +27,11 @@ test('stripHeader accepts a Windows CRLF separator', () => {
   assert.equal(stripHeader(rendered, file, sourceRel), source)
 })
 
-test('copies cover the settings trio for five consumers plus host helpers', () => {
+test('copies cover the settings trio for six consumers plus host helpers', () => {
   const entries = copyEntries()
-  assert.equal(entries.length, 19)
+  assert.equal(entries.length, 22)
   const clientTrio = entries.filter(entry => /[\\/]src[\\/]client[\\/]/.test(entry.target))
-  assert.equal(clientTrio.length, 15)
+  assert.equal(clientTrio.length, 18)
   const hostCopies = entries.filter(entry => /[\\/]src[\\/]host[\\/]/.test(entry.target) || /[\\/]src[\\/]dsh-home\.ts$/.test(entry.target))
   assert.equal(hostCopies.length, 4)
 })

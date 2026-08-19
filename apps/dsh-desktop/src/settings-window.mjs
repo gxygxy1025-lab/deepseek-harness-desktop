@@ -1,0 +1,259 @@
+import {
+  SETTINGS_WINDOW_MARGIN,
+  SETTINGS_WINDOW_MIN_HEIGHT,
+  SETTINGS_WINDOW_MIN_WIDTH,
+} from './settings-window-state.mjs'
+
+const SETTINGS_DIALOG_CLASS = 'dsh-desktop-settings-window'
+const SETTINGS_LAYER_CLASS = 'dsh-desktop-settings-layer'
+
+export const SETTINGS_WINDOW_CSS = `
+.${SETTINGS_LAYER_CLASS} {
+  align-items: initial !important;
+  justify-content: initial !important;
+}
+
+.${SETTINGS_DIALOG_CLASS} {
+  box-sizing: border-box !important;
+  position: absolute !important;
+  left: var(--dsh-settings-window-x) !important;
+  top: var(--dsh-settings-window-y) !important;
+  width: var(--dsh-settings-window-width) !important;
+  min-width: min(${SETTINGS_WINDOW_MIN_WIDTH}px, calc(100% - ${SETTINGS_WINDOW_MARGIN * 2}px)) !important;
+  max-width: calc(100% - ${SETTINGS_WINDOW_MARGIN * 2}px) !important;
+  height: var(--dsh-settings-window-height) !important;
+  min-height: min(${SETTINGS_WINDOW_MIN_HEIGHT}px, calc(100% - ${SETTINGS_WINDOW_MARGIN * 2}px)) !important;
+  max-height: calc(100% - ${SETTINGS_WINDOW_MARGIN * 2}px) !important;
+  margin: 0 !important;
+  container-type: inline-size;
+}
+
+.${SETTINGS_DIALOG_CLASS} > nav {
+  box-sizing: border-box;
+  flex: 0 0 clamp(132px, 24%, 188px) !important;
+  min-width: 0 !important;
+  max-width: 188px !important;
+  overflow: auto !important;
+}
+
+.${SETTINGS_DIALOG_CLASS} > nav + div {
+  box-sizing: border-box;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: auto !important;
+}
+
+.${SETTINGS_DIALOG_CLASS} input,
+.${SETTINGS_DIALOG_CLASS} select,
+.${SETTINGS_DIALOG_CLASS} textarea,
+.${SETTINGS_DIALOG_CLASS} button {
+  max-width: 100%;
+}
+
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-drag-handle="true"] {
+  cursor: move;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-drag-handle="true"]:active { cursor: grabbing; }
+
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize] {
+  position: absolute;
+  z-index: 2147483647;
+  display: block;
+  pointer-events: auto !important;
+  touch-action: none;
+}
+
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="n"],
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="s"] {
+  right: 10px;
+  left: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="n"] { top: 2px; }
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="s"] { bottom: 2px; }
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="e"],
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="w"] {
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="e"] { right: 2px; }
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="w"] { left: 2px; }
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="ne"],
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="nw"],
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="se"],
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="sw"] {
+  width: 14px;
+  height: 14px;
+}
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="ne"] { top: 2px; right: 2px; cursor: nesw-resize; }
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="nw"] { top: 2px; left: 2px; cursor: nwse-resize; }
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="se"] { right: 2px; bottom: 2px; cursor: nwse-resize; }
+.${SETTINGS_DIALOG_CLASS} [data-dsh-settings-resize="sw"] { bottom: 2px; left: 2px; cursor: nesw-resize; }
+
+@container (max-width: 620px) {
+  .${SETTINGS_DIALOG_CLASS} > nav {
+    flex-basis: 132px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .${SETTINGS_DIALOG_CLASS} { transition: none !important; }
+}
+`
+
+export function createSettingsWindowScript() {
+  const config = JSON.stringify({
+    dialogClass: SETTINGS_DIALOG_CLASS,
+    layerClass: SETTINGS_LAYER_CLASS,
+    margin: SETTINGS_WINDOW_MARGIN,
+    minWidth: SETTINGS_WINDOW_MIN_WIDTH,
+    minHeight: SETTINGS_WINDOW_MIN_HEIGHT,
+  })
+  return `(() => {
+    const config = ${config};
+    const api = window.dshDesktop;
+    if (typeof api?.getSettingsWindowBounds !== 'function' || typeof api?.setSettingsWindowBounds !== 'function') return false;
+    const controllerKey = '__dshDesktopSettingsWindowController';
+    window[controllerKey]?.dispose?.();
+    let active;
+    let persistedBounds;
+    let gesture;
+
+    const normalize = (input = {}, layer) => {
+      const layerRect = layer.getBoundingClientRect();
+      const viewportWidth = Math.max(1, Math.round(layerRect.width || innerWidth));
+      const viewportHeight = Math.max(1, Math.round(layerRect.height || innerHeight));
+      const maximumWidth = Math.max(1, viewportWidth - config.margin * 2);
+      const maximumHeight = Math.max(1, viewportHeight - config.margin * 2);
+      const minimumWidth = Math.min(config.minWidth, maximumWidth);
+      const minimumHeight = Math.min(config.minHeight, maximumHeight);
+      const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+      const width = clamp(Number.isFinite(input.width) ? Math.round(input.width) : 800, minimumWidth, maximumWidth);
+      const height = clamp(Number.isFinite(input.height) ? Math.round(input.height) : 680, minimumHeight, maximumHeight);
+      const defaultX = Math.round((viewportWidth - width) / 2);
+      const defaultY = Math.round((viewportHeight - height) / 2);
+      const x = clamp(Number.isFinite(input.x) ? Math.round(input.x) : defaultX, config.margin, Math.max(config.margin, viewportWidth - config.margin - width));
+      const y = clamp(Number.isFinite(input.y) ? Math.round(input.y) : defaultY, config.margin, Math.max(config.margin, viewportHeight - config.margin - height));
+      return { x, y, width, height };
+    };
+    const applyBounds = (input) => {
+      if (!active?.dialog?.isConnected) return;
+      const bounds = normalize(input, active.layer);
+      active.bounds = bounds;
+      persistedBounds = bounds;
+      active.dialog.style.setProperty('--dsh-settings-window-x', bounds.x + 'px');
+      active.dialog.style.setProperty('--dsh-settings-window-y', bounds.y + 'px');
+      active.dialog.style.setProperty('--dsh-settings-window-width', bounds.width + 'px');
+      active.dialog.style.setProperty('--dsh-settings-window-height', bounds.height + 'px');
+    };
+    const saveBounds = () => {
+      if (!active?.bounds) return;
+      void api.setSettingsWindowBounds(active.bounds).catch(() => {});
+    };
+    const stopGesture = () => {
+      if (!gesture) return;
+      gesture = undefined;
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', stopGesture, true);
+      window.removeEventListener('pointercancel', stopGesture, true);
+      saveBounds();
+    };
+    const onPointerMove = (event) => {
+      if (!gesture || !active) return;
+      const dx = event.clientX - gesture.clientX;
+      const dy = event.clientY - gesture.clientY;
+      const next = { ...gesture.bounds };
+      if (gesture.edge === 'move') {
+        next.x += dx;
+        next.y += dy;
+      } else {
+        if (gesture.edge.includes('e')) next.width += dx;
+        if (gesture.edge.includes('s')) next.height += dy;
+        if (gesture.edge.includes('w')) { next.x += dx; next.width -= dx; }
+        if (gesture.edge.includes('n')) { next.y += dy; next.height -= dy; }
+      }
+      applyBounds(next);
+      event.preventDefault();
+    };
+    const startGesture = (event, edge) => {
+      if (event.button !== 0 || !active?.bounds) return;
+      gesture = { edge, clientX: event.clientX, clientY: event.clientY, bounds: { ...active.bounds } };
+      window.addEventListener('pointermove', onPointerMove, true);
+      window.addEventListener('pointerup', stopGesture, true);
+      window.addEventListener('pointercancel', stopGesture, true);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const attach = (dialog) => {
+      if (dialog.classList.contains(config.dialogClass)) return;
+      const settingsHeaderSlot = dialog.querySelector('[data-slot="settings.header"]');
+      const dragHandle = settingsHeaderSlot?.parentElement;
+      const layer = dialog.parentElement;
+      if (!dragHandle || !layer) return;
+      const box = dialog.getBoundingClientRect();
+      const layerBox = layer.getBoundingClientRect();
+      dialog.classList.add(config.dialogClass);
+      layer.classList.add(config.layerClass);
+      dragHandle.dataset.dshSettingsDragHandle = 'true';
+      dragHandle.title = '拖动设置窗口 / Drag settings window';
+      dragHandle.addEventListener('pointerdown', (event) => startGesture(event, 'move'));
+      for (const edge of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
+        const handle = document.createElement('span');
+        handle.dataset.dshSettingsResize = edge;
+        handle.setAttribute('aria-hidden', 'true');
+        handle.addEventListener('pointerdown', (event) => startGesture(event, edge));
+        dialog.append(handle);
+      }
+      active = { dialog, layer, bounds: undefined };
+      applyBounds(persistedBounds ?? {
+        x: box.x - layerBox.x,
+        y: box.y - layerBox.y,
+        width: box.width,
+        height: box.height,
+      });
+    };
+    const scan = () => {
+      if (active && !active.dialog.isConnected) active = undefined;
+      document.querySelectorAll('[role="dialog"]').forEach(attach);
+    };
+    const observer = new MutationObserver(scan);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    const onResize = () => { if (active?.bounds) applyBounds(active.bounds); };
+    window.addEventListener('resize', onResize);
+    void api.getSettingsWindowBounds().then((bounds) => {
+      if (bounds) persistedBounds = bounds;
+      if (active && persistedBounds) applyBounds(persistedBounds);
+    }).catch(() => {});
+    scan();
+    window[controllerKey] = {
+      dispose: () => {
+        stopGesture();
+        observer.disconnect();
+        window.removeEventListener('resize', onResize);
+      },
+    };
+    return true;
+  })()`
+}
+
+export async function applySettingsWindow({ webContents }) {
+  if (!webContents || webContents.isDestroyed?.()) return false
+  await webContents.insertCSS(SETTINGS_WINDOW_CSS, { cssOrigin: 'author' })
+  return webContents.executeJavaScript(createSettingsWindowScript(), true)
+}
+
+export function installSettingsWindow({ browserWindow, onError = () => {} }) {
+  const { webContents } = browserWindow
+  const apply = () => {
+    void applySettingsWindow({ webContents }).catch(onError)
+  }
+  webContents.on('did-finish-load', apply)
+  return () => webContents.removeListener('did-finish-load', apply)
+}

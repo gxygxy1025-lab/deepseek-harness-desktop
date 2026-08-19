@@ -10,6 +10,8 @@ test('main preload exposes product actions without extension mutation channels',
   assert.doesNotMatch(source, /require\(['"]\.\/preload-common\.cjs['"]\)/u)
   assert.match(source, /desktop:update-install/u)
   assert.match(source, /desktop:skills-list/u)
+  assert.match(source, /desktop:settings-window-bounds-get/u)
+  assert.match(source, /desktop:settings-window-bounds-set/u)
   assert.doesNotMatch(source, /extensions:plugin-(?:install|update|remove|enable)/u)
   assert.doesNotMatch(source, /extensions:skill-import/u)
   assert.doesNotMatch(source, /extensions:qqbot-/u)
