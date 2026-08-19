@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "derived": true,
+  "authority": {
+    "desktopManifest": "apps/dsh-desktop/package.json",
+    "rootManifest": "package.json",
+    "lockfile": "pnpm-lock.yaml",
+    "runtimePackageManifest": "apps/dsh-desktop/node_modules/@deepseek-ai/dsh/package.json"
+  },
+  "desktop": {
+    "version": "2.5.0",
+    "rootVersion": "2.5.0",
+    "nodeEngine": "^22.19.0 || >=24.0.0",
+    "packageManager": "pnpm@11.22.0"
+  },
+  "runtime": {
+    "packageName": "@deepseek-ai/dsh",
+    "version": "0.1.0-rc.6",
+    "integrity": "sha512-brpZfED7ieRa2PQ5tUxMhHrM1pb2CmKFVM/f6yMULBDMicahk+Z2OsHgTwTDnoiZm23Ftu9rQz0NN4pflaoJcg==",
+    "bin": {
+      "dsh": "lib/bin.js"
+    },
+    "exports": null,
+    "peerDependencies": {}
+  },
+  "lockfile": {
+    "sha256": "a11a9d38bf8e0df4cbffca85a337de194a3dac0aa835fb50dc445e09720f923a"
+  },
+  "provider": {
+    "providerId": "dsh-cli-provider-v1",
+    "supportStatus": "known-good",
+    "upstreamVersion": "0.1.0-rc.6",
+    "capabilities": [
+      {
+        "id": "runtime.lifecycle",
+        "status": "available"
+      },
+      {
+        "id": "profile.paths",
+        "status": "available"
+      },
+      {
+        "id": "workspace.register",
+        "status": "unsupported"
+      },
+      {
+        "id": "session.create",
+        "status": "unsupported"
+      },
+      {
+        "id": "session.observe",
+        "status": "unsupported"
+      },
+      {
+        "id": "host-service.register",
+        "status": "unsupported"
+      }
+    ]
+  },
+  "compatPatches": {
+    "registry": "packages/dsh-desktop-compat/src/patch-registry.ts",
+    "sha256": "e99e7dbc5c8843fde40e9dd961b2d72ea82cb82279a1a61aa64d8786689a5bc6",
+    "ids": [
+      "queued-turn-continuation",
+      "cancellation-presentation",
+      "desktop-skin-profile-isolation"
+    ]
+  },
+  "packagedRuntimeIdentity": {
+    "packageRoot": "resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh",
+    "cli": "resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh/lib/bin.js",
+    "profileName": "desktop",
+    "executionMode": "electron-run-as-node",
+    "requiredFiles": [
+      "package.json",
+      "lib/bin.js"
+    ]
+  }
+}

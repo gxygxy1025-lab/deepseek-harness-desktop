@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
-import { createCompatScope } from '../src/client/compat-settings-scope.ts'
+import { createCompatScope, isLoopbackHostname } from '../src/client/compat-settings-scope.ts'
 import { WEB_UI_SETTINGS_BRIDGE_PREFIX } from '../src/protocol.ts'
 
 // The rc.6 runtime client bundle registers itself through the GUI module
@@ -169,5 +169,12 @@ describe('createCompatScope', () => {
     const scope = createCompatScope<{ enabled: boolean }>({ namespace: 'task-board', primary: primary.scope, fetchFn })
     await vi.waitFor(() => { expect(scope.getSnapshot().status).toBe('unavailable') })
     expect(scope.getSnapshot().status).toBe('unavailable')
+  })
+})
+
+describe('isLoopbackHostname', () => {
+  it('accepts only local browser hostnames', () => {
+    expect(['localhost', '127.0.0.1', '127.23.4.5', '::1', '[::1]'].every(isLoopbackHostname)).toBe(true)
+    expect(['example.com', '192.168.1.4', 'localhost.example.com', ''].some(isLoopbackHostname)).toBe(false)
   })
 })

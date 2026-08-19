@@ -149,6 +149,25 @@ export function apply(ctx: ClientContext): void {
           list: sessions.list,
           open: id => sessions.open(id as SessionId),
         },
+        onExecutionSettled: event => {
+          if (event.outcome === 'cancelled') return
+          const desktop = (window as typeof window & {
+            dshDesktop?: {
+              showNotification?: (value: unknown) => Promise<unknown>
+            }
+          }).dshDesktop
+          if (typeof desktop?.showNotification !== 'function') return
+          const failed = event.outcome === 'failed'
+          return desktop.showNotification({
+            category: 'task',
+            id: `task:${event.executionId}:${event.outcome}`,
+            title: failed ? 'Task failed' : 'Task completed',
+            body: failed
+              ? `${event.title}: ${event.error ?? 'The agent turn failed.'}`
+              : event.title,
+            deepLink: `dsh://task/${event.taskId}`,
+          }).then(() => undefined)
+        },
       })
       await controller.start()
       if (generation !== mountGeneration || !desiredEnabled) {
@@ -176,6 +195,23 @@ export function apply(ctx: ClientContext): void {
       try {
         disposers.push(mountSidebarEntry(controller))
         disposers.push(mountBoard(controller))
+        const desktop = (window as typeof window & {
+          dshDesktop?: {
+            onDeepLink?: (listener: (link: unknown) => void) => () => void
+          }
+        }).dshDesktop
+        if (typeof desktop?.onDeepLink === 'function') {
+          disposers.push(desktop.onDeepLink((raw) => {
+            if (typeof raw !== 'object' || raw === null) return
+            const link = raw as { kind?: unknown; id?: unknown }
+            if (link.kind === 'task' && typeof link.id === 'string') {
+              controller.openBoard()
+              controller.openTask(link.id)
+            } else if (link.kind === 'session' && typeof link.id === 'string') {
+              sessions.open(link.id as SessionId)
+            }
+          }))
+        }
       } catch (error) {
         // DOM failures degrade the board, never the GUI.
         console.error('[dsh-task-board] mount failed:', error)

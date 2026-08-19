@@ -9,6 +9,7 @@ const CHANNELS = [
   'extensions:list',
   'extensions:plugin-check',
   'extensions:plugin-install',
+  'extensions:plugin-install-batch',
   'extensions:plugin-update',
   'extensions:plugin-remove',
   'extensions:plugin-enable',
@@ -24,6 +25,12 @@ const CHANNELS = [
   'extensions:qqbot-bind',
   'extensions:qqbot-cancel',
   'extensions:qqbot-unbind',
+  'extensions:preset-export',
+  'extensions:preset-select',
+  'extensions:preset-import',
+  'extensions:runtime-restart',
+  'extensions:migration-preview',
+  'extensions:migration-apply',
 ]
 
 export function registerExtensionIpc({
@@ -40,6 +47,9 @@ export function registerExtensionIpc({
   agentsHome,
   qqBotBinding,
   pluginRecovery,
+  presetService,
+  migrationService,
+  notificationService,
 }) {
   if (typeof surfaceRegistry?.assert !== 'function') {
     throw new TypeError('extension IPC requires a desktop surface registry')
@@ -50,6 +60,16 @@ export function registerExtensionIpc({
   let acceptingPluginMutations = true
   let pendingPluginMutations = 0
   let disposed = false
+
+  const emitProgress = (operation, phase, details = {}) => {
+    const window = getWindow()
+    if (!window || window.isDestroyed?.()) return
+    window.webContents.send('extensions:operation-progress', {
+      operation,
+      phase,
+      ...details,
+    })
+  }
 
   const scan = async () => {
     const roots = defaultSkillRoots({ projectRoot, dshHome, agentsHome })
@@ -177,6 +197,137 @@ export function registerExtensionIpc({
     })
   }
 
+  const installPluginBatch = (payload) => {
+    if (
+      payload === null
+      || typeof payload !== 'object'
+      || !Array.isArray(payload.specs)
+      || payload.specs.length === 0
+      || payload.specs.some((spec) => typeof spec !== 'string')
+      || typeof payload.allowUnknown !== 'boolean'
+    ) {
+      throw new TypeError('invalid plugin batch install request')
+    }
+    return enqueuePluginMutation(async () => {
+      emitProgress('plugin-batch', 'preparing', { total: payload.specs.length })
+      const prepared = await pluginManager.prepareMany(payload.specs, { allowUnknown: payload.allowUnknown })
+      emitProgress('plugin-batch', 'prefetched', { total: prepared.items.length })
+      emitProgress('plugin-batch', 'stopping')
+      await controller.stop()
+      let transaction
+      try {
+        emitProgress('plugin-batch', 'applying')
+        transaction = await pluginManager.applyPreparedBatch(prepared)
+        await ensureProfile()
+        emitProgress('plugin-batch', 'starting')
+        await controller.start()
+        transaction.commit()
+        emitProgress('plugin-batch', 'committed')
+        return transaction.result
+      } catch (error) {
+        emitProgress('plugin-batch', 'rolling-back')
+        try {
+          if (transaction) await transaction.rollback()
+          await ensureProfile()
+          await controller.start()
+          emitProgress('plugin-batch', 'restored')
+        } catch (recoveryError) {
+          throw new Error(
+            `plugin batch failed and the previous runtime could not be restored: ${String(error?.message ?? error).slice(0, 1_000)}; ${String(recoveryError?.message ?? recoveryError).slice(0, 1_000)}`,
+            { cause: new AggregateError([error, recoveryError]) },
+          )
+        }
+        throw error
+      }
+    })
+  }
+
+  const importPreset = (request) => {
+    if (
+      request === null
+      || typeof request !== 'object'
+      || typeof request.id !== 'string'
+      || request.confirmed !== true
+      || request.decisions === null
+      || typeof request.decisions !== 'object'
+      || Array.isArray(request.decisions)
+    ) {
+      throw new TypeError('invalid confirmed preset import request')
+    }
+    if (presetService === undefined) throw new Error('preset service is unavailable')
+    return enqueuePluginMutation(async () => {
+      const record = presetService.resolvePlan(request.id)
+      const specs = presetService.packageSpecs(record, request.decisions.packages)
+      emitProgress('preset-import', 'preparing', { total: specs.length })
+      const prepared = specs.length === 0
+        ? undefined
+        : await pluginManager.prepareMany(specs, { allowUnknown: false })
+      if (prepared) presetService.verifyPreparedPackages(record, prepared)
+      emitProgress('preset-import', 'prefetched', { total: prepared?.items.length ?? 0 })
+      const configTransaction = await presetService.stageConfig(record, {
+        settings: request.decisions.settings,
+        taskTemplates: request.decisions.taskTemplates,
+        skills: request.decisions.skills,
+      })
+      let packageTransaction
+      let stopped = false
+      try {
+        emitProgress('preset-import', 'stopping')
+        await controller.stop()
+        stopped = true
+        emitProgress('preset-import', 'applying')
+        if (prepared) packageTransaction = await pluginManager.applyPreparedBatch(prepared)
+        await configTransaction.apply()
+        await ensureProfile()
+        emitProgress('preset-import', 'starting')
+        await controller.start()
+        await configTransaction.commit()
+        packageTransaction?.commit()
+        presetService.forgetPlan(request.id)
+        emitProgress('preset-import', 'committed')
+        void notificationService?.show?.({
+          category: 'preset',
+          id: `preset:${record.sha256.slice(0, 24)}:complete`,
+          title: 'Preset import complete',
+          body: `${record.parsed.manifest.name} is ready in the Desktop profile.`,
+          deepLink: 'dsh://extensions',
+        }).catch(() => {})
+        return Object.freeze({
+          preset: Object.freeze({ name: record.parsed.manifest.name, sha256: record.sha256 }),
+          plugins: packageTransaction?.result.plugins ?? Object.freeze([]),
+          activation: Object.freeze({ mode: 'restart', reason: 'preset-environment-changed' }),
+          restartRequired: true,
+        })
+      } catch (error) {
+        emitProgress('preset-import', 'rolling-back')
+        const recoveryErrors = []
+        try { await configTransaction.rollback() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+        if (packageTransaction) {
+          try { await packageTransaction.rollback() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+        }
+        if (stopped) {
+          try { await ensureProfile() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+          try { await controller.start() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+        }
+        if (recoveryErrors.length > 0) {
+          throw new Error(
+            `preset import failed and the previous environment could not be restored: ${String(error?.message ?? error).slice(0, 1_000)}; ${recoveryErrors.map((item) => String(item?.message ?? item).slice(0, 500)).join('; ')}`,
+            { cause: new AggregateError([error, ...recoveryErrors]) },
+          )
+        }
+        emitProgress('preset-import', 'restored')
+        void notificationService?.show?.({
+          category: 'preset',
+          id: `preset:${record.sha256.slice(0, 24)}:failed`,
+          title: 'Preset import failed',
+          body: 'The previous Desktop environment was restored.',
+          deepLink: 'dsh://preset/preview',
+        }).catch(() => {})
+        throw error
+      }
+    })
+  }
+
   const handleExtension = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
       try {
@@ -194,6 +345,7 @@ export function registerExtensionIpc({
   handleExtension('extensions:list', scan)
   handleExtension('extensions:plugin-check', () => pluginManager.checkUpdates())
   handleExtension('extensions:plugin-install', (_event, request) => installPlugin(request))
+  handleExtension('extensions:plugin-install-batch', (_event, request) => installPluginBatch(request))
   handleExtension('extensions:plugin-update', (_event, request) => {
     if (
       request === null
@@ -272,6 +424,101 @@ export function registerExtensionIpc({
   handleExtension('extensions:qqbot-unbind', () => {
     assertPluginMutationIdle()
     return qqBotBinding.unbind()
+  })
+  handleExtension('extensions:runtime-restart', () => enqueuePluginMutation(async () => {
+    await controller.stop()
+    await ensureProfile()
+    await controller.start()
+    return Object.freeze({ restarted: true })
+  }))
+  handleExtension('extensions:preset-export', async () => {
+    if (presetService === undefined) throw new Error('preset service is unavailable')
+    const result = await dialog.showSaveDialog(getWindow(), {
+      title: '导出 Desktop Preset',
+      defaultPath: `deepseek-harness-${new Date().toISOString().slice(0, 10)}.dshpreset`,
+      filters: [{ name: 'DeepSeek Harness Preset', extensions: ['dshpreset'] }],
+    })
+    if (result.canceled || !result.filePath) return Object.freeze({ canceled: true })
+    const exported = await presetService.exportFile(result.filePath)
+    return Object.freeze({ canceled: false, ...exported })
+  })
+  handleExtension('extensions:preset-select', async () => {
+    if (presetService === undefined) throw new Error('preset service is unavailable')
+    const result = await dialog.showOpenDialog(getWindow(), {
+      title: '选择 Desktop Preset',
+      properties: ['openFile'],
+      filters: [{ name: 'DeepSeek Harness Preset', extensions: ['dshpreset'] }],
+    })
+    if (result.canceled || result.filePaths.length !== 1) return Object.freeze({ canceled: true })
+    return Object.freeze({ canceled: false, plan: await presetService.previewFile(result.filePaths[0]) })
+  })
+  handleExtension('extensions:preset-import', (_event, request) => importPreset(request))
+  handleExtension('extensions:migration-preview', () => {
+    if (migrationService === undefined) throw new Error('web profile migration service is unavailable')
+    return migrationService.preview()
+  })
+  handleExtension('extensions:migration-apply', async (_event, request) => {
+    if (
+      request === null
+      || typeof request !== 'object'
+      || typeof request.id !== 'string'
+      || !Array.isArray(request.names)
+      || typeof request.allowUnknown !== 'boolean'
+    ) {
+      throw new TypeError('invalid web profile migration request')
+    }
+    if (migrationService === undefined) throw new Error('web profile migration service is unavailable')
+    return enqueuePluginMutation(async () => {
+      const selection = migrationService.resolveSelection(request.id, request.names, { allowUnknown: request.allowUnknown })
+      emitProgress('profile-migration', 'preparing', { total: selection.specs.length })
+      const prepared = selection.specs.length === 0
+        ? undefined
+        : await pluginManager.prepareMany(selection.specs, { allowUnknown: request.allowUnknown })
+      emitProgress('profile-migration', 'prefetched', { total: prepared?.items.length ?? 0 })
+      const configTransaction = await migrationService.stageConfig(selection.record, selection.names)
+      let packageTransaction
+      let stopped = false
+      try {
+        emitProgress('profile-migration', 'stopping')
+        await controller.stop()
+        stopped = true
+        emitProgress('profile-migration', 'applying')
+        if (prepared) packageTransaction = await pluginManager.applyPreparedBatch(prepared)
+        await configTransaction.apply()
+        await ensureProfile()
+        emitProgress('profile-migration', 'starting')
+        await controller.start()
+        packageTransaction?.commit()
+        configTransaction.commit()
+        migrationService.forget(request.id)
+        emitProgress('profile-migration', 'committed')
+        return Object.freeze({
+          plugins: packageTransaction?.result.plugins ?? Object.freeze([]),
+          configurationFragments: configTransaction.fragments,
+          activation: Object.freeze({ mode: 'restart', reason: 'web-profile-migrated' }),
+          restartRequired: true,
+        })
+      } catch (error) {
+        emitProgress('profile-migration', 'rolling-back')
+        const recoveryErrors = []
+        try { await configTransaction.rollback() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+        if (packageTransaction) {
+          try { await packageTransaction.rollback() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+        }
+        if (stopped) {
+          try { await ensureProfile() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+          try { await controller.start() } catch (recoveryError) { recoveryErrors.push(recoveryError) }
+        }
+        if (recoveryErrors.length > 0) {
+          throw new Error(
+            `web profile migration failed and rollback was incomplete: ${String(error?.message ?? error).slice(0, 1_000)}; ${recoveryErrors.map((item) => String(item?.message ?? item).slice(0, 500)).join('; ')}`,
+            { cause: new AggregateError([error, ...recoveryErrors]) },
+          )
+        }
+        emitProgress('profile-migration', 'restored')
+        throw error
+      }
+    })
   })
 
   const forwardQqBotEvent = (payload) => {

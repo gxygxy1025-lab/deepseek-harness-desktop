@@ -53,6 +53,7 @@ describe('resolveNamespaceEntry', () => {
     expect(resolveNamespaceEntry('dsh-client-ui-task-board')).toBe('task-board')
     expect(resolveNamespaceEntry('dsh-skins')).toBe('skin-background')
     expect(resolveNamespaceEntry('dsh-ssh')).toBe('dsh-ssh')
+    expect(resolveNamespaceEntry('dsh-particle-theme')).toBe('particle-theme')
   })
 
   it('passes bare family namespaces through', () => {
@@ -75,6 +76,7 @@ describe('composeAllowlist', () => {
     'remote-web-ui',
     'live-stats',
     'pet',
+    'particle-theme',
     'skin-background',
     'web-search-deepseek',
   ]
@@ -83,6 +85,7 @@ describe('composeAllowlist', () => {
     expect(composeAllowlist([], registered)).toEqual([
       'dsh-ssh',
       'live-stats',
+      'particle-theme',
       'pet',
       'remote-web-ui',
       'skin-background',

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   COMMUNITY_QQ_URL,
+  GITHUB_DOWNLOADS_URL,
   GITHUB_FEEDBACK_URL,
   GITHUB_PROJECT_URL,
 } from '../src/community-links.mjs'
@@ -12,6 +13,7 @@ import { installEditContextMenu } from '../src/menu.mjs'
 
 test('community and feedback destinations are fixed secure URLs', () => {
   assert.equal(COMMUNITY_QQ_URL, 'https://qm.qq.com/q/vehlNjaeye')
+  assert.equal(GITHUB_DOWNLOADS_URL, 'https://github.com/ningbainb/deepseek-harness-desktop/releases/latest')
   assert.equal(GITHUB_FEEDBACK_URL, 'https://github.com/ningbainb/deepseek-harness-desktop/issues/new/choose')
   assert.equal(GITHUB_PROJECT_URL, 'https://github.com/ningbainb/deepseek-harness-desktop')
 })

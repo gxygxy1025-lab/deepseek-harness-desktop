@@ -1,57 +1,63 @@
-# DeepSeek Harness Desktop 2.4.0
+# DeepSeek Harness Desktop 2.5.0
 
 ## 中文
 
 ### 本次亮点
 
-- SSH 已连接终端在主机、监控、文件与终端内部视图之间切换时保持挂载和在线，返回终端不再重新建立连接；终端补齐右键粘贴和原生编辑菜单粘贴入口。
-- 侧边栏左下角下载按钮由桌面壳稳定接管，始终表示“桌面软件更新”。远程插件升级或页面重新渲染不会把它改成插件更新；社区插件更新继续只在扩展坞中进行。
-- Windows runtime、终端和 `pwsh` 工具统一继承隐藏控制台宿主，执行 PowerShell 工具时不再闪现额外命令窗口。
-- 皮肤状态只写入 `profiles/desktop` 私有补丁。启动时会迁移并清理旧版写入全局 `~/.dsh/cordis.patch.yml` 的托管段，保留有效 YAML，官方 `dsh web` 与桌面端可以继续并存。
-- 覆盖升级采用关闭回执协议 v2：安装器生成 64 位十六进制随机令牌，桌面端完全停止 DSH runtime、暂停扩展操作并释放资源后，才在 TEMP 固定令牌路径原子写入回执。安装器核对 schema、令牌、旧 PID 和两个完成状态，再等待旧 PID 退出；不支持协议或回执超时的旧版本仍走受限的安装路径/产品身份清理。
-- 主界面与扩展坞使用独立 preload，并按真实 `webContents` 身份登记 renderer surface。主界面不暴露插件安装/删除、QQ Bot 凭据操作或技能导入；扩展坞不暴露桌面软件安装更新。Desktop Contract v1 提供 `1.0.0` 版本与能力表用于功能探测，IPC 身份校验才是权限边界。
-- 任务看板 schema v2 优先保存到当前 DSH profile 的 `state/task-board/tasks-v2.json`。Host 写入串行、临时文件回读校验后原子替换，损坏文件移名保留；浏览器通过固定 loopback same-origin 路由读写并用 SSE 接收变更。首次迁移会复制 localStorage v1、回读校验数量和内容哈希后再标记完成，2.4.x 不删除旧数据；Host 不可用时自动回退 v1。定时任务仍由打开的浏览器页面调度，不新增后台补跑。
-- 安装预检继续兼容 2.2 路径漂移与旧卸载器错误码 2：仅对唯一产品主进程名使用兜底，官方 Web runtime 与无安装路径引用的无关 PowerShell/Node 仍保持受保护。
+- Desktop 运行时接入 DSH Runtime Provider Adapter v1。生命周期、Profile 路径和可选 Workspace、Session、Host Service 能力通过显式 capability 暴露；直接 DSH import 边界、上游耦合审计、Known Good 清单和兼容补丁注册表共同约束升级范围。Stable 继续精确锁定当前验证版本，不自动追随 latest。
+- Candidate Lite 接受人工指定的精确 DSH 候选版本，在隔离 worktree 运行构建、测试、真实 Runtime 启停恢复、Profile 和打包烟测并产出 JSON/Markdown 报告。候选流程不会修改稳定依赖、lockfile、发布说明、updater 元数据或主分支。
+- PluginManager 支持批量事务。所有候选先去重、解析精确版本、读取 registry manifest、验证 Desktop/Runtime/Node/peer 与 DSH bundle，并一次预取；切换阶段只保存一次 profile manifest 和 lockfile 快照、执行一次离线安装、一次更新 bundles，并在任何失败时完整回滚。
+- Extension Dock 新增 Desktop Preset 页签。`.dshpreset` v1 可携带精确插件锁、允许的设置、无脚本 Skills、任务模板、说明和完整性清单；主进程先检查压缩大小、压缩比、路径穿越、符号链接、特殊文件、SHA-256、Secret 字段、本机路径、Git URL、脚本和版本范围，再向 Renderer 返回不含文件路径的审阅计划。
+- Preset 冲突只允许取消、跳过或采用 Preset 精确版本。确认导入后按准备、预取、停止、应用、启动、健康检查和提交执行；失败会恢复插件 manifest/lockfile、设置、Skills、任务模板和旧 Runtime。Web Profile 迁移同样先展示可安装、更新、缺失、不兼容、未声明、已满足和 Desktop 管理项目，并将所选插件与可归属的非敏感 Profile 配置一起应用或回滚。
+- 插件或 Preset 操作后，界面突出显示“刷新”；改变 Runtime bundle 图时同时显示“Restart DeepSeek Harness”。进度区明确展示准备、预取、停止、应用、启动、提交、回滚和恢复。
+- `dsh://` 只允许扩展、更新、安全 task/session ID 和 Preset 预览。Runtime 未就绪时使用有界去重队列；未知路由、查询、命令、路径、URL 和 packageSpec 全部拒绝。`.dshpreset` 文件关联只打开预览，不静默安装，也不把本机路径交给 Renderer。
+- Desktop Contract 1.1 提供结构化通知。category、id、title、body 和可选 Deep Link 均受验证；服务按 ID 去重、按分类限频、前台抑制，点击只进入白名单路由。任务、插件恢复、更新和 Preset 均可使用同一安全边界。
+- 覆盖安装兼容 2.3.0 等旧版：安装器不会再把旧卸载器的祖先进程误判为残留应用，也不会反复弹出“无法关闭”。未带 v3 标记的旧安装只会在进程与文件锁检查通过后安全迁移，用户 Profile 和数据目录保持不变。
+- 设置窗口支持拖动、八方向缩放、最小尺寸、响应式滚动与边界恢复；独立 `dsh-particle-theme` 将粒子鲸鱼延伸到主界面，并会在输入、弹窗、减少动态效果或后台状态下降低负载。更新窗口明确提供 GitHub 下载、用户群和稍后更新三条路径。
 
 ### 验证
 
-- 新增回执协议测试，覆盖令牌格式、固定 TEMP 路径、必要状态、原子发布、不可覆盖已有回执、损坏回执和 Windows 安装清理降级。
-- 新增 Desktop Contract 能力快照、主/扩展 preload 表面、renderer 注册销毁、未知 surface、越权调用与稳定错误码测试。
-- 新增任务看板 Host 文件并发写、revision 递增、损坏文件保留、profile 路径约束、固定路由、loopback same-origin 防线、Host 优先、一次性复制、数量/哈希复核、旧数据保留和 Host 离线回退测试。
-- Windows Desktop CI 使用 Node.js 24，并执行标题栏与官方目录选择器真实 E2E；发布前还会运行全仓类型检查、包测试、脚本测试、运行时依赖闭包、共享源码同步、聚合包/皮肤/社区索引、双语文档、安装包校验、打包态目录选择/关机回执 E2E 和打包运行烟测。
+- 新增 Adapter capability、错误翻译、真实启停恢复、import allow/deny fixture、patch registry schema、Known Good 与 Candidate Lite 成功和故障报告测试。
+- 新增批量去重、兼容失败、预取失败、第二包失败、Runtime 启动失败、回滚失败聚合、单次 stop/start 和完整 progress 顺序测试。
+- 新增 Preset round-trip、完整性篡改、Secret、绝对路径、Git URL、脚本、版本范围、settings allowlist、路径穿越、符号链接、压缩炸弹、Skill 冲突恢复、capability 缺失和全状态故障恢复测试。
+- 新增 Deep Link 白名单、恶意参数、重复、Runtime 前队列、文件关联只预览、通知去重、限频、前台抑制和点击路由测试。发布门禁继续执行类型检查、全仓测试、文档、安装包内容校验、Windows 打包 E2E 和真实 Runtime 烟测。
+- 新增旧版卸载器祖先进程排除、旧安装安全迁移、文件锁与静默安装回归测试，并在真实 2.3.0 安装上完成 2.5.0 覆盖升级。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。2.2.0 与 2.3.0 用户可直接覆盖更新；安装器会优先请求受令牌保护的完整关闭，对不支持 v2 的旧实例使用受限兼容清理。应用下载仍由 `latest.yml` 的可信摘要校验。
+下载 `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。2.3.0 和 2.4.0 用户可直接覆盖更新；应用内下载继续由 `latest.yml` 的 SHA-512 摘要校验，安装仍需用户明确确认。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。当前安装包未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”，请只从本项目 GitHub Release 获取安装包并核对 SHA-256。Desktop Contract v1 是内部功能探测接口，不是公开插件 SDK；2.4.0 不包含 Task Presets、Worktree 自动化、后台定时调度或完整模型历史持久化。任务看板 v1 数据会保留，方便降级和恢复。
+这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。安装包当前未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”，请只从项目 GitHub Release 下载并核对 SHA-256。Preset 的完整性校验不代表发布者身份可信，capability 也不是安全身份；Preset 不导出 Secret，文件关联不静默安装。Desktop Stable 不自动追随上游 latest，候选报告也不会自动晋升稳定版。
 
 ## English
 
 ### Highlights
 
-- Connected SSH terminals remain mounted and online while users switch among host, monitor, file, and terminal views. Returning to the terminal no longer reconnects, and paste is available through both the terminal context menu and the native Edit menu.
-- The Desktop shell continuously owns the lower-left sidebar download control. It always means a Desktop application update, even after a remote plugin upgrade or renderer refresh; community plugin updates remain confined to Extension Dock.
-- Windows runtime, terminal, and `pwsh` tool processes inherit a hidden console host, preventing extra command windows from flashing during PowerShell tool execution.
-- Skin state is written only to the private `profiles/desktop` patch. Startup migrates and removes legacy managed sections from global `~/.dsh/cordis.patch.yml`, keeps the YAML valid, and preserves coexistence with official `dsh web`.
-- In-place updates use shutdown receipt protocol v2. The installer creates a random 64-character hexadecimal token. Desktop atomically publishes a receipt at the fixed token-derived TEMP path only after the DSH runtime is stopped, extension operations are quiesced, and resources are disposed. The installer validates schema, token, expected old PID, and both completion flags before waiting for that PID to exit. Unsupported legacy releases and receipt timeouts fall back to the constrained install-root and product-identity cleanup.
-- The main surface and Extension Dock use separate preloads and register their live `webContents` identities. Main has no plugin install/remove, QQ Bot credential, or skill-import bridge; Extension Dock has no Desktop application update installer. Desktop Contract v1 exposes version `1.0.0` and capability snapshots for feature detection, while sender identity and channel allowlists remain the authorization boundary.
-- Task Board schema v2 prefers `state/task-board/tasks-v2.json` inside the active DSH profile. Host writes are serialized, verified from a complete temporary file, and atomically replaced; corrupt documents are renamed aside. The browser uses fixed loopback same-origin routes and SSE mutation events. The first migration copies localStorage v1, reads it back, verifies count and content hash, and only then records completion. Version 2.4.x retains v1 and falls back to it whenever Host storage is unavailable. Scheduling remains in the open browser page and does not gain background replay.
-- Installer preflight retains compatibility with path-drifted 2.2 processes and legacy uninstaller error code 2. The unique product executable name is the only name-based fallback, while the official web runtime and unrelated PowerShell or Node processes without an install-path reference remain protected.
+- Desktop runtime access now passes through DSH Runtime Provider Adapter v1. Lifecycle, profile paths, and optional Workspace, Session, and Host Service operations are represented as explicit capabilities. A direct-import boundary, upstream coupling audit, Known Good manifest, and compatibility patch registry constrain the upgrade surface. Stable remains exactly pinned to the verified graph instead of following latest.
+- Candidate Lite evaluates a manually supplied exact DSH candidate in an isolated worktree. It runs builds, tests, real Runtime start-stop-recover, profile checks, and packaged smoke checks, then produces JSON and Markdown reports. Candidate work cannot change Stable dependencies, the lockfile, release notes, updater metadata, or the main branch.
+- PluginManager supports atomic package batches. Every candidate is deduplicated, resolved to an exact version, inspected through the registry, checked for DSH bundle and Desktop, Runtime, Node, and peer compatibility, and prefetched before downtime. The switch takes one manifest and lockfile snapshot, performs one offline install and one bundle update, and restores the same snapshot after any failure.
+- Extension Dock has a Desktop Preset tab. `.dshpreset` v1 can carry exact plugin locks, allowlisted settings, script-free Skills, task templates, human notes, and an integrity manifest. Before a renderer sees a plan, the main process checks archive size, compression ratio, traversal, symbolic links, special files, SHA-256, Secret-bearing fields, local paths, Git URLs, scripts, and version ranges. The renderer never receives the selected path.
+- Preset conflicts allow only cancel, skip, or the Preset exact item. A confirmed import prepares, prefetches, stops, applies, starts, health-checks, and commits as one outer transaction. Failure restores the plugin manifest and lockfile, settings, Skills, task templates, and the previous Runtime. Web Profile migration uses the same review-first model, distinguishes every compatibility state, and applies attributable non-sensitive profile configuration in the same rollback boundary as selected packages.
+- Extension and Preset operations now present a prominent Refresh follow-up. Changes to the Runtime bundle graph also present Restart DeepSeek Harness. The progress surface names preparation, prefetch, stop, apply, start, commit, rollback, and restore phases.
+- `dsh://` is limited to extensions, updates, safe task or session identifiers, and Preset preview. A bounded deduplicating queue waits for Runtime readiness. Unknown routes, queries, commands, paths, URLs, and package specifications are rejected. The `.dshpreset` file association opens review only, never silently installs, and never passes the local path to renderer code.
+- Desktop Contract 1.1 provides structured notifications. Category, ID, title, body, and optional deep link are validated. The service deduplicates IDs, rate-limits each category, suppresses notifications while Desktop is focused, and routes clicks only through the deep-link allowlist. Task, plugin recovery, update, and Preset consumers share this boundary.
+- In-place upgrades now support 2.3.0 and other legacy builds without mistaking the old uninstaller's ancestor process for a running application or repeatedly showing a cannot-close prompt. Unmarked legacy installations are staged only after process and file-lock checks, while profile and user-data directories remain untouched.
+- The settings window adds dragging, eight resize directions, minimum dimensions, responsive scrolling, and recovered bounds. The independent `dsh-particle-theme` extends the particle whale into the main surface and lowers work during text input, dialogs, reduced motion, or background use. The update surface clearly offers GitHub download, user-group, and update-later paths.
 
 ### Verification
 
-- Receipt tests cover token syntax, the fixed TEMP path, mandatory shutdown states, atomic publication, refusal to overwrite an existing receipt, corrupt input, and the Windows legacy-cleanup fallback.
-- Desktop Contract tests snapshot every capability map and cover split preload surfaces, renderer registration and destruction, unknown senders, cross-surface denial, and stable error codes.
-- Task Board tests cover concurrent Host writes, revision ordering, corrupt-file preservation, profile path validation, fixed routes, the loopback same-origin fence, Host preference, one-time copy, count/hash verification, v1 retention, and offline fallback.
-- Windows Desktop CI runs on Node.js 24 and includes real title-bar and official directory-picker E2E checks. Release gates also run repository type checks, package tests, script tests, runtime dependency closure, shared-source synchronization, aggregate/skin/community generation checks, bilingual documentation validation, packaged-payload verification, packaged directory-picker and shutdown-receipt E2E checks, and a packaged runtime smoke test.
+- Adapter coverage includes capability absence, error translation, real lifecycle recovery, import allow and deny fixtures, compatibility patch schema, Known Good evidence, and Candidate Lite success and failure reports.
+- Batch coverage includes deduplication, compatibility and prefetch failures, a failing second package, Runtime startup failure, aggregate rollback failure, one successful stop/start cycle, and the complete progress sequence.
+- Preset coverage includes round trip, integrity tampering, Secret values, absolute paths, Git URLs, executable scripts, version ranges, the settings allowlist, traversal, symbolic links, compression bombs, Skill conflict restoration, missing capabilities, and full-state fault recovery.
+- Deep-link tests cover every allowed route, malicious parameters, duplicates, the pre-Runtime queue, and file-association preview only. Notification tests cover validation, deduplication, rate limits, foreground suppression, and click routing. Release gates retain repository type checks, all tests, documentation, packaged payload verification, Windows E2E checks, and a real Runtime smoke test.
+- Installer coverage now includes old-uninstaller ancestor exclusion, safe legacy staging, file-lock handling, and silent-mode behavior, plus a successful real in-place upgrade from an installed 2.3.0 build to 2.5.0.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Users on 2.2.0 and 2.3.0 can install in place. The installer first requests the token-protected complete shutdown and uses the constrained compatibility cleanup only for instances that do not support v2. Downloaded artifacts remain authenticated by the trusted digest in `latest.yml`.
+Download `DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Users on 2.3.0 or 2.4.0 can install in place. In-app downloads remain authenticated by the SHA-512 digest in `latest.yml`, and installation still requires explicit user confirmation.
 
 ### Notice
 
-This is a community build and is not an official DeepSeek, OpenAI, or Tencent distribution. The installer does not currently use a commercial code-signing certificate, so Windows SmartScreen may show an unknown publisher. Download only from this project's GitHub Releases and verify SHA-256. Desktop Contract v1 is an internal feature-detection bridge, not a public plugin SDK. Version 2.4.0 does not include Task Presets, Worktree automation, background scheduling, or full model-history persistence. Task Board v1 data is retained for rollback and recovery.
+This is a community build, not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not currently signed with a commercial code-signing certificate, so Windows SmartScreen may display an unknown publisher. Download only from the project GitHub Release and verify SHA-256. Preset integrity does not establish publisher identity, and a capability is not a security identity. Presets do not export Secret values, and file association never installs silently. Desktop Stable does not follow upstream latest automatically, and Candidate reports never promote themselves to Stable.

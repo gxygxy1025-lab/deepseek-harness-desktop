@@ -127,6 +127,41 @@ describe('task mutations', () => {
   })
 })
 
+describe('execution notifications', () => {
+  it('emits a bounded host event when a live task succeeds or fails', async () => {
+    const stub = new StubExec()
+    const events: unknown[] = []
+    const notified = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: stub as unknown as ExecutionService,
+      sessions: new FakeSessions(),
+      now: () => NOW,
+      uuid,
+      onExecutionSettled: event => { events.push(event) },
+    })
+    notified.start()
+    const notifyingTask = notified.createTask({ title: 'Notify me', description: '', prompt: '' })!
+    await notified.runTask(notifyingTask.id)
+    const run = stub.runCalls.at(-1)!
+    run.fire({
+      kind: 'settled',
+      taskId: notifyingTask.id,
+      executionId: run.executionId,
+      outcome: 'failed',
+      error: 'boom',
+    })
+    await flush()
+    expect(events).toEqual([{
+      taskId: notifyingTask.id,
+      title: 'Notify me',
+      executionId: run.executionId,
+      outcome: 'failed',
+      error: 'boom',
+    }])
+    notified.dispose()
+  })
+})
+
 describe('view state', () => {
   it('toggles the board and reflects it in the snapshot', () => {
     const { controller } = makeController()

@@ -1,7 +1,13 @@
 diff --git a/cordis.patch.yml b/cordis.patch.yml
 --- a/cordis.patch.yml
 +++ b/cordis.patch.yml
-@@ -34,6 +34,11 @@
+@@ -15,5 +15,0 @@
+-# from ../dsh-community-plugins
+-- insert:
+-    - id: ui-community-plugins
+-      name: '@linxin666/dsh-client-ui-community-plugins'
+-
+@@ -34,6 +29,11 @@
      - id: ui-git-graph
        name: '@linxin666/dsh-client-ui-git-graph'
  

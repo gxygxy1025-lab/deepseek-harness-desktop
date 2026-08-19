@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -88,11 +88,16 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(config, /include: build\/installer\.nsh/u)
   assert.match(config, /from: build\/update-shutdown-v1[\s\S]*to: update-shutdown-v1/u)
   assert.match(config, /from: build\/update-shutdown-v2[\s\S]*to: update-shutdown-v2/u)
+  assert.match(config, /from: build\/installer-upgrade-v3[\s\S]*to: installer-upgrade-v3/u)
   assert.match(include, /customCheckAppRunning/u)
   assert.doesNotMatch(include, /customInit/u)
   assert.match(include, /cleanup-stale-processes\.ps1/u)
+  assert.match(include, /SetOutPath "\$TEMP"/u)
+  assert.doesNotMatch(include, /SetOutPath "\$PLUGINSDIR"/u)
   assert.match(include, /-InstallRegistryKey "\$\{INSTALL_REGISTRY_KEY\}"/u)
   assert.match(include, /-UninstallRegistryKey "\$\{UNINSTALL_REGISTRY_KEY\}"/u)
+  assert.match(include, /-PrepareLegacyUpgrade/u)
+  assert.match(include, /!ifdef BUILD_UNINSTALLER[\s\S]*!else[\s\S]*-PrepareLegacyUpgrade/u)
   assert.match(cleanup, /DeepSeek Harness Desktop\.exe/u)
   assert.match(cleanup, /Registry::\$hive\\\$InstallRegistryKey/u)
   assert.match(cleanup, /Get-UninstallerDirectory/u)
@@ -121,6 +126,11 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /Get-CimInstance Win32_Process/u)
   assert.match(cleanup, /\.Name\.Equals\(\$mainExecutableName, \$comparison\)/u)
   assert.match(cleanup, /\$selfPid/u)
+  assert.match(cleanup, /Get-AncestorProcessIds/u)
+  assert.match(cleanup, /\$excludedProcessIds\.Contains\(\$processId\)/u)
+  assert.match(cleanup, /installer-upgrade-v3/u)
+  assert.match(cleanup, /Stage-LegacyUpgrade/u)
+  assert.match(cleanup, /RecycleOption\]::SendToRecycleBin/u)
   assert.match(cleanup, /IndexOf\(\$root, \$comparison\)/u)
   assert.match(cleanup, /Get-CommandLineVariants/u)
   assert.match(cleanup, /\\u62D2\\u7EDD\\u8BBF\\u95EE/u)
@@ -128,7 +138,7 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(cleanup, /FromBase64String/u)
   assert.match(cleanup, /\[System\.Text\.Encoding\]::Unicode/u)
   assert.doesNotMatch(cleanup, /\.MainModule|\$process\.Path/u)
-  assert.doesNotMatch(cleanup, /GetParentProcessIds|ParentProcessId|CreateToolhelp32Snapshot/u)
+  assert.doesNotMatch(cleanup, /CreateToolhelp32Snapshot/u)
   assert.doesNotMatch(cleanup, /Get-ChildItem -LiteralPath \$resourceRoot/u)
   assert.match(cleanup, /for \(\$attempt = 0; \$attempt -lt \$forceAttempts/u)
   assert.match(cleanup, /Start-Sleep -Milliseconds/u)
@@ -144,12 +154,15 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(include, /StrCmp \$0 "35" cleanup_protocol/u)
   assert.match(include, /StrCmp \$0 "36" cleanup_locked/u)
   assert.match(include, /StrCmp \$0 "33" cleanup_script_error/u)
+  for (const messageBox of include.split(/\r?\n/u).filter(line => line.trimStart().startsWith('MessageBox '))) {
+    assert.match(messageBox, /\/SD (?:IDCANCEL|IDOK)/u)
+  }
   assert.doesNotMatch(cleanup, /taskkill|\/IM\s|ProcessName/u)
 })
 
 test('Windows installer reports a replacement-file lock separately from a running PID', {
   skip: process.platform !== 'win32',
-  timeout: 20_000,
+  timeout: 30_000,
 }, async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-lock-'))
   const installDirectory = join(temporary, 'previous-install')
@@ -184,7 +197,7 @@ test('Windows installer reports a replacement-file lock separately from a runnin
         join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
         '-InstallDirectory',
         installDirectory,
-      ], { timeout: 10_000, windowsHide: true }),
+      ], { timeout: 20_000, windowsHide: true }),
       error => error?.code === 36 && /locked path=/u.test(error.stdout ?? ''),
     )
   } finally {
@@ -258,6 +271,147 @@ test('Windows installer preflight accepts a missing previous install directory',
       ],
       { timeout: 10_000, windowsHide: true },
     )
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('Windows installer preflight excludes its installer and uninstaller ancestor chain', {
+  skip: process.platform !== 'win32',
+  timeout: 20_000,
+}, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-parent-'))
+  const installDirectory = join(temporary, 'previous-install')
+  const cleanupScript = join(desktopRoot, 'build', 'cleanup-stale-processes.ps1')
+  const wrapper = [
+    "const { spawnSync } = require('node:child_process')",
+    'const installDirectory = process.argv[1]',
+    'const cleanupScript = process.argv[2]',
+    "const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', cleanupScript, '-InstallDirectory', installDirectory], { windowsHide: true, encoding: 'utf8' })",
+    "if (result.stdout) process.stdout.write(result.stdout)",
+    "if (result.stderr) process.stderr.write(result.stderr)",
+    'process.exit(result.status ?? 1)',
+  ].join('; ')
+  try {
+    await mkdir(installDirectory, { recursive: true })
+    await execFileAsync(process.execPath, [
+      '-e',
+      wrapper,
+      installDirectory,
+      cleanupScript,
+    ], { timeout: 15_000, windowsHide: true })
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('Windows installer stages an unmarked legacy install before electron-builder invokes its broken uninstaller', {
+  skip: process.platform !== 'win32',
+  timeout: 20_000,
+}, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-legacy-stage-'))
+  const installDirectory = join(temporary, 'DeepSeek Harness Desktop')
+  const resources = join(installDirectory, 'resources')
+  const preservedUserData = join(temporary, 'user-data', 'settings.json')
+  const registryRoot = `Software\\DeepSeekHarnessDesktopTests\\legacy-${process.pid}-${Date.now()}`
+  const installRegistryKey = `${registryRoot}\\Install`
+  const uninstallRegistryKey = `${registryRoot}\\Uninstall`
+  try {
+    await mkdir(resources, { recursive: true })
+    await mkdir(join(temporary, 'user-data'), { recursive: true })
+    await writeFile(join(installDirectory, 'DeepSeek Harness Desktop.exe'), 'legacy executable', 'utf8')
+    await writeFile(join(resources, 'app.asar'), 'legacy app archive', 'utf8')
+    await writeFile(join(installDirectory, 'Uninstall DeepSeek Harness Desktop.exe'), 'broken legacy uninstaller', 'utf8')
+    await writeFile(preservedUserData, '{"preserved":true}\n', 'utf8')
+    await execFileAsync('reg.exe', [
+      'ADD',
+      `HKCU\\${installRegistryKey}`,
+      '/v',
+      'InstallLocation',
+      '/t',
+      'REG_SZ',
+      '/d',
+      installDirectory,
+      '/f',
+    ], { timeout: 5_000, windowsHide: true })
+    await execFileAsync('reg.exe', [
+      'ADD',
+      `HKCU\\${uninstallRegistryKey}`,
+      '/v',
+      'UninstallString',
+      '/t',
+      'REG_SZ',
+      '/d',
+      `"${join(installDirectory, 'Uninstall DeepSeek Harness Desktop.exe')}" /currentuser`,
+      '/f',
+    ], { timeout: 5_000, windowsHide: true })
+
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
+      '-InstallDirectory',
+      installDirectory,
+      '-InstallRegistryKey',
+      installRegistryKey,
+      '-UninstallRegistryKey',
+      uninstallRegistryKey,
+      '-PrepareLegacyUpgrade',
+    ], { timeout: 15_000, windowsHide: true })
+
+    assert.match(stdout, /legacy-upgrade-staged root=/u)
+    await assert.rejects(readFile(join(resources, 'app.asar')), error => error?.code === 'ENOENT')
+    assert.equal(await readFile(preservedUserData, 'utf8'), '{"preserved":true}\n')
+    await assert.rejects(
+      execFileAsync('reg.exe', ['QUERY', `HKCU\\${installRegistryKey}`], { windowsHide: true }),
+      error => error?.code === 1,
+    )
+    await assert.rejects(
+      execFileAsync('reg.exe', ['QUERY', `HKCU\\${uninstallRegistryKey}`], { windowsHide: true }),
+      error => error?.code === 1,
+    )
+    assert.deepEqual(
+      (await readdir(temporary)).filter(name => name.startsWith('.dsh-desktop-update-old-')),
+      [],
+    )
+  } finally {
+    await execFileAsync('reg.exe', ['DELETE', `HKCU\\${registryRoot}`, '/f'], {
+      timeout: 5_000,
+      windowsHide: true,
+    }).catch(() => {})
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('Windows installer keeps a marked modern install for its safe uninstaller', {
+  skip: process.platform !== 'win32',
+  timeout: 15_000,
+}, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'dsh-installer-modern-stage-'))
+  const installDirectory = join(temporary, 'DeepSeek Harness Desktop')
+  const resources = join(installDirectory, 'resources')
+  try {
+    await mkdir(resources, { recursive: true })
+    await writeFile(join(installDirectory, 'DeepSeek Harness Desktop.exe'), 'modern executable', 'utf8')
+    await writeFile(join(resources, 'app.asar'), 'modern app archive', 'utf8')
+    await writeFile(join(resources, 'installer-upgrade-v3'), 'dsh-desktop-installer-upgrade=3\n', 'utf8')
+    await execFileAsync('powershell.exe', [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'),
+      '-InstallDirectory',
+      installDirectory,
+      '-PrepareLegacyUpgrade',
+    ], { timeout: 10_000, windowsHide: true })
+    assert.equal(await readFile(join(resources, 'app.asar'), 'utf8'), 'modern app archive')
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }

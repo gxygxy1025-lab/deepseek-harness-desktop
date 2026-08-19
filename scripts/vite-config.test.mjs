@@ -54,7 +54,7 @@ test('SDK-inlining Vitest configs use the narrow shared source map warning filte
     assert.match(source, /suppressMissingPublishedSdkSourceMapWarnings\(\)/u)
     assert.doesNotMatch(source, /sourcemapIgnoreList/u)
   }
-  assert.equal(sdkConfigs.length, 9)
+  assert.equal(sdkConfigs.length, 10)
 })
 
 test('skin-center bounds nested fork concurrency for Windows workspace runs', async () => {

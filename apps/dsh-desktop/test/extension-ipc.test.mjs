@@ -239,6 +239,269 @@ test('plugin update checks stay online and exact updates use the guarded transac
   unregister()
 })
 
+test('plugin batch emits every progress phase and stops and starts the runtime once', async () => {
+  const ipcMain = new FakeIpcMain()
+  const calls = []
+  const sent = []
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  const prepared = { items: [
+    { name: '@community/first', version: '2.0.0', spec: '@community/first@2.0.0' },
+    { name: '@community/second', version: '3.0.0', spec: '@community/second@3.0.0' },
+  ] }
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => ({ isDestroyed: () => false, webContents: { send: (...args) => sent.push(args) } }),
+    pluginManager: {
+      prepareMany: async (specs, options) => { calls.push(['prepare', specs, options]); return prepared },
+      applyPreparedBatch: async (value) => {
+        calls.push(['apply', value])
+        return {
+          result: { plugins: prepared.items, restartRequired: true },
+          commit: () => calls.push('commit'),
+          rollback: async () => calls.push('rollback'),
+        }
+      },
+    },
+    controller: {
+      stop: async () => calls.push('stop'),
+      start: async () => calls.push('start'),
+    },
+    ensureProfile: async () => calls.push('ensure'),
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+  })
+
+  const result = await ipcMain.handlers.get('extensions:plugin-install-batch')(undefined, {
+    specs: ['@community/first@2.0.0', '@community/second@3.0.0'],
+    allowUnknown: false,
+  })
+  assert.equal(result.restartRequired, true)
+  assert.equal(calls.filter((item) => item === 'stop').length, 1)
+  assert.equal(calls.filter((item) => item === 'start').length, 1)
+  assert.deepEqual(sent.map(([, payload]) => payload.phase), [
+    'preparing', 'prefetched', 'stopping', 'applying', 'starting', 'committed',
+  ])
+  unregister()
+})
+
+test('preset file selection returns only a preview token and confirmed import uses one runtime cycle', async () => {
+  const ipcMain = new FakeIpcMain()
+  const calls = []
+  const sent = []
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  const record = {
+    id: 'plan-1',
+    sha256: 'a'.repeat(64),
+    parsed: { manifest: { name: 'Portable' } },
+  }
+  const presetService = {
+    previewFile: async (path) => {
+      calls.push(['preview', path])
+      return { id: record.id, manifest: record.parsed.manifest, trust: { level: 'untrusted' } }
+    },
+    resolvePlan: (id) => { assert.equal(id, record.id); return record },
+    packageSpecs: () => ['@community/example@2.0.0'],
+    verifyPreparedPackages: () => true,
+    stageConfig: async () => ({
+      apply: async () => calls.push('config-apply'),
+      commit: async () => calls.push('config-commit'),
+      rollback: async () => calls.push('config-rollback'),
+    }),
+    forgetPlan: (id) => calls.push(['forget', id]),
+  }
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {
+      showOpenDialog: async () => ({ canceled: false, filePaths: ['C:\\private\\portable.dshpreset'] }),
+    },
+    shell: {},
+    getWindow: () => ({ isDestroyed: () => false, webContents: { send: (...args) => sent.push(args) } }),
+    pluginManager: {
+      prepareMany: async () => ({ items: [{ name: '@community/example', version: '2.0.0' }] }),
+      applyPreparedBatch: async () => ({
+        result: { plugins: [{ name: '@community/example', version: '2.0.0' }] },
+        commit: () => calls.push('packages-commit'),
+        rollback: async () => calls.push('packages-rollback'),
+      }),
+    },
+    controller: {
+      stop: async () => calls.push('stop'),
+      start: async () => calls.push('start'),
+    },
+    ensureProfile: async () => calls.push('ensure'),
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+    presetService,
+  })
+
+  const selected = await ipcMain.handlers.get('extensions:preset-select')()
+  assert.equal(selected.canceled, false)
+  assert.equal(JSON.stringify(selected).includes('C:\\private'), false)
+  const imported = await ipcMain.handlers.get('extensions:preset-import')(undefined, {
+    id: record.id,
+    confirmed: true,
+    decisions: { packages: { '@community/example': 'preset' }, settings: 'preset', taskTemplates: 'preset', skills: {} },
+  })
+  assert.equal(imported.preset.name, 'Portable')
+  assert.equal(calls.filter((item) => item === 'stop').length, 1)
+  assert.equal(calls.filter((item) => item === 'start').length, 1)
+  assert.deepEqual(sent.map(([, payload]) => payload.phase), [
+    'preparing', 'prefetched', 'stopping', 'applying', 'starting', 'committed',
+  ])
+  await assert.rejects(
+    ipcMain.handlers.get('extensions:preset-import')(undefined, { id: record.id, decisions: {} }),
+    /confirmed preset/u,
+  )
+  unregister()
+})
+
+test('preset runtime health failure rolls back staged config, packages, and the old runtime', async () => {
+  const ipcMain = new FakeIpcMain()
+  const calls = []
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  let starts = 0
+  const record = { id: 'plan-fail', sha256: 'b'.repeat(64), parsed: { manifest: { name: 'Failing' } } }
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => undefined,
+    pluginManager: {
+      prepareMany: async () => ({ items: [{ name: '@community/example', version: '2.0.0' }] }),
+      applyPreparedBatch: async () => ({
+        result: { plugins: [] },
+        commit: () => calls.push('packages-commit'),
+        rollback: async () => calls.push('packages-rollback'),
+      }),
+    },
+    controller: {
+      stop: async () => calls.push('stop'),
+      start: async () => {
+        starts += 1
+        calls.push(`start-${starts}`)
+        if (starts === 1) throw new Error('preset runtime unhealthy')
+      },
+    },
+    ensureProfile: async () => calls.push('ensure'),
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+    presetService: {
+      resolvePlan: () => record,
+      packageSpecs: () => ['@community/example@2.0.0'],
+      verifyPreparedPackages: () => true,
+      stageConfig: async () => ({
+        apply: async () => calls.push('config-apply'),
+        commit: async () => calls.push('config-commit'),
+        rollback: async () => calls.push('config-rollback'),
+      }),
+      forgetPlan: () => calls.push('forget'),
+    },
+  })
+
+  await assert.rejects(
+    ipcMain.handlers.get('extensions:preset-import')(undefined, {
+      id: record.id,
+      confirmed: true,
+      decisions: { packages: {}, settings: 'preset', taskTemplates: 'preset', skills: {} },
+    }),
+    /preset runtime unhealthy/u,
+  )
+  assert.deepEqual(calls, [
+    'stop',
+    'config-apply',
+    'ensure',
+    'start-1',
+    'config-rollback',
+    'packages-rollback',
+    'ensure',
+    'start-2',
+  ])
+  unregister()
+})
+
+test('web profile migration applies selected packages and attributable config in one runtime transaction', async () => {
+  const ipcMain = new FakeIpcMain()
+  const calls = []
+  const sent = []
+  const qqBotBinding = new EventEmitter()
+  qqBotBinding.status = () => ({ bound: false })
+  qqBotBinding.start = () => ({})
+  qqBotBinding.cancel = () => ({})
+  qqBotBinding.unbind = async () => ({})
+  const record = { id: 'migration-1' }
+  const prepared = { items: [{ name: '@community/example', version: '2.0.0' }] }
+  const unregister = registerExtensionIpc({
+    ipcMain,
+    dialog: {},
+    shell: {},
+    getWindow: () => ({ isDestroyed: () => false, webContents: { send: (...args) => sent.push(args) } }),
+    pluginManager: {
+      prepareMany: async (specs) => { calls.push(['prepare', specs]); return prepared },
+      applyPreparedBatch: async () => ({
+        result: { plugins: prepared.items },
+        commit: () => calls.push('packages-commit'),
+        rollback: async () => calls.push('packages-rollback'),
+      }),
+    },
+    controller: {
+      stop: async () => calls.push('stop'),
+      start: async () => calls.push('start'),
+    },
+    ensureProfile: async () => calls.push('ensure'),
+    projectRoot: 'C:\\project',
+    dshHome: 'C:\\dsh',
+    qqBotBinding,
+    migrationService: {
+      preview: async () => ({ available: true, id: record.id, items: [] }),
+      resolveSelection: () => ({ record, names: ['@community/example'], specs: ['@community/example@2.0.0'] }),
+      stageConfig: async () => ({
+        fragments: 2,
+        apply: async () => calls.push('config-apply'),
+        commit: () => calls.push('config-commit'),
+        rollback: async () => calls.push('config-rollback'),
+      }),
+      forget: () => calls.push('forget'),
+    },
+  })
+  const result = await ipcMain.handlers.get('extensions:migration-apply')(undefined, {
+    id: record.id,
+    names: ['@community/example'],
+    allowUnknown: false,
+  })
+  assert.equal(result.configurationFragments, 2)
+  assert.deepEqual(calls, [
+    ['prepare', ['@community/example@2.0.0']],
+    'stop',
+    'config-apply',
+    'ensure',
+    'start',
+    'packages-commit',
+    'config-commit',
+    'forget',
+  ])
+  assert.deepEqual(sent.map(([, payload]) => payload.phase), [
+    'preparing', 'prefetched', 'stopping', 'applying', 'starting', 'committed',
+  ])
+  unregister()
+})
+
 test('extension IPC exposes one-click safe-mode recovery through the serialized mutation queue', async () => {
   const ipcMain = new FakeIpcMain()
   const qqBotBinding = new EventEmitter()

@@ -37,6 +37,11 @@
     - id: pet
       name: '@linxin666/dsh-pet'
 
+# from ../dsh-particle-theme
+- insert:
+    - id: particle-theme
+      name: '@linxin666/dsh-particle-theme'
+
 # from ../dsh-remote-web-ui
 - insert:
     - id: remote-web-ui

@@ -25,6 +25,7 @@ const api = Object.freeze({
   listExtensions: () => ipcRenderer.invoke('extensions:list'),
   checkPluginUpdates: () => ipcRenderer.invoke('extensions:plugin-check'),
   installPlugin: (spec, allowUnknown = false) => ipcRenderer.invoke('extensions:plugin-install', { spec, allowUnknown }),
+  installPluginBatch: (specs, allowUnknown = false) => ipcRenderer.invoke('extensions:plugin-install-batch', { specs, allowUnknown }),
   updatePlugin: (name, allowUnknown = false) => ipcRenderer.invoke('extensions:plugin-update', { name, allowUnknown }),
   removePlugin: (name) => ipcRenderer.invoke('extensions:plugin-remove', name),
   setPluginEnabled: (name, enabled) => ipcRenderer.invoke('extensions:plugin-enable', { name, enabled }),
@@ -40,7 +41,16 @@ const api = Object.freeze({
   startQqBotBinding: () => ipcRenderer.invoke('extensions:qqbot-bind'),
   cancelQqBotBinding: () => ipcRenderer.invoke('extensions:qqbot-cancel'),
   unbindQqBot: () => ipcRenderer.invoke('extensions:qqbot-unbind'),
+  restartRuntime: () => ipcRenderer.invoke('extensions:runtime-restart'),
+  exportPreset: () => ipcRenderer.invoke('extensions:preset-export'),
+  selectPreset: () => ipcRenderer.invoke('extensions:preset-select'),
+  importPreset: (request) => ipcRenderer.invoke('extensions:preset-import', request),
+  previewWebProfileMigration: () => ipcRenderer.invoke('extensions:migration-preview'),
+  applyWebProfileMigration: (request) => ipcRenderer.invoke('extensions:migration-apply', request),
   onQqBotEvent: createSubscription('extensions:qqbot-event', 'QQ Bot'),
+  onExtensionProgress: createSubscription('extensions:operation-progress', 'extension progress'),
+  onExtensionNavigate: createSubscription('extensions:navigate', 'extension navigation'),
+  onPresetPreview: createSubscription('extensions:preset-preview', 'preset preview'),
 })
 
 contextBridge.exposeInMainWorld('dshDesktop', api)

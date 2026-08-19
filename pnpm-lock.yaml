@@ -12,7 +12,7 @@ patchedDependencies:
   '@deepseek-ai/dsh-host-apiproxy@0.1.0-rc.6': 5315b1a2ae59b7dd822dde639513a529c2ae89c087645229725acb19a69d6d42
   '@deepseek-ai/dsh-subprocess-local@0.1.0-rc.6': 3c66a863301e168c83421e416f9881971002a70b7a015aa2e6dc7876543dc5cc
   '@linxin666/dsh-client-ui-skin-center@0.1.18': 101376a25b9be32d858b90bedc08736f57767e4d1013c60426e84d1fb99691ef
-  '@linxin666/dsh-web-ui-all@0.1.18': c8b28bc28d1f66d37cc1bc829443e2748d372834bb315f1f6880eb6e6fd51ca5
+  '@linxin666/dsh-web-ui-all@0.1.18': 51de5ea9b0691927b6d5c514daa43e6656f8493a3ae949938fecad519aaff6c5
   dshmarket@1.9.0: c30de697fc62830359dff91b8be39fe5471450b4b3b6196fb0a8c7c29f67b479
 
 importers:
@@ -115,12 +115,18 @@ importers:
       '@linxin666/dsh-client-ui-mode-switcher':
         specifier: workspace:*
         version: link:../../packages/dsh-mode-switcher
+      '@linxin666/dsh-client-ui-web-ui-settings':
+        specifier: workspace:*
+        version: link:../../packages/dsh-web-ui-settings
       '@linxin666/dsh-desktop-compat':
         specifier: workspace:*
         version: link:../../packages/dsh-desktop-compat
+      '@linxin666/dsh-particle-theme':
+        specifier: workspace:*
+        version: link:../../packages/dsh-particle-theme
       '@linxin666/dsh-web-ui-all':
         specifier: 0.1.18
-        version: 0.1.18(patch_hash=c8b28bc28d1f66d37cc1bc829443e2748d372834bb315f1f6880eb6e6fd51ca5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 0.1.18(patch_hash=51de5ea9b0691927b6d5c514daa43e6656f8493a3ae949938fecad519aaff6c5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tencent-connect/dsh-qqbot':
         specifier: 0.4.0
         version: 0.4.0(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/schemastery@3.18.1)(@tencent-connect/qqbot-connector@1.2.0)
@@ -142,6 +148,9 @@ importers:
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@7.2.0)
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
       koffi:
         specifier: 3.1.4
         version: 3.1.4
@@ -493,6 +502,61 @@ importers:
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(yaml@2.9.0)
+
+  packages/dsh-particle-theme:
+    dependencies:
+      schemastery:
+        specifier: ^3.18.0
+        version: 3.18.0
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/dsh-client-locale':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(4adda433d7a01b789cafee5db0b6cc58)
+      '@deepseek-ai/dsh-client-runtime':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(9b9cc316d8840c207092351c825bdfdb)
+      '@deepseek-ai/dsh-client-ui-conversation':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(d11523e72d58deed766165c0b292f250)
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-api-remotes@0.1.0-rc.6(963f21f11cddd09def26a2473cddd8c5))(@deepseek-ai/dsh-client-connection@0.1.0-rc.6)(@deepseek-ai/dsh-client-runtime@0.1.0-rc.6(9b9cc316d8840c207092351c825bdfdb))(@deepseek-ai/dsh-client-schema-form@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-client-ui-slots@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-settings@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/schemastery@3.18.1))(react@18.3.1)
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))
+      '@deepseek-ai/dsh-settings':
+        specifier: ^0.1.0-rc.6
+        version: 0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.6(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/schemastery@3.18.1)
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.1
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      jsdom:
+        specifier: ^26.0.0
+        version: 26.1.0(supports-color@7.2.0)
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
+      tsdown:
+        specifier: ^0.22.2
+        version: 0.22.2(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@26.1.0(supports-color@7.2.0))(yaml@2.9.0)
 
   packages/dsh-pet:
     dependencies:
@@ -918,6 +982,9 @@ importers:
       '@linxin666/dsh-live-stats':
         specifier: workspace:*
         version: link:../dsh-live-stats
+      '@linxin666/dsh-particle-theme':
+        specifier: workspace:*
+        version: link:../dsh-particle-theme
       '@linxin666/dsh-pet':
         specifier: workspace:*
         version: link:../dsh-pet
@@ -935,6 +1002,10 @@ importers:
         version: link:../dsh-tool-describe-image
 
   packages/dsh-web-ui-settings:
+    dependencies:
+      '@linxin666/dsh-particle-theme':
+        specifier: workspace:*
+        version: link:../dsh-particle-theme
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: ^4.0.1
@@ -11228,7 +11299,7 @@ snapshots:
       react: 18.3.1
       schemastery: 3.18.0
 
-  '@linxin666/dsh-web-ui-all@0.1.18(patch_hash=c8b28bc28d1f66d37cc1bc829443e2748d372834bb315f1f6880eb6e6fd51ca5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@linxin666/dsh-web-ui-all@0.1.18(patch_hash=51de5ea9b0691927b6d5c514daa43e6656f8493a3ae949938fecad519aaff6c5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@linxin666/dsh-client-ui-aionui-panel': 0.1.18(react@18.3.1)
       '@linxin666/dsh-client-ui-community-plugins': 0.1.18(react@18.3.1)

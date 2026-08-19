@@ -44,6 +44,14 @@ export interface ControllerDeps {
   uuid?: () => string
   /** Debounce (ms) for session-list-changed reconciles; defaults to 350. */
   reconcileDebounceMs?: number
+  /** Optional host integration for settled execution notifications. */
+  onExecutionSettled?: (event: Readonly<{
+    taskId: string
+    title: string
+    executionId: string
+    outcome: 'succeeded' | 'failed' | 'cancelled'
+    error?: string
+  }>) => void | Promise<void>
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -306,10 +314,12 @@ export class BoardController {
       return
     }
     this.activeExecutionIds.delete(event.executionId)
+    const task = this.tasks.find(candidate => candidate.id === event.taskId)
     this.tasks = this.tasks.map(task => task.id === event.taskId
       ? settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
       : task)
     this.persistAndNotify()
+    if (task !== undefined) this.notifyExecutionSettled(task, event)
   }
 
   // --- internals ---------------------------------------------------------------
@@ -380,6 +390,7 @@ export class BoardController {
         const next = settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
         if (next === task) continue
         this.tasks = this.tasks.map(candidate => candidate.id === taskId ? next : candidate)
+        this.notifyExecutionSettled(task, event)
         changed = true
       }
       if (changed) this.persistAndNotify()
@@ -393,6 +404,21 @@ export class BoardController {
       console.error('[dsh-task-board] task ledger write failed', error)
     })
     this.notify()
+  }
+
+  private notifyExecutionSettled(
+    task: TaskRecord,
+    event: Extract<ExecutionEvent, { kind: 'settled' }>,
+  ): void {
+    void Promise.resolve(this.deps.onExecutionSettled?.({
+      taskId: task.id,
+      title: task.title,
+      executionId: event.executionId,
+      outcome: event.outcome,
+      ...(event.error === undefined ? {} : { error: event.error }),
+    })).catch((error) => {
+      console.error('[dsh-task-board] execution notification failed', error)
+    })
   }
 
   private notify(): void {

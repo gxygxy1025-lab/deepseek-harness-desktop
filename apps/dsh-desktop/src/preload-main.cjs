@@ -30,6 +30,8 @@ const api = Object.freeze({
   getUpdateStatus: () => ipcRenderer.invoke('desktop:update-status'),
   checkForUpdates: () => ipcRenderer.invoke('desktop:update-check'),
   installUpdate: () => ipcRenderer.invoke('desktop:update-install'),
+  getSettingsWindowBounds: () => ipcRenderer.invoke('desktop:settings-window-bounds-get'),
+  setSettingsWindowBounds: (bounds) => ipcRenderer.invoke('desktop:settings-window-bounds-set', bounds),
   listSkills: () => ipcRenderer.invoke('desktop:skills-list'),
   onUpdateStatus: createSubscription('desktop:update-status', 'update status'),
 })

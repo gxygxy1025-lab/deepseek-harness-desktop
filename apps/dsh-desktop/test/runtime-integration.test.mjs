@@ -52,7 +52,8 @@ test('installer shutdown requests work through command line and single-instance 
 })
 
 test('desktop deep links accept only the configured bounded scheme', () => {
-  assert.equal(desktopDeepLinkFrom(['desktop.exe', 'dsh://workspace/open?id=1']), 'dsh://workspace/open?id=1')
+  assert.equal(desktopDeepLinkFrom(['desktop.exe', 'dsh://task/review-1']), 'dsh://task/review-1')
+  assert.equal(desktopDeepLinkFrom(['desktop.exe', 'dsh://workspace/open?id=1']), undefined)
   assert.equal(desktopDeepLinkFrom(['desktop.exe', 'https://example.com']), undefined)
   assert.equal(desktopDeepLinkFrom(['desktop.exe', `dsh://${'a'.repeat(4_100)}`]), undefined)
 })
@@ -272,6 +273,48 @@ test('official DSH host serves the complete desktop profile', { timeout: 150_000
     for (const namespace of WEB_UI_SETTINGS_NAMESPACES) {
       assert.equal(namespaces.has(namespace), true, `settings namespace ${namespace} is hidden`)
     }
+
+    const particleSettingsResponse = await fetch(new URL('/api/dsh-web-ui-settings/describe', url), {
+      method: 'POST',
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(particleSettingsResponse.ok, true, 'particle settings bridge was not served')
+    const particleSettings = await particleSettingsResponse.json()
+    assert.equal(particleSettings.ok, true)
+    const particleNamespace = particleSettings.value.namespaces.find(entry => entry.ns === 'particle-theme')
+    assert.equal(
+      particleNamespace?.value?.enabled,
+      true,
+      `particle-theme is not exposed through the settings bridge: ${JSON.stringify(particleSettings)}`,
+    )
+    const particleDisableResponse = await fetch(new URL('/api/dsh-web-ui-settings/mutate', url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ns: 'particle-theme',
+        ops: [{ op: 'set', path: ['enabled'], value: false }],
+        expectedRevision: particleNamespace.revision,
+      }),
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(particleDisableResponse.ok, true)
+    const particleDisabled = await particleDisableResponse.json()
+    assert.equal(particleDisabled.ok, true)
+    assert.equal(particleDisabled.value.value.enabled, false, 'particle-theme toggle did not persist')
+    const particleEnableResponse = await fetch(new URL('/api/dsh-web-ui-settings/mutate', url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ns: 'particle-theme',
+        ops: [{ op: 'set', path: ['enabled'], value: true }],
+        expectedRevision: particleDisabled.value.revision,
+      }),
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(particleEnableResponse.ok, true)
+    const particleEnabled = await particleEnableResponse.json()
+    assert.equal(particleEnabled.ok, true)
+    assert.equal(particleEnabled.value.value.enabled, true, 'particle-theme toggle did not restore')
 
     const taskBoardUrl = new URL('/api/dsh-task-board/tasks', url)
     const taskBoardInitial = await fetch(taskBoardUrl, { signal: AbortSignal.timeout(5_000) })

@@ -2,11 +2,10 @@ import { performance } from 'node:perf_hooks'
 
 const PROBE_BYTES = 64 * 1024
 
-export const DEFAULT_UPDATE_MIRRORS = Object.freeze([
-  Object.freeze({ id: 'gh-proxy.com', label: '国内镜像 gh-proxy.com', prefix: 'https://gh-proxy.com/' }),
-  Object.freeze({ id: 'ghproxy.net', label: '国内镜像 ghproxy.net', prefix: 'https://ghproxy.net/' }),
-  Object.freeze({ id: 'ghfast.top', label: '国内镜像 ghfast.top', prefix: 'https://ghfast.top/' }),
-])
+// GitHub is the only built-in transport. Administrators may opt into an
+// HTTPS proxy through DSH_DESKTOP_UPDATE_MIRRORS, but Desktop never promotes
+// an unowned third-party mirror as the default path.
+export const DEFAULT_UPDATE_MIRRORS = Object.freeze([])
 
 export const OFFICIAL_UPDATE_SOURCE = Object.freeze({
   id: 'github',
@@ -23,7 +22,7 @@ function normalizedMirror(value) {
     if (!url.pathname.endsWith('/')) url.pathname += '/'
     return Object.freeze({
       id: url.hostname,
-      label: `国内镜像 ${url.hostname}`,
+      label: `备用线路 ${url.hostname}`,
       prefix: url.href,
     })
   } catch {
@@ -111,8 +110,8 @@ export async function probeUpdateSource(url, {
 
 export async function rankUpdateSources({ officialUrl, mirrors, probe }) {
   const candidates = [
-    ...mirrors.map((source) => ({ ...source, url: rewriteGitHubReleaseUrl(officialUrl, source) })),
     { ...OFFICIAL_UPDATE_SOURCE, url: new URL(officialUrl) },
+    ...mirrors.map((source) => ({ ...source, url: rewriteGitHubReleaseUrl(officialUrl, source) })),
   ]
   const results = await Promise.all(candidates.map(async (source, index) => {
     try {
@@ -126,13 +125,15 @@ export async function rankUpdateSources({ officialUrl, mirrors, probe }) {
       }
     }
   }))
-  return results.sort((left, right) => {
+  const [official, ...fallbacks] = results
+  fallbacks.sort((left, right) => {
     if (left.probe.ok !== right.probe.ok) return left.probe.ok ? -1 : 1
     if (left.probe.ok && left.probe.elapsedMs !== right.probe.elapsedMs) {
       return left.probe.elapsedMs - right.probe.elapsedMs
     }
     return left.index - right.index
   })
+  return [official, ...fallbacks]
 }
 
 function rewriteResolvedFiles(files, source) {

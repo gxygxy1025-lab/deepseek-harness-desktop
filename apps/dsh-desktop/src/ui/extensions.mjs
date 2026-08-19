@@ -28,6 +28,16 @@ const recoveryModeLabel = document.querySelector('#recovery-mode-label')
 const restoreSafeMode = document.querySelector('#restore-safe-mode')
 const recoveryIncidents = document.querySelector('#recovery-incidents')
 const recoverySnapshots = document.querySelector('#recovery-snapshots')
+const activationBanner = document.querySelector('#activation-banner')
+const activationMessage = document.querySelector('#activation-message')
+const restartRuntimeButton = document.querySelector('#restart-runtime')
+const presetPlanElement = document.querySelector('#preset-plan')
+const presetProgress = document.querySelector('#preset-progress')
+const presetProgressSteps = document.querySelector('#preset-progress-steps')
+const presetPackages = document.querySelector('#preset-packages')
+const presetConfig = document.querySelector('#preset-config')
+let activePresetPlan
+let activeMigrationPlan
 
 function setOperationBusy(busy) {
   document.body.dataset.busy = String(busy)
@@ -49,6 +59,111 @@ function notify(message, error = false) {
   toast.hidden = false
   clearTimeout(notify.timer)
   notify.timer = setTimeout(() => { toast.hidden = true }, 4_000)
+}
+
+function showActivation(message, activation = { mode: 'refresh' }) {
+  activationMessage.textContent = message
+  restartRuntimeButton.hidden = activation.mode !== 'restart'
+  activationBanner.hidden = false
+}
+
+const presetStatusLabels = Object.freeze({
+  install: '安装',
+  conflict: '冲突',
+  skip: '已满足，跳过',
+})
+
+function conflictSelect(attribute, value, conflict) {
+  if (!conflict) return '<span class="meta">使用 Preset</span>'
+  return `<select class="preset-select" ${attribute}="${escapeHtml(value)}"><option value="cancel">取消导入</option><option value="skip">跳过此项</option><option value="preset">使用 Preset 精确版本</option></select>`
+}
+
+function renderPresetPlan(plan) {
+  activePresetPlan = plan
+  document.querySelector('#preset-name').textContent = plan.manifest.name
+  document.querySelector('#preset-description').textContent = plan.manifest.description ?? ''
+  document.querySelector('#preset-trust').textContent = plan.trust.integrityVerified ? '完整性已验证 · 发布者未信任' : '未验证'
+  const missingCapabilities = plan.capabilities.filter((item) => !item.available)
+  const facts = [
+    `SHA-256 ${plan.sha256.slice(0, 12)}…`,
+    `${plan.packages.length} 个插件`,
+    `${plan.skills.length} 个技能`,
+    `${plan.taskTemplates} 个任务模板`,
+    plan.requiredSecrets.length ? `需要 Secret 名称：${plan.requiredSecrets.join(', ')}` : '不需要 Secret',
+    missingCapabilities.length ? `缺少能力：${missingCapabilities.map((item) => item.id).join(', ')}` : 'Runtime 能力满足',
+  ]
+  document.querySelector('#preset-facts').innerHTML = facts
+    .map((fact, index) => `<span class="preset-fact${index === facts.length - 1 && missingCapabilities.length ? ' error' : ''}">${escapeHtml(fact)}</span>`)
+    .join('')
+  presetPackages.innerHTML = plan.packages.length
+    ? plan.packages.map((item) => `<article class="item"><div><div class="name-row"><span class="name">${escapeHtml(item.name)}</span><span class="badge ${item.status === 'conflict' || item.review.status !== 'compatible' ? 'unknown' : 'compatible'}">${escapeHtml(presetStatusLabels[item.status] ?? item.status)}</span></div><p class="description">Preset v${escapeHtml(item.version)}${item.currentVersion ? ` · 当前 v${escapeHtml(item.currentVersion)}` : ''} · 兼容性 ${escapeHtml(item.review.status)} · Bundle ${item.review.bundle === true ? '已验证' : '未验证'} · Registry integrity ${item.review.integrityVerified === true ? '一致' : '不一致'}${item.review.error ? ` · ${escapeHtml(item.review.error)}` : ''}</p></div>${conflictSelect('data-preset-package', item.name, item.status === 'conflict' || item.review.status !== 'compatible' || item.review.bundle !== true || item.review.integrityVerified !== true)}</article>`).join('')
+    : '<p class="empty">Preset 不包含社区插件</p>'
+  const skillRows = plan.skills.map((item) => `<article class="item"><div><div class="name-row"><span class="name">${escapeHtml(item.name)}</span><span class="badge ${item.status === 'conflict' ? 'unknown' : 'compatible'}">${escapeHtml(presetStatusLabels[item.status] ?? item.status)}</span></div><p class="description">技能目录内容，不包含可执行脚本</p></div>${conflictSelect('data-preset-skill', item.name, item.status === 'conflict')}</article>`)
+  skillRows.push(`<article class="item"><div><span class="name">Settings</span><p class="description">允许字段：${escapeHtml(plan.settings.join(', ') || '无')}</p></div><select class="preset-select" data-preset-config="settings"><option value="preset">使用 Preset</option><option value="skip">跳过</option><option value="cancel">取消导入</option></select></article>`)
+  skillRows.push(`<article class="item"><div><span class="name">Task templates</span><p class="description">${plan.taskTemplates} 项</p></div><select class="preset-select" data-preset-config="taskTemplates"><option value="preset">使用 Preset</option><option value="skip">跳过</option><option value="cancel">取消导入</option></select></article>`)
+  presetConfig.innerHTML = skillRows.join('')
+  document.querySelector('#preset-confirm').checked = false
+  presetProgress.hidden = true
+  presetProgressSteps.innerHTML = ''
+  presetPlanElement.hidden = false
+}
+
+const progressLabels = Object.freeze({
+  preparing: '解析计划并验证兼容性',
+  prefetched: '精确包已预取到本地 store',
+  stopping: '正在停止 DeepSeek Harness',
+  applying: '正在应用插件与配置',
+  starting: '正在启动并进行健康检查',
+  committed: '导入成功，事务已提交',
+  'rolling-back': '导入失败，正在完整回滚',
+  restored: '旧环境与 Runtime 已恢复',
+})
+
+function renderProgress(payload) {
+  if (payload.operation !== 'preset-import') return
+  presetProgress.hidden = false
+  for (const item of presetProgressSteps.querySelectorAll('li.current')) item.classList.remove('current')
+  const item = document.createElement('li')
+  item.textContent = progressLabels[payload.phase] ?? payload.phase
+  item.classList.add(payload.phase === 'restored' ? 'failed' : 'current')
+  presetProgressSteps.append(item)
+}
+
+const migrationStatusLabels = Object.freeze({
+  install: '可安装',
+  update: '可更新',
+  unknown: '兼容性未声明',
+  incompatible: '不兼容',
+  missing: '注册表缺失',
+  managed: 'Desktop 管理',
+  'already-installed': '已安装相同版本',
+})
+
+function renderMigrationPlan(plan) {
+  const element = document.querySelector('#migration-plan')
+  const list = document.querySelector('#migration-items')
+  if (!plan.available) {
+    activeMigrationPlan = undefined
+    element.hidden = true
+    notify('未发现可迁移的 Web Profile')
+    return
+  }
+  activeMigrationPlan = plan
+  const configurationNote = `<article class="item"><div><span class="name">相关 Profile 配置</span><p class="description">将迁移 ${plan.configuration?.fragments ?? 0} 个可归属配置片段；已跳过 ${plan.configuration?.skipped ?? 0} 个含敏感字段的片段。配置内容不会发送给 Renderer。</p></div></article>`
+  list.innerHTML = configurationNote + (plan.items.length
+    ? plan.items.map((item) => {
+      const eligible = ['install', 'update', 'unknown'].includes(item.status)
+      const detail = [
+        item.version ? `目标 v${item.version}` : `请求 ${String(item.requested ?? '未知')}`,
+        item.currentVersion ? `Desktop 当前 v${item.currentVersion}` : '',
+        item.sourceMissing ? 'Web Profile 本地包缺失，将以注册表精确版本为准' : '',
+        item.reason ?? '',
+      ].filter(Boolean).join(' · ')
+      return `<article class="item"><div><div class="name-row"><label class="risk-check"><input type="checkbox" data-migration-plugin="${escapeHtml(item.name)}"${eligible && item.status !== 'unknown' ? ' checked' : ''}${eligible ? '' : ' disabled'}><span class="name">${escapeHtml(item.name)}</span></label><span class="badge ${eligible ? 'unknown' : 'incompatible'}">${escapeHtml(migrationStatusLabels[item.status] ?? item.status)}</span></div><p class="description">${escapeHtml(detail)}</p></div></article>`
+    }).join('')
+    : '<p class="empty">Web Profile 没有插件条目</p>')
+  document.querySelector('#migration-allow-unknown').checked = false
+  element.hidden = false
 }
 
 const compatibilityLabels = Object.freeze({
@@ -261,6 +376,7 @@ const removeQqBotEventListener = window.dshDesktop.onQqBotEvent((payload) => {
   if (payload.type === 'bound') notify('QQ 机器人绑定成功，DSH 已重启')
   if (payload.type === 'error') notify(payload.error ?? 'QQ 机器人绑定失败', true)
 })
+const removeProgressListener = window.dshDesktop.onExtensionProgress(renderProgress)
 
 const tabs = Array.from(document.querySelectorAll('[data-tab]'))
 function activateTab(tab, focus = false) {
@@ -292,6 +408,16 @@ for (const [index, tab] of tabs.entries()) {
   })
 }
 
+const removeNavigationListener = window.dshDesktop.onExtensionNavigate((payload) => {
+  const tab = tabs.find((item) => item.dataset.tab === payload?.tab)
+  if (tab) activateTab(tab)
+})
+const removePresetPreviewListener = window.dshDesktop.onPresetPreview((plan) => {
+  const tab = tabs.find((item) => item.dataset.tab === 'presets')
+  if (tab) activateTab(tab)
+  renderPresetPlan(plan)
+})
+
 document.querySelector('#plugin-form').addEventListener('submit', async (event) => {
   event.preventDefault()
   const form = event.currentTarget
@@ -302,6 +428,7 @@ document.querySelector('#plugin-form').addEventListener('submit', async (event) 
     try {
       const result = await window.dshDesktop.installPlugin(spec, allowUnknown)
       notify(`${result.name} 已安装，DSH 已重启`)
+      showActivation(`${result.name} 已安装。可立即刷新列表；如扩展界面仍显示旧状态，请完整重启 Harness。`, { mode: result.restartRequired ? 'restart' : 'refresh' })
       form.reset()
       await refresh()
     } catch (error) {
@@ -309,7 +436,12 @@ document.querySelector('#plugin-form').addEventListener('submit', async (event) 
     }
   })
 })
-window.addEventListener('beforeunload', removeQqBotEventListener, { once: true })
+window.addEventListener('beforeunload', () => {
+  removeQqBotEventListener()
+  removeProgressListener()
+  removeNavigationListener()
+  removePresetPreviewListener()
+}, { once: true })
 
 pluginList.addEventListener('click', async (event) => {
   const updateButton = event.target.closest('[data-update-plugin]')
@@ -320,6 +452,7 @@ pluginList.addEventListener('click', async (event) => {
       try {
         const result = await window.dshDesktop.updatePlugin(updateButton.dataset.updatePlugin, allowUnknown)
         notify(`${result.name} 已更新至 v${result.version}，DSH 已重启`)
+        showActivation(`${result.name} 已更新。刷新以读取新清单；必要时可完整重启 Harness。`, { mode: result.restartRequired ? 'restart' : 'refresh' })
         await refresh()
         await checkPluginUpdates({ silent: true })
       } catch (error) {
@@ -334,6 +467,7 @@ pluginList.addEventListener('click', async (event) => {
     try {
       await window.dshDesktop.removePlugin(button.dataset.removePlugin)
       notify(`${button.dataset.removePlugin} 已移除`)
+      showActivation(`${button.dataset.removePlugin} 已移除。刷新以确认当前扩展状态。`, { mode: 'refresh' })
       await refresh()
     } catch (error) {
       notify(error.message, true)
@@ -440,6 +574,7 @@ document.querySelector('#import-skill').addEventListener('click', async () => {
       const result = await window.dshDesktop.importSkill()
       if (!result.canceled) {
         notify(`${result.skill.name} 已导入`)
+        showActivation(`${result.skill.name} 已导入。技能 watcher 会自动加载，也可手动刷新确认。`, { mode: 'refresh' })
         await refresh()
       }
     } catch (error) {
@@ -463,6 +598,112 @@ refreshButton.addEventListener('click', () => {
   void extensionOperations.run(async () => {
     await refresh()
     await checkPluginUpdates({ silent: true })
+  })
+})
+document.querySelector('#activation-refresh').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    await refresh()
+    await checkPluginUpdates({ silent: true })
+    activationBanner.hidden = true
+  })
+})
+restartRuntimeButton.addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      await window.dshDesktop.restartRuntime()
+      notify('DeepSeek Harness 已完整重启')
+      activationBanner.hidden = true
+      await refresh()
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+document.querySelector('#export-preset').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      const result = await window.dshDesktop.exportPreset()
+      if (!result.canceled) notify(`Preset 已导出（${result.packages} 个插件，${result.skills} 个技能，跳过 ${result.skipped?.length ?? 0} 项本机或敏感设置）`)
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+document.querySelector('#select-preset').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      const result = await window.dshDesktop.selectPreset()
+      if (!result.canceled) renderPresetPlan(result.plan)
+    } catch (error) {
+      activePresetPlan = undefined
+      presetPlanElement.hidden = true
+      notify(error.message, true)
+    }
+  })
+})
+document.querySelector('#preview-migration').addEventListener('click', () => {
+  void extensionOperations.run(async () => {
+    try {
+      renderMigrationPlan(await window.dshDesktop.previewWebProfileMigration())
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+document.querySelector('#apply-migration').addEventListener('click', () => {
+  if (!activeMigrationPlan) return
+  const names = [...document.querySelectorAll('[data-migration-plugin]:checked')]
+    .map((element) => element.dataset.migrationPlugin)
+  if (names.length === 0) {
+    notify('请选择至少一个可迁移插件', true)
+    return
+  }
+  if (!window.confirm(`将 ${names.length} 个 Web Profile 插件迁移到隔离的 Desktop Profile？`)) return
+  void extensionOperations.run(async () => {
+    try {
+      const result = await window.dshDesktop.applyWebProfileMigration({
+        id: activeMigrationPlan.id,
+        names,
+        allowUnknown: document.querySelector('#migration-allow-unknown').checked,
+      })
+      notify(`已迁移 ${result.plugins?.length ?? names.length} 个插件和 ${result.configurationFragments ?? 0} 个配置片段`)
+      showActivation('Web Profile 的所选插件及相关 Profile 配置已迁移到 Desktop Profile。刷新查看结果；必要时可完整重启 Harness。', { mode: result.restartRequired ? 'restart' : 'refresh' })
+      activeMigrationPlan = undefined
+      document.querySelector('#migration-plan').hidden = true
+      await refresh()
+    } catch (error) {
+      notify(error.message, true)
+    }
+  })
+})
+document.querySelector('#import-preset').addEventListener('click', () => {
+  if (!activePresetPlan) return
+  if (!document.querySelector('#preset-confirm').checked) {
+    notify('请先审阅并勾选导入确认', true)
+    return
+  }
+  if (!window.confirm('应用此 Preset？插件将使用精确版本，任何失败都会恢复旧环境。')) return
+  const packages = Object.fromEntries([...document.querySelectorAll('[data-preset-package]')]
+    .map((element) => [element.dataset.presetPackage, element.value]))
+  const skills = Object.fromEntries([...document.querySelectorAll('[data-preset-skill]')]
+    .map((element) => [element.dataset.presetSkill, element.value]))
+  const config = Object.fromEntries([...document.querySelectorAll('[data-preset-config]')]
+    .map((element) => [element.dataset.presetConfig, element.value]))
+  void extensionOperations.run(async () => {
+    try {
+      const result = await window.dshDesktop.importPreset({
+        id: activePresetPlan.id,
+        confirmed: true,
+        decisions: { packages, skills, ...config },
+      })
+      notify(`${result.preset.name} 已导入，DSH 已重启`)
+      showActivation('Preset 环境已应用。刷新查看清单；如页面状态未同步，可完整重启 Harness。', result.activation)
+      activePresetPlan = undefined
+      presetPlanElement.hidden = true
+      await refresh()
+    } catch (error) {
+      notify(error.message, true)
+    }
   })
 })
 

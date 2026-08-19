@@ -8,8 +8,9 @@ import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { ensureApiRetryPolicies } from './api-retry-policy.mjs'
 import { resolveDesktopVersion } from './app-version.mjs'
 import { createCommunityQrImage } from './community.mjs'
-import { GITHUB_FEEDBACK_URL, GITHUB_PROJECT_URL } from './community-links.mjs'
+import { GITHUB_DOWNLOADS_URL, GITHUB_FEEDBACK_URL, GITHUB_PROJECT_URL } from './community-links.mjs'
 import { promptForDownloadDestination } from './download-destination.mjs'
+import { DeepLinkRouter, normalizeDeepLink, presetFileFrom } from './deep-links.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { registerExtensionIpc } from './extension-ipc.mjs'
 import { DESKTOP_SURFACES } from './desktop-contract.mjs'
@@ -29,13 +30,19 @@ import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { launchRequestsSafeMode } from './launch-safe-mode.mjs'
 import { installApplicationMenu, installEditContextMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
+import { DesktopNotificationService } from './notifications.mjs'
 import { startQqBotConnector } from './optional-integrations.mjs'
 import { DesktopPluginRecovery, PluginRecoveryStore } from './plugin-recovery.mjs'
 import { BUILTIN_BUNDLES, ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
+import { WebProfileMigrationService } from './profile-migration.mjs'
+import { PresetService } from './presets/preset-service.mjs'
 import { persistRuntimePort, selectPreferredRuntimePort } from './runtime-port.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
+import { installSettingsWindow } from './settings-window.mjs'
+import { SettingsWindowStateStore } from './settings-window-state.mjs'
 import { installStarPromptSurface, StarPromptStore } from './star-prompt.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
+import { DshRuntimeProvider } from './runtime-provider.mjs'
 import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
 import { parseUpdateMirrors, probeUpdateSource, UpdateDownloadRouter } from './update-mirrors.mjs'
@@ -85,8 +92,7 @@ export function desktopDeepLinkFrom(commandLine = [], protocol = 'dsh') {
   for (const value of commandLine) {
     if (typeof value !== 'string' || value.length > 4_096) continue
     try {
-      const url = new URL(value)
-      if (url.protocol === `${protocol}:`) return url.href
+      return normalizeDeepLink(value, protocol).href
     } catch {
       // Ordinary executable arguments are not URLs.
     }
@@ -254,16 +260,22 @@ export async function startElectronApp(metadata) {
   let updateShutdownRequested = initialUpdateShutdownRequest !== undefined
   let requestUpdateShutdown
   let mainWindow
-  const pendingDeepLinks = []
-  const publishDeepLink = (url) => {
-    if (!url) return
-    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) {
-      pendingDeepLinks.push(url)
-      return
-    }
-    mainWindow.webContents.send('desktop:deep-link', url)
+  let dispatchDeepLink
+  let dispatchPresetFile
+  const pendingPresetFiles = new Set()
+  const deepLinkRouter = new DeepLinkRouter({
+    protocol: metadata.protocol,
+    dispatch: (link) => dispatchDeepLink(link),
+  })
+  const enqueueCommandLineIngress = (commandLine) => {
+    const deepLink = desktopDeepLinkFrom(commandLine, metadata.protocol)
+    if (deepLink) deepLinkRouter.enqueue(deepLink)
+    const presetPath = presetFileFrom(commandLine)
+    if (!presetPath) return
+    if (dispatchPresetFile) void dispatchPresetFile(presetPath)
+    else if (pendingPresetFiles.size < 8) pendingPresetFiles.add(presetPath)
   }
-  publishDeepLink(desktopDeepLinkFrom(process.argv, metadata.protocol))
+  enqueueCommandLineIngress(process.argv)
   if (!app.requestSingleInstanceLock({
     shutdownForUpdate: updateShutdownRequested,
     ...(initialUpdateShutdownRequest?.token ? { shutdownToken: initialUpdateShutdownRequest.token } : {}),
@@ -279,7 +291,7 @@ export async function startElectronApp(metadata) {
       requestUpdateShutdown?.(request)
       return
     }
-    publishDeepLink(desktopDeepLinkFrom(commandLine, metadata.protocol))
+    enqueueCommandLineIngress(commandLine)
     if (!mainWindow) return
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
@@ -287,12 +299,21 @@ export async function startElectronApp(metadata) {
   })
   app.on('open-url', (event, url) => {
     event.preventDefault()
-    publishDeepLink(desktopDeepLinkFrom([url], metadata.protocol))
+    const deepLink = desktopDeepLinkFrom([url], metadata.protocol)
+    if (deepLink) deepLinkRouter.enqueue(deepLink)
+  })
+  app.on('open-file', (event, path) => {
+    event.preventDefault()
+    const presetPath = presetFileFrom([path])
+    if (!presetPath) return
+    if (dispatchPresetFile) void dispatchPresetFile(presetPath)
+    else if (pendingPresetFiles.size < 8) pendingPresetFiles.add(presetPath)
   })
 
   app.setName(metadata.productName)
   app.setAppUserModelId(metadata.appId)
   await app.whenReady()
+  if (app.isPackaged) app.setAsDefaultProtocolClient(metadata.protocol)
   const applicationReadyAt = performance.now()
 
   const appIconPath = resolveAppIconPath({
@@ -410,8 +431,9 @@ export async function startElectronApp(metadata) {
     return 0
   })
 
-  const controller = new DshRuntimeController({
-    cliPath: resolveDshCliPath(),
+  const dshCliPath = resolveDshCliPath()
+  const rawRuntimeController = new DshRuntimeController({
+    cliPath: dshCliPath,
     cwd: projectRoot,
     dshHome,
     executable: process.execPath,
@@ -424,8 +446,33 @@ export async function startElectronApp(metadata) {
     environmentProvider: qqBotEnvironment,
     preflight: () => assertRuntimeIntegrity({ resolvedFiles: runtimeCriticalFiles }),
   })
+  const runtimeProvider = new DshRuntimeProvider({
+    controller: rawRuntimeController,
+    ensureProfile,
+    dshHome,
+    profileName: 'desktop',
+    upstreamVersion: runtimeVersion,
+    desktopVersion,
+    runtimeIdentity: {
+      packageName: '@deepseek-ai/dsh',
+      version: runtimeVersion,
+      cliRelativePath: 'lib/bin.js',
+    },
+    supportEvidence: {
+      manifestSchemaVersion: 1,
+      source: 'package-and-lockfile',
+    },
+  })
+  const presetService = new PresetService({
+    dshHome,
+    desktopVersion,
+    runtimeVersion,
+    pluginManager,
+    runtimeProvider,
+  })
+  const migrationService = new WebProfileMigrationService({ dshHome, pluginManager })
   const pluginRecovery = new DesktopPluginRecovery({
-    controller,
+    controller: runtimeProvider,
     pluginManager,
     store: pluginRecoveryStore,
     ensureProfile,
@@ -439,11 +486,12 @@ export async function startElectronApp(metadata) {
     startQrConnect: startQqBotConnector,
     setProfileEnabled: (enabled) => setQqBotProfileEnabled({ profileDir: profile.profileDir, enabled }),
     setRuntimeCredentials: (credentials) => { qqBotCredentials = credentials },
-    restartRuntime: () => controller.restart(),
+    restartRuntime: () => runtimeProvider.recover(),
     onEventError: (error) => logStore.append(`[qqbot] event delivery failed: ${error instanceof Error ? error.message : String(error)}`),
   })
 
   const statePath = join(userData, 'window-state.json')
+  const settingsWindowStateStore = new SettingsWindowStateStore(join(userData, 'settings-window-state.json'))
   const state = await loadWindowState(statePath, screen.getAllDisplays())
   const surfaceRegistry = new DesktopSurfaceRegistry()
   mainWindow = new BrowserWindow({
@@ -465,11 +513,6 @@ export async function startElectronApp(metadata) {
     },
   })
   const unregisterMainSurface = surfaceRegistry.register(mainWindow.webContents, DESKTOP_SURFACES.MAIN)
-  const flushDeepLinks = () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    for (const url of pendingDeepLinks.splice(0)) mainWindow.webContents.send('desktop:deep-link', url)
-  }
-  mainWindow.webContents.on('did-finish-load', flushDeepLinks)
   applyWindowIcon(mainWindow, appIcon)
   const removeEditContextMenu = installEditContextMenu({ webContents: mainWindow.webContents, Menu })
   const removeMainWindowChrome = installWindowChrome({
@@ -524,11 +567,28 @@ export async function startElectronApp(metadata) {
       log: (line) => logStore.append(line),
     })
   })
+  const removeSettingsWindow = installSettingsWindow({
+    browserWindow: mainWindow,
+    onError: (error) => void logStore.append(`[settings-window] ${error.message}`),
+  })
+
+  const notificationService = new DesktopNotificationService({
+    isForeground: () => Boolean(mainWindow?.isFocused?.() || extensionWindow?.isFocused?.()),
+    routeDeepLink: async (link) => { deepLinkRouter.dispatchValidated(link) },
+    showNative: ({ title, body, onClick }) => {
+      if (!Notification?.isSupported?.()) return false
+      const notification = new Notification({ title, body })
+      if (onClick) notification.once('click', onClick)
+      notification.show()
+      return true
+    },
+  })
 
   const unregisterIpc = registerDesktopIpc({
     ipcMain,
     surfaceRegistry,
-    controller,
+    controller: runtimeProvider,
+    runtimeProvider,
     getWindow: () => mainWindow,
     metadata,
     version: desktopVersion,
@@ -539,6 +599,7 @@ export async function startElectronApp(metadata) {
     exitApp: () => app.quit(),
     handleHelpAction: (action) => {
       if (action === 'community') return createCommunityWindow()
+      if (action === 'downloads') return shell.openExternal(GITHUB_DOWNLOADS_URL)
       if (action === 'feedback') return shell.openExternal(GITHUB_FEEDBACK_URL)
       if (action === 'project') return shell.openExternal(GITHUB_PROJECT_URL)
       return updateController?.check({ manual: true })
@@ -563,6 +624,9 @@ export async function startElectronApp(metadata) {
       }
     },
     getUpdateController: () => updateController,
+    getSettingsWindowBounds: () => settingsWindowStateStore.load(),
+    setSettingsWindowBounds: (bounds) => settingsWindowStateStore.save(bounds),
+    notificationService,
     listSkills: async () => {
       const catalog = await discoverSkills({
         roots: defaultSkillRoots({
@@ -581,11 +645,6 @@ export async function startElectronApp(metadata) {
         })),
         diagnostics: catalog.diagnostics.map((item) => ({ error: item.error })),
       }
-    },
-    showNotification: ({ title, body }) => {
-      if (!Notification?.isSupported?.()) return false
-      new Notification({ title, body }).show()
-      return true
     },
   })
 
@@ -720,14 +779,43 @@ export async function startElectronApp(metadata) {
     shell,
     getWindow: () => extensionWindow ?? mainWindow,
     pluginManager,
-    controller,
+    controller: runtimeProvider,
     ensureProfile,
     projectRoot,
     dshHome,
     agentsHome: process.env.DSH_AGENTS_HOME,
     qqBotBinding,
     pluginRecovery,
+    presetService,
+    migrationService,
+    notificationService,
   })
+  dispatchDeepLink = async (link) => {
+    if (link.kind === 'extensions' || link.kind === 'preset-preview') {
+      const window = await createExtensionWindow()
+      window.webContents.send('extensions:navigate', {
+        tab: link.kind === 'preset-preview' ? 'presets' : 'plugins',
+      })
+      return
+    }
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('desktop:deep-link', link)
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+  dispatchPresetFile = async (path) => {
+    try {
+      const plan = await presetService.previewFile(path)
+      const window = await createExtensionWindow()
+      window.webContents.send('extensions:navigate', { tab: 'presets' })
+      window.webContents.send('extensions:preset-preview', plan)
+    } catch (error) {
+      await logStore.append(`[preset] file preview rejected: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  for (const path of pendingPresetFiles) void dispatchPresetFile(path)
+  pendingPresetFiles.clear()
   const loadStartup = async () => {
     activeOrigin = undefined
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -741,10 +829,11 @@ export async function startElectronApp(metadata) {
   const showRuntime = async (status, runtimeReadyAt) => {
     await startupSurfaceReady
     if (!mainWindow || mainWindow.isDestroyed()) return
-    if (controller.status.state !== 'ready' || controller.status.url !== status.url) return
+    if (runtimeProvider.status.state !== 'ready' || runtimeProvider.status.url !== status.url) return
     activeOrigin = new URL(status.url).origin
     try {
       await mainWindow.loadURL(status.url)
+      deepLinkRouter.setReady(true)
       const rendererLoadedAt = performance.now()
       void logStore.append(`[startup] renderer-loaded=${Math.round(rendererLoadedAt - runtimeReadyAt)}ms`)
       void logStore.append(`[startup] total-to-renderer=${Math.round(rendererLoadedAt - applicationStartedAt)}ms`)
@@ -752,6 +841,13 @@ export async function startElectronApp(metadata) {
         const recoveryState = await pluginRecovery.getState()
         if (recoveryState.safeMode && !safeModeNoticeShown && process.env.DSH_DESKTOP_SMOKE_EXIT !== '1') {
           safeModeNoticeShown = true
+          void notificationService.show({
+            category: 'plugin-recovery',
+            id: 'plugin-recovery:safe-mode:current',
+            title: 'DeepSeek Harness is in plugin safe mode',
+            body: `${recoveryState.disabledPlugins.length} plugin(s) are disabled. Review recovery details in Extension Dock.`,
+            deepLink: 'dsh://extensions',
+          }).catch(() => {})
           const notice = await dialog.showMessageBox(mainWindow, {
             type: 'warning',
             title: '插件安全模式',
@@ -776,7 +872,7 @@ export async function startElectronApp(metadata) {
       void loadStartup().catch(() => {})
     }
   }
-  controller.on('status', (status) => {
+  runtimeProvider.on('status', (status) => {
     if (status.state === 'starting') runtimeStartedAt = performance.now()
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (status.state === 'ready' && status.url) {
@@ -785,8 +881,9 @@ export async function startElectronApp(metadata) {
         void logStore.append(`[startup] runtime-ready=${Math.round(runtimeReadyAt - runtimeStartedAt)}ms`)
       }
       void showRuntime(status, runtimeReadyAt)
-    } else if (['crashed', 'stopping', 'restarting'].includes(status.state) && !mainWindow.webContents.getURL().startsWith('file:')) {
-      void loadStartup().catch(() => {})
+    } else if (['crashed', 'stopping', 'restarting'].includes(status.state)) {
+      deepLinkRouter.setReady(false)
+      if (!mainWindow.webContents.getURL().startsWith('file:')) void loadStartup().catch(() => {})
     }
   })
 
@@ -798,7 +895,7 @@ export async function startElectronApp(metadata) {
   const holdRuntime = process.env.DSH_DESKTOP_HOLD_STARTUP === '1'
   const startup = beginDesktopStartup({
     loadShell: loadStartup,
-    startRuntime: () => controller.start(),
+    startRuntime: () => runtimeProvider.start(),
     holdRuntime,
   })
   void startup.runtimePromise?.catch(() => {})
@@ -814,21 +911,21 @@ export async function startElectronApp(metadata) {
   const shutdownLifecycle = createDesktopShutdownLifecycle({
     prepareStop: () => unregisterExtensionIpc.quiesce(),
     saveState: saveWindowState,
-    stopRuntime: () => controller.stop(),
+    stopRuntime: () => runtimeProvider.stop(),
     resumeOperations: () => unregisterExtensionIpc.resume(),
-    startRuntime: () => controller.start(),
+    startRuntime: () => runtimeProvider.start(),
     log: (message) => logStore.append(`[shutdown] ${message}`),
     disposeResources: async () => {
       const disposers = [
         () => updateController?.dispose(),
         () => updateController?.off('status', publishUpdateStatus),
         removeUpdateSurface,
+        removeSettingsWindow,
         removeStarPromptSurface,
         removeConversationSkills,
         removeConversationPolish,
         removeEditContextMenu,
         removeMainWindowChrome,
-        () => mainWindow?.webContents.removeListener('did-finish-load', flushDeepLinks),
         unregisterMainSurface,
         unregisterIpc,
         unregisterExtensionIpc,
@@ -915,6 +1012,15 @@ export async function startElectronApp(metadata) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('desktop:update-status', publicUpdateStatus(status))
     }
+    if (status?.phase === 'ready' && typeof status.version === 'string') {
+      void notificationService.show({
+        category: 'update',
+        id: `update:${status.version.toLowerCase().replace(/[^a-z0-9._:-]/gu, '-').slice(0, 80)}:downloaded`,
+        title: 'DeepSeek Harness Desktop update ready',
+        body: `Version ${status.version} has been downloaded and is ready to install.`,
+        deepLink: 'dsh://updates',
+      }).catch(() => {})
+    }
   }
   updateController.on('status', publishUpdateStatus)
   const openLogs = () => shell.openPath(logsDirectory)
@@ -922,7 +1028,7 @@ export async function startElectronApp(metadata) {
     Menu,
     app,
     shell,
-    controller,
+    controller: runtimeProvider,
     openExtensions: () => createExtensionWindow(),
     openCommunity: () => createCommunityWindow(),
     openFeedback: () => shell.openExternal(GITHUB_FEEDBACK_URL),

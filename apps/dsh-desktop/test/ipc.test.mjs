@@ -32,7 +32,7 @@ test('window chrome IPC accepts only supported themes', () => {
 })
 
 test('window chrome Help IPC accepts only fixed application actions', () => {
-  for (const action of ['community', 'feedback', 'project', 'updates']) {
+  for (const action of ['community', 'downloads', 'feedback', 'project', 'updates']) {
     assert.equal(normalizeHelpAction(action), action)
   }
   for (const action of ['open-url', 'https://example.com', '', 42]) {

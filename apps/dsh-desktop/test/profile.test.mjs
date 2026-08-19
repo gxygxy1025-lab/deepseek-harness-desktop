@@ -14,6 +14,7 @@ import {
   DESKTOP_PATCH_CONFIG,
   DEPENDENCY_ONLY_BUNDLES,
   DESKTOP_PLUGIN_COMPAT_PACKAGES,
+  DESKTOP_RUNTIME_OVERRIDE_PACKAGES,
   DESKTOP_SUPPORT_PACKAGES,
   MANAGED_RUNTIME_PACKAGES,
   RETIRED_MANAGED_PACKAGES,
@@ -121,6 +122,13 @@ test('desktop profile includes the official QQ Bot bundle', () => {
 test('desktop profile mounts the queue recovery compatibility bundle', () => {
   assert.equal(BUILTIN_BUNDLES.includes('@linxin666/dsh-desktop-compat'), true)
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-desktop-compat'), true)
+})
+
+test('desktop profile receives the independent particle theme from dependency reconciliation exactly once', () => {
+  assert.equal(BUILTIN_BUNDLES.includes('@linxin666/dsh-particle-theme'), false)
+  assert.equal(AGGREGATED_BUNDLES.includes('@linxin666/dsh-particle-theme'), false)
+  assert.equal(DEPENDENCY_ONLY_BUNDLES.includes('@linxin666/dsh-particle-theme'), true)
+  assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-particle-theme'), true)
 })
 
 test('desktop profile provides runtime dependencies omitted by supported community plugins', () => {
@@ -542,7 +550,18 @@ test('runtime resolver finds every bundled and desktop support package', () => {
     /- id: ui-mode-switcher\s+name: '@linxin666\/dsh-client-ui-mode-switcher'/u,
     'the published aggregate must mount the Desktop-owned mode switcher',
   )
+  assert.doesNotMatch(
+    aggregatePatch,
+    /- id: ui-community-plugins\s+name: '@linxin666\/dsh-client-ui-community-plugins'/u,
+    'the settings override already owns the community plugin index',
+  )
+  assert.deepEqual(DESKTOP_RUNTIME_OVERRIDE_PACKAGES, ['@linxin666/dsh-client-ui-web-ui-settings'])
+  assert.match(
+    resolved.get('@linxin666/dsh-client-ui-web-ui-settings'),
+    /packages[\\/]dsh-web-ui-settings$/u,
+  )
   for (const packageName of AGGREGATED_BUNDLES) {
+    if (DESKTOP_RUNTIME_OVERRIDE_PACKAGES.includes(packageName)) continue
     const manifest = JSON.parse(readFileSync(join(resolved.get(packageName), 'package.json'), 'utf8'))
     assert.equal(manifest.version, aggregate.version, `${packageName} did not resolve from the aggregate release`)
   }

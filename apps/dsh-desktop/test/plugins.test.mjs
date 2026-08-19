@@ -268,6 +268,241 @@ test('failed prepared mutation rolls itself back before returning an error', asy
   }
 })
 
+test('prepareMany deduplicates names, resolves every exact candidate, and prefetches once', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-prepare-many-'))
+  const calls = []
+  const fetched = []
+  try {
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }))
+    const manager = new PluginManager({
+      profileDir,
+      hostCompatibility,
+      pnpmCli: 'pnpm.mjs',
+      registry: {
+        fetchManifest: async (name, version) => {
+          fetched.push([name, version])
+          return {
+            name,
+            version: name.endsWith('/first') ? '2.0.0' : '3.0.0',
+            dist: { integrity: `sha512-${name.endsWith('/first') ? 'Zmlyc3Q=' : 'c2Vjb25k'}` },
+            dsh: { bundle: { patch: './cordis.patch.yml' } },
+            peerDependencies: { '@deepseek-ai/cordis': '^4.0.1' },
+          }
+        },
+      },
+      runner: async ({ args }) => { calls.push(args) },
+    })
+    const prepared = await manager.prepareMany([
+      '@community/first@2.0.0',
+      '@community/first@2.0.0',
+      '@community/second@3.0.0',
+    ])
+    assert.deepEqual(fetched, [
+      ['@community/first', '2.0.0'],
+      ['@community/second', '3.0.0'],
+    ])
+    assert.deepEqual(prepared.items.map((item) => item.spec), [
+      '@community/first@2.0.0',
+      '@community/second@3.0.0',
+    ])
+    assert.deepEqual(calls, [[
+      'store',
+      'add',
+      '@community/first@2.0.0',
+      '@community/second@3.0.0',
+    ]])
+    await assert.rejects(
+      manager.prepareMany(['@community/first@1.0.0', '@community/first@2.0.0']),
+      /conflicting duplicate/u,
+    )
+    await assert.rejects(manager.prepareMany(['@community/first@latest']), /exact version/u)
+    await assert.rejects(manager.prepareMany(['@community/first@^2.0.0']), /exact version|invalid plugin/u)
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('prepareMany compatibility and prefetch failures never produce an applicable batch', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-prepare-many-fail-'))
+  let runnerCalls = 0
+  try {
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }))
+    let incompatible = true
+    const manager = new PluginManager({
+      profileDir,
+      hostCompatibility,
+      pnpmCli: 'pnpm.mjs',
+      registry: {
+        fetchManifest: async (name) => ({
+          name,
+          version: '2.0.0',
+          dist: { integrity: 'sha512-ZmFpbHVyZQ==' },
+          dsh: {
+            bundle: { patch: './cordis.patch.yml' },
+            compatibility: incompatible ? { desktop: '>=9.0.0' } : undefined,
+          },
+          peerDependencies: incompatible ? undefined : { '@deepseek-ai/cordis': '^4.0.1' },
+        }),
+      },
+      runner: async () => {
+        runnerCalls += 1
+        throw new Error('store unavailable')
+      },
+    })
+    await assert.rejects(manager.prepareMany(['@community/failure@2.0.0']), /incompatible/u)
+    assert.equal(runnerCalls, 0)
+    incompatible = false
+    await assert.rejects(manager.prepareMany(['@community/failure@2.0.0']), /store unavailable/u)
+    assert.equal(runnerCalls, 1)
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('applyPreparedBatch snapshots and applies every package once and remains reversible', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-apply-many-'))
+  const manifestPath = join(profileDir, 'package.json')
+  const lockPath = join(profileDir, 'pnpm-lock.yaml')
+  const first = '@community/first'
+  const second = '@community/second'
+  const oldManifest = {
+    name: 'dsh-profile-desktop',
+    private: true,
+    dependencies: { [first]: '1.0.0' },
+    dsh: { profile: { bundles: [...BUILTIN_BUNDLES, first] } },
+  }
+  const integrities = {
+    [first]: 'sha512-Zmlyc3Q=',
+    [second]: 'sha512-c2Vjb25k',
+  }
+  const calls = []
+  const mutations = []
+  try {
+    await writeFile(manifestPath, `${JSON.stringify(oldManifest, null, 2)}\n`)
+    await writeFile(lockPath, 'old-lock\n')
+    const oldRoot = join(profileDir, 'node_modules', ...first.split('/'))
+    await mkdir(oldRoot, { recursive: true })
+    await writeFile(join(oldRoot, 'package.json'), JSON.stringify({
+      name: first,
+      version: '1.0.0',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }))
+    const runner = async ({ args }) => {
+      calls.push(args)
+      if (args[0] !== 'add') return
+      const changed = JSON.parse(await readFile(manifestPath, 'utf8'))
+      changed.dependencies[first] = '2.0.0'
+      changed.dependencies[second] = '3.0.0'
+      await writeFile(manifestPath, `${JSON.stringify(changed, null, 2)}\n`)
+      await writeFile(lockPath, `lock\n${integrities[first]}\n${integrities[second]}\n`)
+      for (const [name, version] of [[first, '2.0.0'], [second, '3.0.0']]) {
+        const root = join(profileDir, 'node_modules', ...name.split('/'))
+        await mkdir(root, { recursive: true })
+        await writeFile(join(root, 'package.json'), JSON.stringify({
+          name,
+          version,
+          dsh: { bundle: { patch: './cordis.patch.yml' } },
+          peerDependencies: { '@deepseek-ai/cordis': '^4.0.1' },
+        }))
+      }
+    }
+    const manager = new PluginManager({
+      profileDir,
+      runner,
+      pnpmCli: 'pnpm.mjs',
+      hostCompatibility,
+      beforeMutation: async (event) => { mutations.push(event) },
+    })
+    const transaction = await manager.applyPreparedBatch({ items: [
+      { name: first, version: '2.0.0', spec: `${first}@2.0.0`, integrity: integrities[first] },
+      { name: second, version: '3.0.0', spec: `${second}@3.0.0`, integrity: integrities[second] },
+    ] })
+    assert.deepEqual(calls[0], ['add', `${first}@2.0.0`, `${second}@3.0.0`, '--save-exact', '--offline'])
+    assert.deepEqual(mutations, [{
+      type: 'install-batch',
+      names: [first, second],
+      versions: ['2.0.0', '3.0.0'],
+    }])
+    assert.deepEqual(transaction.result.plugins, [
+      { name: first, version: '2.0.0', previousVersion: '1.0.0' },
+      { name: second, version: '3.0.0', previousVersion: undefined },
+    ])
+    assert.deepEqual(transaction.result.activation, {
+      mode: 'restart',
+      reason: 'runtime-bundle-graph-changed',
+    })
+    const changed = JSON.parse(await readFile(manifestPath, 'utf8'))
+    assert.equal(changed.dsh.profile.bundles.includes(first), true)
+    assert.equal(changed.dsh.profile.bundles.includes(second), true)
+    assert.equal(await transaction.rollback(), true)
+    assert.deepEqual(JSON.parse(await readFile(manifestPath, 'utf8')), oldManifest)
+    assert.equal(await readFile(lockPath, 'utf8'), 'old-lock\n')
+    assert.deepEqual(calls[1], ['install', '--offline', '--frozen-lockfile'])
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('applyPreparedBatch restores one snapshot when a later package or rollback fails', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-apply-many-fail-'))
+  const manifestPath = join(profileDir, 'package.json')
+  const lockPath = join(profileDir, 'pnpm-lock.yaml')
+  const first = '@community/first'
+  const second = '@community/second'
+  const oldManifest = {
+    name: 'dsh-profile-desktop',
+    private: true,
+    dependencies: {},
+    dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+  }
+  let rollbackFails = false
+  try {
+    await writeFile(manifestPath, `${JSON.stringify(oldManifest, null, 2)}\n`)
+    await writeFile(lockPath, 'old-lock\n')
+    const runner = async ({ args }) => {
+      if (args[0] === 'install' && rollbackFails) throw new Error('rollback install failed')
+      if (args[0] !== 'add') return
+      await writeFile(lockPath, 'sha512-Zmlyc3Q=\nsha512-c2Vjb25k\n')
+      for (const [name, version] of [[first, '2.0.0'], [second, '9.9.9']]) {
+        const root = join(profileDir, 'node_modules', ...name.split('/'))
+        await mkdir(root, { recursive: true })
+        await writeFile(join(root, 'package.json'), JSON.stringify({
+          name,
+          version,
+          dsh: { bundle: { patch: './cordis.patch.yml' } },
+          peerDependencies: { '@deepseek-ai/cordis': '^4.0.1' },
+        }))
+      }
+    }
+    const batch = { items: [
+      { name: first, version: '2.0.0', spec: `${first}@2.0.0`, integrity: 'sha512-Zmlyc3Q=' },
+      { name: second, version: '3.0.0', spec: `${second}@3.0.0`, integrity: 'sha512-c2Vjb25k' },
+    ] }
+    const manager = new PluginManager({ profileDir, runner, pnpmCli: 'pnpm.mjs', hostCompatibility })
+    await assert.rejects(manager.applyPreparedBatch(batch), /rolled back/u)
+    assert.deepEqual(JSON.parse(await readFile(manifestPath, 'utf8')), oldManifest)
+    assert.equal(await readFile(lockPath, 'utf8'), 'old-lock\n')
+
+    rollbackFails = true
+    await assert.rejects(
+      manager.applyPreparedBatch(batch),
+      (error) => /rollback failed/u.test(error.message) && error.cause instanceof AggregateError,
+    )
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
 test('failed removal restores a partially changed manifest and lockfile', async () => {
   const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-remove-rollback-'))
   const packageName = '@community/example'

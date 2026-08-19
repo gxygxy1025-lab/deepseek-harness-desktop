@@ -20,13 +20,14 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 如果这个项目对你有帮助，欢迎在 [GitHub 仓库](https://github.com/ningbainb/deepseek-harness-desktop) 点 Star，帮助更多桌面版用户发现它。
 
-### 最新版：2.4.0
+### 最新版：2.5.0
 
-`desktop-v2.4.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.4.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/DeepSeek-Harness-Desktop-Setup-2.4.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.4.0/SHA256SUMS.txt)
+`desktop-v2.5.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.5.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/SHA256SUMS.txt)
 
 | 版本 | 主要更新 |
 | --- | --- |
-| **2.4.0** | SSH 内部视图切换保持终端连接并补齐粘贴；隐藏 PowerShell 工具窗口；皮肤状态隔离到 desktop profile 并清理全局补丁污染；覆盖升级可关闭路径漂移的 2.2 残留主程序。 |
+| **2.5.0** | 新增 Runtime Adapter 与上游兼容防线、安全 `.dshpreset` 和 Web Profile 迁移、原子插件批量事务、严格 Deep Link/文件关联与结构化通知。 |
+| **2.4.0** | 新增可靠更新关停回执 v2、主界面/扩展坞权限拆分、Desktop Contract v1，以及 Task Board Host 文件存储 v2。 |
 | **2.3.0** | 新增只出现一次的 GitHub Star 动画引导与“加入社群”反馈入口；安装预检可识别外部 PowerShell/CMD/Node 宿主、EncodedCommand 与 Windows 短路径，兼容 0.1.9 直接升级，并通过独立 profile 与端口回退和官方 Web 端共存。 |
 | **2.2.0** | 隐藏 Windows 终端及其后代窗口；升级时自动清理旧应用和插件后台、迁移可识别旧依赖与旧安全模式误判；重启复用端口，安全模式支持可见提示与一键恢复。 |
 | **2.1.0** | 新增国内更新镜像自动测速与回退、插件快照/自动隔离/安全模式三层容灾；统一皮肤持久化，修复升级文件占用、隐藏命令框、中文工作区重启循环，并从工具菜单直接打开扩展坞。 |
@@ -39,16 +40,22 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 | **0.1.4** | 桌宠迁移到全局 Shell Overlay，首页和设置页均可见；恢复五张 Web UI 插件配置卡；皮肤中心完整展示安装版随附的九套皮肤。 |
 | **0.1.3** | 加入稳定版 GitHub Release 更新检查、双语更新说明、用户确认下载、任务栏进度和二次确认安装。 |
 
-### 2.4.0 功能亮点
+### 2.5.0 功能亮点
 
-- **SSH 会话保活与粘贴**：已连接终端在主机、监控和终端视图间切换时保持挂载；右键菜单和原生编辑菜单均可粘贴。
-- **皮肤状态隔离**：皮肤切换只写入 `profiles/desktop` 私有补丁，并自动迁移、清理全局 `cordis.patch.yml` 中的旧托管段，官方 `dsh web` 不再被桌面皮肤破坏。
-- **工具窗口保持隐藏**：Windows runtime、终端与 `pwsh` 工具共享隐藏控制台宿主，不再闪现额外命令窗口。
-- **兼容旧版覆盖升级**：安装预检在路径归因之外增加唯一产品主进程名兜底，能清理路径漂移的 2.2 残留主程序并避免旧卸载器错误码 2。
-- **可验证更新交接**：安装器使用随机令牌与关闭回执 v2，只有 runtime、扩展操作和资源完全停止后才继续覆盖；旧版本保留受限清理兼容路径。
-- **分区桌面接口**：主界面与扩展坞采用独立 preload，并以 renderer 身份校验敏感 IPC；Desktop Contract 1.0.0 提供稳定能力探测。
-- **任务看板 Host 存储**：看板台账按 `desktop` profile 保存为 schema v2 文件，原子写入并用 SSE 同步；localStorage v1 只复制校验、不删除，并在 Host 不可用时回退。
-- **一次性社区引导**：2.4.0 首次启动可选择前往 GitHub 点 Star、加入 QQ 社群反馈问题或继续使用；展示状态由主进程原子记录，刷新和后续启动不会重复弹出。
+- **Runtime 兼容防线**：Adapter v1、直接 import 边界、Known Good、patch registry 与耦合审计共同保护稳定 DSH 图；Candidate Lite 只生成报告，不自动升级 Stable。
+- **安全 Desktop Preset**：`.dshpreset` v1 在主进程检查完整性、路径、压缩比、脚本、Secret、Git URL 与精确版本，Renderer 只获得审阅计划。
+- **全环境原子回滚**：批量插件、设置、Skills 与任务模板使用一次 Runtime 停止/启动事务；任何包或健康检查失败都会恢复旧环境。
+- **Web Profile 选择性迁移**：迁移前显示可安装、更新、缺失、不兼容、未声明、已满足和 Desktop 管理项；所选插件与可归属的非敏感 Profile 配置在同一事务中应用或回滚。
+- **明确后续动作**：插件变更后突出显示“刷新”；改变 bundle 图时同时提供“Restart DeepSeek Harness”，Preset 进度完整显示提交或恢复状态。
+- **严格系统入口**：`dsh://` 仅允许固定导航路由和安全 ID；`.dshpreset` 双击只打开预览，不把文件路径交给 Renderer，也不会静默安装。
+- **结构化通知**：Desktop Contract 1.1 校验通知分类、ID、文本与 Deep Link，支持去重、限频、前台抑制和白名单点击路由。
+- **稳定版不追 latest**：当前 Runtime 继续精确锁定验证版本；Candidate 失败不会影响主分支、lockfile、发布说明或 updater 元数据。
+
+### 2.5.0 体验与更新改进
+
+- **全页粒子主题**：粒子鲸鱼从启动页延伸到主界面，并按普通浏览、输入聚焦、弹窗、减少动态效果和后台状态自动调低密度、透明度与速度；可在「设置 > 插件配置 > 粒子主题」中开关和调整。
+- **可调设置窗口**：设置面板可拖动、从八个边/角缩放并记住上次位置和尺寸；最小尺寸、响应式布局和屏幕约束可避免内容重叠、溢出或移出可见区域。
+- **明确的更新下载路径**：GitHub Releases 是唯一默认下载源；更新窗口提供「前往 GitHub 下载」「加入用户群」「稍后更新」。若 GitHub 下载较慢，可加入 QQ 用户群获取同步安装包。
 
 ![DeepSeek Harness Desktop 2.3.0 GitHub Star 与社群反馈引导](docs/screenshots/desktop-2.3.0-star-community-prompt.png)
 
@@ -60,8 +67,8 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 - **SSH 实时监控与安全操作**：每三秒刷新 CPU、内存、磁盘、负载、进程与失败服务；经过确认后可终止进程或重启 systemd 服务。
 - **长思考随时折叠**：思考区展开后，折叠控制会吸附在会话顶部，不必滚回长内容起点。
 - **运行时完整性预检**：启动前检查关键文件，安装不完整时停止重启循环并给出明确的重新安装提示。
-- **更新与安装更可靠**：发现新版后后台下载，完成后再确认重启安装；退出时完整回收 DSH 子进程，减少安装程序误报文件占用。
-- **Harness 原生视觉统一**：标题栏、扩展坞和启动页使用一致的系统视觉，启动页换为具有游动、摆尾与呼吸节奏的粒子鲸鱼。
+- **更新与安装更可靠**：GitHub 官方源优先，发现新版后后台下载，完成后再确认重启安装；GitHub 下载较慢时可从用户群获取同步安装包，退出时完整回收 DSH 子进程。
+- **Harness 原生视觉统一**：标题栏、扩展坞、启动页和主界面使用一致的系统视觉；全页粒子鲸鱼会按交互场景自动安静下来，并尊重减少动态效果设置。
 
 #### Harness 主界面
 
@@ -73,7 +80,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 | --- | --- |
 | ![DeepSeek Harness Desktop 2.3.0 粒子鲸鱼启动界面](docs/screenshots/desktop-2.3.0-startup.png) | ![DeepSeek Harness Desktop 2.3.0 插件与技能扩展坞](docs/screenshots/desktop-2.3.0-extension-dock.png) |
 
-- 内置 dsh-web-ui 0.1.18 套件，保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物，并新增图像描述与量身 Agent；
+- 内置 dsh-web-ui 0.1.18 套件，保留任务看板、Git 图谱、右侧面板、SSH、移动端远程、实时统计、宠物，并加入独立的全页粒子主题、图像描述与量身 Agent；
 - 内置腾讯官方 QQ Bot，可在扩展坞扫码绑定 QQ 私聊与群聊，无需编辑 YAML 或打开后台终端；
 - 内置 ChatGPT OAuth、OpenAI Codex 模型与推理强度滑块，登录使用系统浏览器，凭据保存在本机；
 - 独立 `desktop` profile，不覆盖既有 DSH 配置，运行时仅监听回环地址；
@@ -82,7 +89,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 - 扩展坞支持社区 DSH bundle 安装/回滚、内置插件市场，以及项目、DSH、Agents 技能发现与安全导入；
 - 安装包自带官方 DSH、pnpm 与原生依赖，无需另外安装 Node.js。
 
-桌面版已预装任务看板、Git 图谱、右侧面板、移动端远程、远程连接、鲸鱼娘宠物、实时令牌统计、Codex Connect、推理强度滑块、插件市场和皮肤中心。下载安装 EXE 即可使用，不需要另外安装 DSH、Node.js 或执行插件命令。
+桌面版已预装任务看板、Git 图谱、右侧面板、移动端远程、远程连接、鲸鱼娘宠物、全页粒子主题、实时令牌统计、Codex Connect、推理强度滑块、插件市场和皮肤中心。下载安装 EXE 即可使用，不需要另外安装 DSH、Node.js 或执行插件命令。
 
 ## 功能插件
 
@@ -162,7 +169,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 ### 设置中心
 
-全部插件的开关与参数统一收纳于「设置 > 插件配置」，修改即时生效。桌面版会明确开放移动端远程控制、皮肤中心、实时令牌估算、任务看板和宠物五张配置卡，不会因 DSH Host 的设置命名空间过滤而缺项。
+全部插件的开关与参数统一收纳于「设置 > 插件配置」，修改即时生效。桌面版会明确开放移动端远程控制、皮肤中心、实时令牌估算、任务看板、宠物和粒子主题六张配置卡，不会因 DSH Host 的设置命名空间过滤而缺项。设置窗口本身可拖动、从边缘或角落缩放，并会记住上次位置和尺寸；小窗口与高 DPI 下会自动重排和滚动，避免内容重叠或移出屏幕。
 
 ![插件配置中心](docs/screenshots/02-settings-web-ui-plugins.png)
 
@@ -218,7 +225,9 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 2. 运行 `DeepSeek-Harness-Desktop-Setup-<版本号>-x64.exe` 完成安装；DSH、插件、皮肤、pnpm 和原生依赖均已随安装包提供。
 3. 如需核验文件完整性，请下载同一 Release 中的 `SHA256SUMS.txt` 并比对安装包 SHA-256。
 
-应用会检查稳定版 GitHub Release，展示中英双语更新说明，并在下载和重启安装前分别请求确认。覆盖升级不会删除既有 `DSH_HOME`、桌面 profile、社区 bundle、桌宠状态、皮肤配置或已加密的 QQ Bot 凭据。
+GitHub Releases 是应用内置且默认使用的唯一下载源。如果 GitHub 下载速度较慢，可点击更新窗口的「加入用户群」，通过 QQ 群 `1105158177` 获取同步提供的最新安装包；应用不会默认启用或宣传第三方镜像为“更快”线路。
+
+应用会检查稳定版 GitHub Release，展示中英双语更新说明，并提供「前往 GitHub 下载」「加入用户群」「稍后更新」。安装仍需明确确认，覆盖升级不会删除既有 `DSH_HOME`、桌面 profile、社区 bundle、桌宠状态、皮肤配置或已加密的 QQ Bot 凭据。
 
 当前安装包没有商业代码签名，Windows SmartScreen 可能显示“未知发布者”。请只使用本项目 Release 页面提供的安装包；推荐采用默认安装路径，避免过长路径触发传统 Win32 限制。
 
@@ -226,7 +235,7 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 | 包 | 来源 | 版权 |
 | --- | --- | --- |
-| dsh-task-board / dsh-git-graph / dsh-aionui-panel / dsh-pet / dsh-remote-web-ui / dsh-live-stats / dsh-web-ui-settings / dsh-skins / dsh-web-ui-all / skins | 作者 zhu1090093659 个人开发 | BSD-3-Clause（zhu1090093659） |
+| dsh-task-board / dsh-git-graph / dsh-aionui-panel / dsh-pet / dsh-particle-theme / dsh-remote-web-ui / dsh-live-stats / dsh-web-ui-settings / dsh-skins / dsh-web-ui-all / skins | 作者 zhu1090093659 个人开发 | BSD-3-Clause（zhu1090093659） |
 
 迁入第三方代码必须保留 LICENSE 与署名；活跃且有上游的第三方优先 fork 或依赖引用，不搬代码。
 
