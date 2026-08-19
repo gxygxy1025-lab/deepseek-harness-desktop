@@ -60,7 +60,7 @@ try {
     theme: document.documentElement.dataset.dshDesktopChromeTheme,
     url: location.origin,
   }))
-  assert.equal(state.chromeText, '工具 / Tools扩展坞 / Extension DockCtrl+Shift+X帮助 / Help加入社群提交建议GitHub 项目检查更新')
+  assert.equal(state.chromeText, '工具 / Tools扩展坞 / Extension DockCtrl+Shift+X帮助 / Help加入社群提交建议GitHub 项目隐私政策检查更新')
   assert.equal(state.theme, 'light')
   assert.equal(state.backdropFilter, 'none')
   assert.equal(state.iconCount, 0)
@@ -145,6 +145,7 @@ try {
     '加入社群',
     '提交建议',
     'GitHub 项目',
+    '隐私政策',
     '检查更新',
   ])
   const helpMenuBounds = await helpMenu.boundingBox()
