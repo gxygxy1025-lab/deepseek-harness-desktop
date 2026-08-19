@@ -16,16 +16,17 @@ QQ 群：**1105158177** · **[点击一键加入 QQ 群](https://qm.qq.com/q/veh
 
 DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不是重写页面，而是用安全的 Electron 窗口启动官方 `@deepseek-ai/dsh` 本地主机，再原样加载本仓库的全部插件与皮肤。
 
-[浏览产品介绍](https://ningbainb.github.io/deepseek-harness-desktop/) · [下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [发布与交接工作流](docs/launch/desktop-release-workflow.md) · [更新日志](CHANGELOG.md)
+[浏览产品介绍](https://ningbainb.github.io/deepseek-harness-desktop/) · [下载 Windows x64 安装器](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [桌面版技术说明](docs/desktop.md) · [Task Board v3 说明](docs/task-board-v3.md) · [发布与交接工作流](docs/launch/desktop-release-workflow.md) · [更新日志](CHANGELOG.md)
 
 如果这个项目对你有帮助，欢迎在 [GitHub 仓库](https://github.com/ningbainb/deepseek-harness-desktop) 点 Star，帮助更多桌面版用户发现它。
 
-### 最新版：2.5.0
+### 最新版：2.6.0
 
-`desktop-v2.5.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.5.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/SHA256SUMS.txt)
+`desktop-v2.6.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.6.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/SHA256SUMS.txt)
 
 | 版本 | 主要更新 |
 | --- | --- |
+| **2.6.0** | Task Board v3 引入 Project、Task Run、Evidence 与 Git Worktree 审核流；Runtime Provider 缺少可选能力时显式回退 shared-workspace，并加入 Candidate 执行兼容夹具与有界匿名产品统计。 |
 | **2.5.0** | 新增 Runtime Adapter 与上游兼容防线、安全 `.dshpreset` 和 Web Profile 迁移、原子插件批量事务、严格 Deep Link/文件关联与结构化通知。 |
 | **2.4.0** | 新增可靠更新关停回执 v2、主界面/扩展坞权限拆分、Desktop Contract v1，以及 Task Board Host 文件存储 v2。 |
 | **2.3.0** | 新增只出现一次的 GitHub Star 动画引导与“加入社群”反馈入口；安装预检可识别外部 PowerShell/CMD/Node 宿主、EncodedCommand 与 Windows 短路径，兼容 0.1.9 直接升级，并通过独立 profile 与端口回退和官方 Web 端共存。 |
@@ -39,6 +40,15 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 | **0.1.5** | 原生标题栏跟随亮色/暗色主题；全屏弹窗避开标题栏安全区；修复安装版皮肤发现与切换，并内置 `dshmarket` 和 `dsh-plugin-hub`。 |
 | **0.1.4** | 桌宠迁移到全局 Shell Overlay，首页和设置页均可见；恢复五张 Web UI 插件配置卡；皮肤中心完整展示安装版随附的九套皮肤。 |
 | **0.1.3** | 加入稳定版 GitHub Release 更新检查、双语更新说明、用户确认下载、任务栏进度和二次确认安装。 |
+
+### 2.6.0 功能亮点
+
+- **Task Board v3**：任务可关联 Project，明确选择 shared-workspace 或 Git Worktree；旧账本复制迁移到 Host-owned v3，原 v2 文件保留为备份。
+- **可审阅执行结果**：每次执行生成紧凑 Task Run 与派生 Evidence，展示文件、增删统计、有限 diff 预览、Session/运行入口和 Provider 能力证据，不保存完整会话或 Secret。
+- **受控 Git Worktree**：Host 只接受不透明 id，固定 Worktree 根目录、分支命名、realpath、clean/conflict/operation 预检；Commit、Merge、Keep、Discard 都是明确审核动作，Discard 需要二次确认。
+- **安全兼容回退**：Stable Provider 仍可只提供生命周期和 Profile 能力；缺少 Worktree 所需能力时记录原因并使用现有 shared-workspace 执行，不伪造隔离状态。
+- **Candidate 执行门禁**：真实临时 Git 仓库夹具验证 Session CWD、生命周期事件、取消与重启恢复，失败只阻断 Candidate，不改 Stable 图或发布元数据。
+- **匿名统计边界**：官方正式版默认启用仅用于产品改进的有界匿名统计，不提供应用内关闭开关；不收集身份、对话、文件、路径、凭据或日志，不保留原始事件，源码与 Fork 构建不包含官方统计端点。完整范围见 [隐私政策](PRIVACY.md)。
 
 ### 2.5.0 功能亮点
 

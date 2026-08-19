@@ -18,11 +18,16 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { BoardController } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
+import { InMemoryEvidenceStore } from '../core/evidence.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
+import type { TaskStore } from '../core/store.ts'
 import { claimTaskboardApply, releaseTaskboardApply } from './apply-guard.ts'
 import { mountBoard } from './board-mount.tsx'
 import { selectPreferredTaskStore } from './host-store.ts'
+import { RemoteTaskStoreV3 } from './v3-host-store.ts'
+import { RemoteWorktreeReviewClient } from './worktree-client.ts'
+import { EvidenceReviewService } from '../core/review.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
 import { en, zh, type TaskBoardKey } from './locales.ts'
@@ -118,9 +123,20 @@ export function apply(ctx: ClientContext): void {
       const workspaces = ctx.workspaces
       const connection = ctx.get('connection') as ConnectionHandle
 
-      // HostStore is authoritative when reachable. The one-time v1 migration
-      // copies and verifies data but intentionally leaves localStorage intact.
-      const store = await selectPreferredTaskStore({ local: new LocalStorageTaskStore() })
+      // HostTaskStore v3 is authoritative when reachable. Its Host half does
+      // the copy-first v2 migration; the old v2/local path remains the safe
+      // fallback for older DSH web hosts.
+      const v3Store = new RemoteTaskStoreV3()
+      let store: TaskStore
+      let evidenceStore: InMemoryEvidenceStore | RemoteTaskStoreV3
+      try {
+        await v3Store.load()
+        store = v3Store
+        evidenceStore = v3Store
+      } catch {
+        store = await selectPreferredTaskStore({ local: new LocalStorageTaskStore() })
+        evidenceStore = new InMemoryEvidenceStore()
+      }
       const exec = new ExecutionService({
         sessions: {
           list: sessions.list,
@@ -145,6 +161,8 @@ export function apply(ctx: ClientContext): void {
       const controller = new BoardController({
         store,
         exec,
+        evidenceStore,
+        reviewService: store === v3Store ? new EvidenceReviewService({ store: v3Store, worktrees: new RemoteWorktreeReviewClient() }) : undefined,
         sessions: {
           list: sessions.list,
           open: id => sessions.open(id as SessionId),
@@ -159,13 +177,13 @@ export function apply(ctx: ClientContext): void {
           if (typeof desktop?.showNotification !== 'function') return
           const failed = event.outcome === 'failed'
           return desktop.showNotification({
-            category: 'task',
-            id: `task:${event.executionId}:${event.outcome}`,
+            category: 'run',
+            id: `run:${event.executionId}:${event.outcome}`,
             title: failed ? 'Task failed' : 'Task completed',
             body: failed
               ? `${event.title}: ${event.error ?? 'The agent turn failed.'}`
               : event.title,
-            deepLink: `dsh://task/${event.taskId}`,
+            deepLink: `dsh://run/${event.executionId}`,
           }).then(() => undefined)
         },
       })
@@ -207,6 +225,8 @@ export function apply(ctx: ClientContext): void {
             if (link.kind === 'task' && typeof link.id === 'string') {
               controller.openBoard()
               controller.openTask(link.id)
+            } else if (link.kind === 'run' && typeof link.id === 'string') {
+              controller.openRun(link.id)
             } else if (link.kind === 'session' && typeof link.id === 'string') {
               sessions.open(link.id as SessionId)
             }

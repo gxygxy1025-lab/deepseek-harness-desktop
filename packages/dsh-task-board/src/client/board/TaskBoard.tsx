@@ -49,6 +49,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
   const selected = selectedTaskOf(snapshot)
+  const worktreeAvailability = controller.getWorktreeAvailability()
   const visible = snapshot.tasks.filter(task => matchesFilter(task, filter))
   const openTask = useCallback((id: string): void => { controller.openTask(id) }, [controller])
 
@@ -102,12 +103,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       </div>
 
       {selected !== undefined && (
-        <TaskDetail controller={controller} task={selected} />
+        <TaskDetail controller={controller} task={selected} evidence={controller.getLatestEvidence(selected.id)} />
       )}
       {showNew && (
         <NewTaskModal
           controller={controller}
           onClose={() => { setShowNew(false) }}
+          worktreeAvailable={worktreeAvailability.available}
+          worktreeReason={worktreeAvailability.reason}
         />
       )}
     </div>

@@ -8,14 +8,15 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 
 /** New-task form overlay. */
-export function NewTaskModal({ controller, onClose }: { controller: BoardController; onClose: () => void }) {
+export function NewTaskModal({ controller, onClose, worktreeAvailable = false, worktreeReason }: { controller: BoardController; onClose: () => void; worktreeAvailable?: boolean; worktreeReason?: string }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [prompt, setPrompt] = useState('')
+  const [isolationMode, setIsolationMode] = useState<'shared-workspace' | 'git-worktree'>('shared-workspace')
   const [error, setError] = useState<string | undefined>(undefined)
 
   const submit = (): void => {
-    const task = controller.createTask({ title, description, prompt })
+    const task = controller.createTask({ title, description, prompt, isolationMode })
     if (task === undefined) {
       setError(t('new.required'))
       return
@@ -64,6 +65,15 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
             placeholder={t('new.promptPlaceholder')}
             onChange={event => { setPrompt(event.target.value) }}
           />
+        </label>
+
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.isolation')}</span>
+          <select className={css.input} value={isolationMode} onChange={event => { setIsolationMode(event.target.value as 'shared-workspace' | 'git-worktree') }}>
+            <option value="shared-workspace">{t('new.isolation.shared')}</option>
+            <option value="git-worktree" disabled={!worktreeAvailable}>{t('new.isolation.worktree')}</option>
+          </select>
+          {!worktreeAvailable && <span className={css.fieldHint}>{worktreeReason ?? t('new.isolation.reason')}</span>}
         </label>
 
         {error !== undefined && <p className={css.formError}>{error}</p>}

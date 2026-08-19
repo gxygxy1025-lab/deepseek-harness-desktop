@@ -1,4 +1,4 @@
-import { homedir } from 'node:os'
+import { homedir, release as osRelease } from 'node:os'
 import { dirname, join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
@@ -8,7 +8,12 @@ import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { ensureApiRetryPolicies } from './api-retry-policy.mjs'
 import { resolveDesktopVersion } from './app-version.mjs'
 import { createCommunityQrImage } from './community.mjs'
-import { GITHUB_DOWNLOADS_URL, GITHUB_FEEDBACK_URL, GITHUB_PROJECT_URL } from './community-links.mjs'
+import {
+  GITHUB_DOWNLOADS_URL,
+  GITHUB_FEEDBACK_URL,
+  GITHUB_PROJECT_URL,
+  PRIVACY_POLICY_URL,
+} from './community-links.mjs'
 import { promptForDownloadDestination } from './download-destination.mjs'
 import { DeepLinkRouter, normalizeDeepLink, presetFileFrom } from './deep-links.mjs'
 import { BoundedLogStore } from './log-store.mjs'
@@ -33,6 +38,7 @@ import { installNavigationPolicy } from './navigation-policy.mjs'
 import { DesktopNotificationService } from './notifications.mjs'
 import { startQqBotConnector } from './optional-integrations.mjs'
 import { DesktopPluginRecovery, PluginRecoveryStore } from './plugin-recovery.mjs'
+import { ProductMetricsRecorder } from './product-metrics.mjs'
 import { BUILTIN_BUNDLES, ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
 import { WebProfileMigrationService } from './profile-migration.mjs'
 import { PresetService } from './presets/preset-service.mjs'
@@ -41,6 +47,9 @@ import { installRendererPermissions } from './renderer-permissions.mjs'
 import { installSettingsWindow } from './settings-window.mjs'
 import { SettingsWindowStateStore } from './settings-window-state.mjs'
 import { installStarPromptSurface, StarPromptStore } from './star-prompt.mjs'
+import { ProductTelemetryClient } from './telemetry-client.mjs'
+import { resolveTelemetryEndpoint } from './telemetry-config.mjs'
+import { normalizeProductContext } from './telemetry-events.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
 import { DshRuntimeProvider } from './runtime-provider.mjs'
 import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
@@ -267,6 +276,7 @@ export async function startElectronApp(metadata) {
     protocol: metadata.protocol,
     dispatch: (link) => dispatchDeepLink(link),
   })
+  const launchDetail = desktopDeepLinkFrom(process.argv, metadata.protocol) ? 'deep-link' : 'normal'
   const enqueueCommandLineIngress = (commandLine) => {
     const deepLink = desktopDeepLinkFrom(commandLine, metadata.protocol)
     if (deepLink) deepLinkRouter.enqueue(deepLink)
@@ -329,6 +339,24 @@ export async function startElectronApp(metadata) {
     appVersion: app.getVersion(),
     manifestPath: join(SOURCE_DIR, '..', 'package.json'),
   })
+  const telemetryEndpoint = await resolveTelemetryEndpoint({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    testEndpoint: process.env.NODE_ENV === 'test'
+      ? process.env.DSH_DESKTOP_TELEMETRY_TEST_ENDPOINT
+      : undefined,
+  })
+  const productTelemetry = new ProductTelemetryClient({
+    endpoint: telemetryEndpoint,
+    context: normalizeProductContext({
+      version: desktopVersion,
+      platform: process.platform,
+      osRelease: osRelease(),
+      locale: app.getLocale(),
+    }),
+  })
+  const productMetrics = new ProductMetricsRecorder({ client: productTelemetry })
+  productMetrics.recordLaunch(launchDetail)
 
   const userData = app.getPath('userData')
   const logsDirectory = join(userData, 'logs')
@@ -599,10 +627,15 @@ export async function startElectronApp(metadata) {
     exitApp: () => app.quit(),
     handleHelpAction: (action) => {
       if (action === 'community') return createCommunityWindow()
+      if (action === 'updates') {
+        productMetrics.recordSurface('updates')
+        return updateController?.check({ manual: true })
+      }
+      productMetrics.recordSurface('help')
       if (action === 'downloads') return shell.openExternal(GITHUB_DOWNLOADS_URL)
       if (action === 'feedback') return shell.openExternal(GITHUB_FEEDBACK_URL)
       if (action === 'project') return shell.openExternal(GITHUB_PROJECT_URL)
-      return updateController?.check({ manual: true })
+      return shell.openExternal(PRIVACY_POLICY_URL)
     },
     handleToolAction: () => createExtensionWindow(),
     setWindowChromeTheme: (sender, theme) => {
@@ -626,6 +659,9 @@ export async function startElectronApp(metadata) {
     getUpdateController: () => updateController,
     getSettingsWindowBounds: () => settingsWindowStateStore.load(),
     setSettingsWindowBounds: (bounds) => settingsWindowStateStore.save(bounds),
+    onRecoveryAction: (action) => productMetrics.recordRecovery(action),
+    onSettingsOpened: () => productMetrics.recordSurface('settings'),
+    onUpdateCheck: () => productMetrics.recordSurface('updates'),
     notificationService,
     listSkills: async () => {
       const catalog = await discoverSkills({
@@ -649,6 +685,7 @@ export async function startElectronApp(metadata) {
   })
 
   const createExtensionWindow = async () => {
+    productMetrics.recordSurface('extensions')
     if (extensionWindow && !extensionWindow.isDestroyed()) {
       extensionWindow.show()
       extensionWindow.focus()
@@ -705,6 +742,7 @@ export async function startElectronApp(metadata) {
   const syncExtensionWindowTheme = (theme) => syncSecondaryWindowTheme(extensionWindow, theme)
 
   const createCommunityWindow = () => {
+    productMetrics.recordSurface('community')
     if (communityWindowPromise) return communityWindowPromise
     if (communityWindow && !communityWindow.isDestroyed()) {
       communityWindow.show()
@@ -789,6 +827,7 @@ export async function startElectronApp(metadata) {
     presetService,
     migrationService,
     notificationService,
+    trackProductOperation: (detail, operation) => productMetrics.trackExtensionOperation(detail, operation),
   })
   dispatchDeepLink = async (link) => {
     if (link.kind === 'extensions' || link.kind === 'preset-preview') {
@@ -873,6 +912,7 @@ export async function startElectronApp(metadata) {
     }
   }
   runtimeProvider.on('status', (status) => {
+    productMetrics.observeRuntimeStatus(status)
     if (status.state === 'starting') runtimeStartedAt = performance.now()
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (status.state === 'ready' && status.url) {
@@ -916,6 +956,8 @@ export async function startElectronApp(metadata) {
     startRuntime: () => runtimeProvider.start(),
     log: (message) => logStore.append(`[shutdown] ${message}`),
     disposeResources: async () => {
+      productMetrics.recordSessionEnd()
+      await productTelemetry.shutdown()
       const disposers = [
         () => updateController?.dispose(),
         () => updateController?.off('status', publishUpdateStatus),
@@ -999,6 +1041,8 @@ export async function startElectronApp(metadata) {
     beforeInstall: async () => {
       quitInProgress = true
       await shutdownLifecycle.stop()
+      productMetrics.recordSessionEnd()
+      await productTelemetry.shutdown()
     },
     onInstallFailure: async () => {
       quitInProgress = false
@@ -1009,6 +1053,7 @@ export async function startElectronApp(metadata) {
     },
   })
   const publishUpdateStatus = (status) => {
+    productMetrics.observeUpdateStatus(status)
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('desktop:update-status', publicUpdateStatus(status))
     }
@@ -1031,9 +1076,23 @@ export async function startElectronApp(metadata) {
     controller: runtimeProvider,
     openExtensions: () => createExtensionWindow(),
     openCommunity: () => createCommunityWindow(),
-    openFeedback: () => shell.openExternal(GITHUB_FEEDBACK_URL),
+    openFeedback: () => {
+      productMetrics.recordSurface('help')
+      return shell.openExternal(GITHUB_FEEDBACK_URL)
+    },
+    openProject: () => {
+      productMetrics.recordSurface('help')
+      return shell.openExternal(GITHUB_PROJECT_URL)
+    },
+    openPrivacy: () => {
+      productMetrics.recordSurface('help')
+      return shell.openExternal(PRIVACY_POLICY_URL)
+    },
     openLogs,
-    checkForUpdates: (options) => updateController.check(options),
+    checkForUpdates: (options) => {
+      productMetrics.recordSurface('updates')
+      return updateController.check(options)
+    },
     onActionError: (error) => logStore.append(`[menu] ${error instanceof Error ? error.message : String(error)}`),
   })
   updateController.start()

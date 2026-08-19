@@ -1,4 +1,4 @@
-import { GITHUB_PROJECT_URL } from './community-links.mjs'
+import { GITHUB_PROJECT_URL, PRIVACY_POLICY_URL } from './community-links.mjs'
 import { runBestEffort } from './best-effort-events.mjs'
 
 export function createApplicationMenuTemplate({
@@ -9,6 +9,8 @@ export function createApplicationMenuTemplate({
   openFeedback,
   openExtensions,
   openLogs,
+  openPrivacy = () => shell.openExternal(PRIVACY_POLICY_URL),
+  openProject = () => shell.openExternal(GITHUB_PROJECT_URL),
   checkForUpdates,
   onActionError = () => {},
 }) {
@@ -65,7 +67,8 @@ export function createApplicationMenuTemplate({
         { type: 'separator' },
         { label: '加入社群 / Join QQ Group', click: action(openCommunity) },
         { label: '提建议 / Suggest an Idea', click: action(openFeedback) },
-        { label: 'GitHub 项目', click: action(() => shell.openExternal(GITHUB_PROJECT_URL)) },
+        { label: 'GitHub 项目', click: action(openProject) },
+        { label: '隐私政策 / Privacy', click: action(openPrivacy) },
         { type: 'separator' },
         { label: `版本 / Version ${app.getVersion()}`, enabled: false },
       ],

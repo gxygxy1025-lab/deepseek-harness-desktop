@@ -168,6 +168,7 @@
     "packages/dsh-task-board/src/client/TaskBoardSettingsCard.tsx\u0000static-import\u0000@deepseek-ai/dsh-client-runtime/client": 1,
     "packages/dsh-task-board/src/client/TaskBoardSettingsCard.tsx\u0000static-import\u0000@deepseek-ai/dsh-client-ui-slots": 1,
     "packages/dsh-task-board/src/host/routes.ts\u0000static-import\u0000@deepseek-ai/dsh-host-webserver": 1,
+    "packages/dsh-task-board/src/host/v3-routes.ts\u0000static-import\u0000@deepseek-ai/dsh-host-webserver": 1,
     "packages/dsh-task-board/src/index.ts\u0000static-import\u0000@deepseek-ai/dsh-host-webserver": 1,
     "packages/dsh-task-board/src/index.ts\u0000static-import\u0000@deepseek-ai/dsh-settings": 1,
     "packages/dsh-task-board/src/index.ts\u0000static-import\u0000@deepseek-ai/dsh-system-prompt": 1,

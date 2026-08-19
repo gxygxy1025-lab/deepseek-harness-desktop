@@ -3,34 +3,40 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import test from 'node:test'
 
-import { collectDiscoveryErrors, collectWebsiteErrors } from './validate-website.mjs'
+import { collectDiscoveryErrors, collectPrivacyErrors, collectWebsiteErrors } from './validate-website.mjs'
 import { sumInstallerDownloads } from '../website/release-stats.mjs'
 
 const websitePath = resolve(import.meta.dirname, '..', 'website', 'index.html')
+const privacyPath = resolve(import.meta.dirname, '..', 'website', 'privacy.html')
+
+test('privacy page states the default-on product-only boundary', async () => {
+  const html = await readFile(privacyPath, 'utf8')
+  assert.deepEqual(collectPrivacyErrors(html), [])
+})
 
 test('website fallback installer matches the desktop release version', async () => {
   const html = await readFile(websitePath, 'utf8')
-  assert.deepEqual(await collectWebsiteErrors(html, '2.5.0'), [])
+  assert.deepEqual(await collectWebsiteErrors(html, '2.6.0'), [])
 })
 
 test('website validation rejects stale fallback installers', async () => {
-  const html = (await readFile(websitePath, 'utf8')).replaceAll('2.5.0', '0.1.9')
-  const errors = await collectWebsiteErrors(html, '2.5.0')
+  const html = (await readFile(websitePath, 'utf8')).replaceAll('2.6.0', '0.1.9')
+  const errors = await collectWebsiteErrors(html, '2.6.0')
   assert.ok(errors.some(error => error.includes('stale installer version 0.1.9')))
   assert.ok(errors.some(error => error.includes('fallback label')))
 })
 
 test('website exposes canonical SEO and structured data markers', async () => {
   const html = await readFile(websitePath, 'utf8')
-  const errors = await collectWebsiteErrors(html, '2.5.0')
+  const errors = await collectWebsiteErrors(html, '2.6.0')
   assert.deepEqual(errors, [])
 })
 
 test('website validation rejects stale presentation versions', async () => {
   const html = (await readFile(websitePath, 'utf8'))
-    .replace('<title>DeepSeek Harness Desktop 2.5.0', '<title>DeepSeek Harness Desktop 2.2.0')
-    .replace('<h1>DeepSeek Harness<br>Desktop 2.5.0</h1>', '<h1>DeepSeek Harness<br>Desktop 2.1</h1>')
-  const errors = await collectWebsiteErrors(html, '2.5.0')
+    .replace('<title>DeepSeek Harness Desktop 2.6.0', '<title>DeepSeek Harness Desktop 2.2.0')
+    .replace('<h1>DeepSeek Harness<br>Desktop 2.6.0</h1>', '<h1>DeepSeek Harness<br>Desktop 2.1</h1>')
+  const errors = await collectWebsiteErrors(html, '2.6.0')
   assert.ok(errors.some(error => error.includes('page title')))
   assert.ok(errors.some(error => error.includes('page heading')))
 })
@@ -38,7 +44,7 @@ test('website validation rejects stale presentation versions', async () => {
 test('website structured FAQ questions remain visible', async () => {
   const html = (await readFile(websitePath, 'utf8'))
     .replace('<h3>桌面版能和官方 Web 端同时运行吗？</h3>', '<h3>已移除的问题</h3>')
-  const errors = await collectWebsiteErrors(html, '2.5.0')
+  const errors = await collectWebsiteErrors(html, '2.6.0')
   assert.ok(errors.some(error => error.includes('structured FAQ question is not visible')))
 })
 
@@ -46,9 +52,18 @@ test('website validation rejects missing GitHub Star guidance', async () => {
   const html = (await readFile(websitePath, 'utf8'))
     .replaceAll('data-star-cta', 'data-removed-star-cta')
     .replaceAll('data-star-count', 'data-removed-star-count')
-  const errors = await collectWebsiteErrors(html, '2.5.0')
+  const errors = await collectWebsiteErrors(html, '2.6.0')
   assert.ok(errors.some(error => error.includes('GitHub Star CTA')))
   assert.ok(errors.some(error => error.includes('GitHub Star count')))
+})
+
+test('tracked installer links remain direct GitHub downloads', async () => {
+  const html = (await readFile(websitePath, 'utf8')).replace(
+    'data-download-source="hero" href="https://github.com/',
+    'data-download-source="hero" href="https://telemetry.example/',
+  )
+  const errors = await collectWebsiteErrors(html, '2.6.0')
+  assert.ok(errors.some(error => error.includes('must remain a direct GitHub download')))
 })
 
 test('sumInstallerDownloads totals only Windows x64 installer assets', () => {
@@ -73,9 +88,9 @@ test('sumInstallerDownloads totals only Windows x64 installer assets', () => {
 })
 
 test('website discovery files identify the canonical release', () => {
-  const sitemap = '<url><loc>https://ningbainb.github.io/deepseek-harness-desktop/</loc><lastmod>2026-08-16</lastmod></url>'
+  const sitemap = '<url><loc>https://ningbainb.github.io/deepseek-harness-desktop/</loc><loc>https://ningbainb.github.io/deepseek-harness-desktop/privacy.html</loc><lastmod>2026-08-16</lastmod></url>'
   const robots = 'User-agent: OAI-SearchBot\nAllow: /\nSitemap: https://ningbainb.github.io/deepseek-harness-desktop/sitemap.xml'
-  const llms = 'https://ningbainb.github.io/deepseek-harness-desktop/ https://github.com/ningbainb/deepseek-harness-desktop Setup-0.1.8-x64.exe'
+  const llms = 'https://ningbainb.github.io/deepseek-harness-desktop/ https://ningbainb.github.io/deepseek-harness-desktop/privacy.html https://github.com/ningbainb/deepseek-harness-desktop Setup-0.1.8-x64.exe'
   const key = 'f99946a1f6864579a8d2f96040502784'
   assert.deepEqual(collectDiscoveryErrors(sitemap, robots, llms, key, '0.1.8'), [])
 })

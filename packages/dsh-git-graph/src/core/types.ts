@@ -322,3 +322,69 @@ export function isGitError(value: unknown): value is GitError {
   if (record.moreFiles !== undefined && typeof record.moreFiles !== 'number') return false
   return true
 }
+
+/** Desktop 2.6 worktree registry row. Paths are Host-owned and never accepted from Renderer. */
+export interface WorktreeRecord {
+  worktreeId: string
+  workspaceId: string
+  repoRoot: string
+  path: string
+  branch: string
+  runId: string
+  taskId: string
+  baseRevision: string
+  createdAt: number
+  state: 'creating' | 'ready' | 'dirty' | 'removed' | 'orphaned'
+}
+
+export interface WorktreeFileStat {
+  path: string
+  additions: number
+  deletions: number
+  binary?: boolean
+  status?: 'added' | 'modified' | 'deleted' | 'renamed' | 'unknown'
+}
+
+export interface WorktreeStatus {
+  worktreeId: string
+  workspaceId: string
+  path: string
+  branch: string
+  head: string
+  baseRevision: string
+  dirty: boolean
+  clean: boolean
+  conflicts: number
+  operationInProgress: boolean
+  changedFiles: WorktreeFileStat[]
+  additions: number
+  deletions: number
+}
+
+export type WorktreeErrorCode =
+  | 'workspace-unknown'
+  | 'not-a-git-repository'
+  | 'bare-repository'
+  | 'operation-in-progress'
+  | 'conflicts-present'
+  | 'branch-already-exists'
+  | 'branch-in-other-worktree'
+  | 'worktree-already-exists'
+  | 'worktree-dirty'
+  | 'worktree-not-found'
+  | 'target-branch-not-found'
+  | 'target-workspace-dirty'
+  | 'merge-conflict'
+  | 'invalid-id'
+  | 'invalid-branch-name'
+  | 'path-outside-home'
+  | 'disk-space'
+  | 'internal'
+
+export interface WorktreeError {
+  code: WorktreeErrorCode
+  message: string
+  paths?: string[]
+}
+
+export type WorktreeResult<T> = { ok: true; value: T } | { ok: false; error: WorktreeError }

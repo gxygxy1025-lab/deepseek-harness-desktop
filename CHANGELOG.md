@@ -6,6 +6,24 @@
 
 English: No changes yet.
 
+## 2.6.0 - 2026-08-19
+
+中文：
+
+- Task Board v3 增加 Project、Task Run、派生 Evidence 与 Git Worktree 审核流；v2 账本复制迁移并保留备份，旧任务默认 shared-workspace。
+- Git Graph Host 增加受控 Worktree 服务和 ID-only loopback 路由，限制 realpath、分支、冲突、操作中状态和丢弃确认；取消只取消 Session，不自动清理 Worktree。
+- Runtime Provider 缺少 `workspace.register`、`session.create` 或 `session.observe` 时记录能力证据并显式回退现有 shared-workspace；Session CWD 不匹配时阻断。
+- 增加有界 Evidence 面板、Commit/Merge/Keep/二次确认 Discard 审核、运行通知 Deep Link，以及真实临时 Git 仓库 Candidate 执行兼容夹具。
+- 官方正式版默认启用仅用于产品改进的有界匿名统计，不提供应用内关闭开关；不收集持久标识、IP、对话、文件、路径、凭据、日志或堆栈，不保存原始事件，按日汇总最长保留 365 天。源码、开发、测试与 Fork 构建不包含官方统计端点。
+
+English:
+
+- Task Board v3 adds Projects, compact Task Runs, derived Evidence, and explicit Git Worktree review. The v2 ledger is migrated copy-first with a preserved backup, and legacy tasks default to shared-workspace.
+- Git Graph Host adds a controlled Worktree service and ID-only loopback routes with realpath, branch, conflict, in-progress, and discard-confirmation fences. Cancellation cancels only the Session and never removes a Worktree implicitly.
+- When `workspace.register`, `session.create`, or `session.observe` is unavailable, the Runtime Provider records capability evidence and falls back explicitly to the existing shared-workspace executor; a Session CWD mismatch is blocked.
+- Added a bounded Evidence panel, Commit/Merge/Keep/two-step Discard review, run deep-link notifications, and a real temporary Git repository Candidate execution fixture.
+- Official release builds enable bounded anonymous product metrics by default without an in-app off switch, solely for product improvement. They collect no persistent identifier, IP address, conversation, file, path, credential, log, or stack trace, retain no raw events, and expire daily aggregates after at most 365 days. Source, development, test, and Fork builds contain no official endpoint.
+
 ## 2.5.0 - 2026-08-19
 
 中文：

@@ -8,6 +8,7 @@ const FIXED_ROUTES = new Map([
 const ID_ROUTES = new Map([
   ['task', 'task'],
   ['session', 'session'],
+  ['run', 'run'],
 ])
 
 export function normalizeDeepLink(value, protocol = 'dsh') {

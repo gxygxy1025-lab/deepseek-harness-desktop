@@ -16,7 +16,7 @@ dsh Web GUI 的多列任务看板（UI 类插件）。任务可**真实执行**�
 
 ## 数据模型
 
-- 权威账本为当前 profile 下的 `state/task-board/tasks-v2.json`；Host 写入必须串行、临时文件回读校验后原子替换，损坏文件移名保留。浏览器 `dsh.taskBoard.v1` 是迁移源和 Host 不可用时的回退，2.4.x 不删除。
+- 权威账本为当前 profile 下的 `state/task-board/tasks-v3.json`，包含 Project、Task Run 和派生 Evidence；Host 写入必须串行、临时文件回读校验后原子替换，v2 文件复制备份后迁移，损坏文件不覆盖原源。浏览器 `dsh.taskBoard.v1` 和 v2 Host 路径是旧环境回退，均不删除。
 - Host 路由只允许固定 loopback same-origin 路径，不接受浏览器传入文件路径；多标签同步使用 SSE 变更事件，不加高频轮询。
 - 执行/调度状态机进 `core/`，Host 文件与路由进 `host/`，浏览器 HostStore 客户端进 `client/`，UI 进 `client/board/`。
 

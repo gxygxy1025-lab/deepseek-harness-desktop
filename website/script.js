@@ -1,4 +1,5 @@
 import { sumInstallerDownloads } from './release-stats.mjs'
+import { reportInstallerDownloadClick } from './download-telemetry.mjs'
 
 const releaseApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop/releases/latest'
 const releasesApi = 'https://api.github.com/repos/ningbainb/deepseek-harness-desktop/releases?per_page=100'
@@ -78,6 +79,7 @@ async function hydrateLatestRelease() {
     if (!installer) throw new Error('release installer is missing')
 
     const version = String(release.tag_name || '').replace(/^desktop-v/, 'v')
+    document.documentElement.dataset.releaseVersion = version.replace(/^v/u, '')
     setLinks('.download-link', installer.browser_download_url)
     const terminalAction = document.querySelector('#terminal-action')
     if (terminalAction) {
@@ -190,6 +192,18 @@ document.querySelectorAll('[data-terminal-tab]').forEach(button => {
     if (cta) cta.textContent = isSource ? '打开仓库' : '立即下载'
   })
 })
+
+document.addEventListener('click', event => {
+  const link = event.target?.closest?.('[data-download-source]')
+  if (!link) return
+  reportInstallerDownloadClick({
+    navigator,
+    siteUrl: window.location.href,
+    downloadUrl: link.href,
+    version: document.documentElement.dataset.releaseVersion,
+    source: link.dataset.downloadSource,
+  })
+}, { capture: true })
 
 document.querySelector('[data-copy-target]')?.addEventListener('click', event => {
   const command = document.querySelector(`#${event.currentTarget.dataset.copyTarget}`)

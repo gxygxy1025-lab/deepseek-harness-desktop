@@ -16,16 +16,17 @@ Group number: **1105158177** · **[Join the QQ group](https://qm.qq.com/q/vehlNj
 
 DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. It does not rewrite the interface: a hardened Electron window launches the official `@deepseek-ai/dsh` host locally and loads every plugin and skin from this repository unchanged.
 
-[Explore the product site](https://ningbainb.github.io/deepseek-harness-desktop/) · [Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Maintainer release workflow](docs/launch/desktop-release-workflow.md) · [Changelog](CHANGELOG.md)
+[Explore the product site](https://ningbainb.github.io/deepseek-harness-desktop/) · [Download the Windows x64 installer](https://github.com/ningbainb/deepseek-harness-desktop/releases/latest) · [Desktop technical guide](docs/desktop.md) · [Task Board v3 guide](docs/task-board-v3.md) · [Maintainer release workflow](docs/launch/desktop-release-workflow.md) · [Changelog](CHANGELOG.md)
 
 If this project helps you, Star the [GitHub repository](https://github.com/ningbainb/deepseek-harness-desktop) so more desktop users can discover it.
 
-### Latest release: 2.5.0
+### Latest release: 2.6.0
 
-`desktop-v2.5.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.5.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/DeepSeek-Harness-Desktop-Setup-2.5.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.5.0/SHA256SUMS.txt)
+`desktop-v2.6.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.6.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/SHA256SUMS.txt)
 
 | Version | Highlights |
 | --- | --- |
+| **2.6.0** | Adds Task Board v3 Projects, Task Runs, derived Evidence, explicit Git Worktree review, capability-based shared-workspace fallback, Candidate execution fixtures, and bounded anonymous product metrics. |
 | **2.5.0** | Adds the Runtime Adapter and upstream compatibility defenses, secure `.dshpreset` and Web Profile migration, atomic plugin batches, strict deep-link/file ingress, and structured notifications. |
 | **2.4.0** | Added reliable update-shutdown receipt v2, split Main/Extension Dock permissions, Desktop Contract v1, and Task Board Host-file storage v2. |
 | **2.3.0** | Adds a one-time GitHub Star and community prompt; recognizes external PowerShell/CMD/Node hosts, EncodedCommand payloads, and Windows short paths during preflight; supports direct 0.1.9 upgrades; and coexists with the official web client through an isolated profile and port fallback. |
@@ -39,6 +40,15 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 | **0.1.5** | Synchronizes native title-bar colors with light/dark mode, keeps full-screen dialogs inside the safe viewport, fixes packaged skin discovery and switching, and bundles `dshmarket` plus `dsh-plugin-hub`. |
 | **0.1.4** | Moves the pet to the global Shell Overlay so it appears on home and settings screens, restores all five Web UI plugin settings cards, and lists all nine packaged skins in Skin Center. |
 | **0.1.3** | Adds stable GitHub Release checks, bilingual update notes, user-confirmed downloads, taskbar progress, and a second confirmation before installation. |
+
+### 2.6.0 Highlights
+
+- **Task Board v3**: associate tasks with Projects and choose shared-workspace or Git Worktree isolation; migrate the Host ledger copy-first while preserving the v2 source as a backup.
+- **Reviewable execution results**: every settled execution receives a compact Task Run and derived Evidence with changed files, bounded additions/deletions and diff preview, Session/run links, and provider capability evidence without full history or Secrets.
+- **Controlled Git Worktrees**: Host routes accept opaque ids only and enforce a controlled root, branch naming, realpath, clean/conflict/operation preflights, and explicit Commit, Merge, Keep, or confirmed Discard actions.
+- **Safe compatibility fallback**: Stable may expose only lifecycle and profile capabilities. Missing Worktree capabilities are recorded and use the existing shared-workspace executor instead of claiming isolation.
+- **Candidate execution gates**: a real temporary Git repository fixture checks Session CWD, lifecycle events, cancellation, and restart reconciliation. A failing Candidate is blocked without changing Stable metadata.
+- **Anonymous metrics boundary**: official releases enable bounded anonymous product metrics by default without an in-app off switch, solely for product improvement. They collect no identity, conversation, file, path, credential, or log, retain no raw events, and source or Fork builds contain no official endpoint. See the complete [privacy policy](PRIVACY.md).
 
 ### 2.5.0 Highlights
 

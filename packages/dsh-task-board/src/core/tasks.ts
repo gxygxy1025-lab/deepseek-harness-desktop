@@ -5,6 +5,8 @@
  * unit-testable in isolation.
  */
 
+import type { IsolationMode, TaskRunReference } from './runs.ts'
+
 /** Task lifecycle status, one per kanban column. */
 export type TaskStatus = 'backlog' | 'todo' | 'running' | 'done' | 'failed'
 
@@ -68,6 +70,12 @@ export interface TaskRecord {
   updatedAt: number
   /** Every execution attempt, most recent last. */
   executions: ExecutionRecord[]
+  /** Optional project reference introduced by Desktop 2.6. */
+  projectId?: string
+  /** Explicit isolation choice; absent means the pre-2.6 shared default. */
+  isolationMode?: IsolationMode
+  /** Compact 2.6 run references; execution history remains for v2 UI compatibility. */
+  runs?: TaskRunReference[]
   /** Optional scheduled-run rule (absent on tasks without a schedule). */
   schedule?: ScheduleRule
 }
@@ -77,6 +85,8 @@ export interface NewTaskInput {
   title: string
   description: string
   prompt: string
+  projectId?: string
+  isolationMode?: IsolationMode
 }
 
 /** The five kanban columns, in display order. */
@@ -120,6 +130,8 @@ export function createTask(input: NewTaskInput, now: number, id: string): TaskRe
     createdAt: now,
     updatedAt: now,
     executions: [],
+    ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+    ...(input.isolationMode === undefined ? {} : { isolationMode: input.isolationMode }),
   }
 }
 

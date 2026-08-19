@@ -50,6 +50,7 @@ export function registerExtensionIpc({
   presetService,
   migrationService,
   notificationService,
+  trackProductOperation = (_detail, operation) => operation(),
 }) {
   if (typeof surfaceRegistry?.assert !== 'function') {
     throw new TypeError('extension IPC requires a desktop surface registry')
@@ -344,8 +345,12 @@ export function registerExtensionIpc({
 
   handleExtension('extensions:list', scan)
   handleExtension('extensions:plugin-check', () => pluginManager.checkUpdates())
-  handleExtension('extensions:plugin-install', (_event, request) => installPlugin(request))
-  handleExtension('extensions:plugin-install-batch', (_event, request) => installPluginBatch(request))
+  handleExtension('extensions:plugin-install', (_event, request) => {
+    return trackProductOperation('install', () => installPlugin(request))
+  })
+  handleExtension('extensions:plugin-install-batch', (_event, request) => {
+    return trackProductOperation('install', () => installPluginBatch(request))
+  })
   handleExtension('extensions:plugin-update', (_event, request) => {
     if (
       request === null
@@ -355,9 +360,14 @@ export function registerExtensionIpc({
     ) {
       throw new TypeError('invalid plugin update request')
     }
-    return installPlugin({ spec: `${request.name}@latest`, allowUnknown: request.allowUnknown })
+    return trackProductOperation('update', () => installPlugin({
+      spec: `${request.name}@latest`,
+      allowUnknown: request.allowUnknown,
+    }))
   })
-  handleExtension('extensions:plugin-remove', (_event, name) => mutatePlugin(() => pluginManager.remove(name)))
+  handleExtension('extensions:plugin-remove', (_event, name) => {
+    return trackProductOperation('remove', () => mutatePlugin(() => pluginManager.remove(name)))
+  })
   handleExtension('extensions:plugin-enable', (_event, request) => {
     if (
       request === null
@@ -367,7 +377,10 @@ export function registerExtensionIpc({
     ) {
       throw new TypeError('invalid plugin enablement request')
     }
-    return enqueuePluginMutation(() => pluginRecovery.setPluginEnabledAndRestart(request.name, request.enabled))
+    const detail = request.enabled ? 'enable' : 'disable'
+    return trackProductOperation(detail, () => enqueuePluginMutation(
+      () => pluginRecovery.setPluginEnabledAndRestart(request.name, request.enabled),
+    ))
   })
   handleExtension('extensions:recovery-state', () => pluginRecovery.getState())
   handleExtension('extensions:recovery-restore-all', () => {

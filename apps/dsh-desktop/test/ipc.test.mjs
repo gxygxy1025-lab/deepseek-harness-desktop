@@ -32,7 +32,7 @@ test('window chrome IPC accepts only supported themes', () => {
 })
 
 test('window chrome Help IPC accepts only fixed application actions', () => {
-  for (const action of ['community', 'downloads', 'feedback', 'project', 'updates']) {
+  for (const action of ['community', 'downloads', 'feedback', 'project', 'privacy', 'updates']) {
     assert.equal(normalizeHelpAction(action), action)
   }
   for (const action of ['open-url', 'https://example.com', '', 42]) {
@@ -58,9 +58,11 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
   surfaceRegistry.register(sender, 'main')
   const controller = new EventEmitter()
   controller.status = { state: 'ready', url: 'http://127.0.0.1:43125/' }
+  controller.restart = async () => {}
   const browserWindow = { self: undefined }
   browserWindow.self = browserWindow
   const handled = []
+  const observed = []
   const unregister = registerDesktopIpc({
     ipcMain,
     surfaceRegistry,
@@ -83,12 +85,19 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
     setWindowChromeTheme: () => {},
     claimStarPrompt: async () => true,
     getUpdateController: () => undefined,
+    onRecoveryAction: (action) => observed.push(['recovery', action]),
+    onSettingsOpened: () => observed.push(['settings']),
+    onUpdateCheck: () => observed.push(['updates']),
   })
 
   assert.equal(await handlers.get('desktop:help-action')({ sender }, 'community'), true)
   assert.equal(await handlers.get('desktop:tool-action')({ sender }, 'extensions'), true)
   assert.equal(await handlers.get('desktop:star-prompt-claim')({ sender }), true)
+  await handlers.get('desktop:action')({ sender }, 'retry')
+  assert.equal(await handlers.get('desktop:settings-opened')({ sender }), true)
+  await handlers.get('desktop:update-check')({ sender })
   assert.deepEqual(handled, ['community', 'extensions'])
+  assert.deepEqual(observed, [['recovery', 'retry'], ['settings'], ['updates']])
   unregister()
 })
 

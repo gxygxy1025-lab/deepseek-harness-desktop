@@ -47,12 +47,16 @@ export function createCandidateReport({
   stableHashesBefore,
   stableHashesAfter,
   slotEvidence = { stable: [], candidate: [] },
+  executionEvidence = undefined,
 } = {}) {
   const version = validateCandidateVersion(candidateVersion)
   const normalized = normalizedChecks(checks)
   const checkoutUnchanged = stableUnchanged(stableHashesBefore, stableHashesAfter)
   const allPassed = normalized.every((check) => check.status === 'passed')
-  const status = allPassed && checkoutUnchanged ? 'compatible' : 'failed'
+  const executionBlocking = executionEvidence?.status === 'blocked'
+    || executionEvidence?.candidate?.status === 'blocked'
+    || executionEvidence?.candidate?.eventSemantics === 'changed'
+  const status = allPassed && checkoutUnchanged && !executionBlocking ? 'compatible' : 'failed'
   return {
     schemaVersion: 1,
     candidateVersion: version,
@@ -67,6 +71,7 @@ export function createCandidateReport({
       compatPatches: difference(stableEvidence?.compatPatches, candidateEvidence?.compatPatches),
       slots: difference(slotEvidence.stable, slotEvidence.candidate),
     },
+    execution: executionEvidence ?? { status: 'not-run', gate: 'CWD/event semantics required for 2.6 Worktree execution' },
   }
 }
 
@@ -86,6 +91,8 @@ export function renderCandidateReportMarkdown(report) {
     '',
     'This report is diagnostic only. It does not update stable dependencies, the lockfile, releases, or updater metadata.',
     '',
+    'Desktop 2.6 Worktree compatibility is gated by Session CWD and completion/cancel event semantics. Missing capabilities may be safely degraded to shared-workspace; changed semantics block the isolated path.',
+    '',
     '## Checks',
     '',
     '| Check | Status | Detail |',
@@ -97,6 +104,12 @@ export function renderCandidateReportMarkdown(report) {
     '| Surface | Changed |',
     '| --- | --- |',
     ...Object.entries(report.differences).map(([name, value]) => `| ${name} | ${value.changed ? 'yes' : 'no'} |`),
+    '',
+    '## Execution semantics',
+    '',
+    `| Status | ${markdown(report.execution?.status)} |`,
+    `| Candidate CWD | ${markdown(report.execution?.candidate?.sessionCwd ?? 'not-run')} |`,
+    `| Candidate events | ${markdown(report.execution?.candidate?.eventSemantics ?? 'not-run')} |`,
     '',
   ]
   return `${lines.join('\n')}\n`

@@ -2,7 +2,7 @@
 
 ## Deep-link allowlist
 
-Desktop accepts only `dsh://extensions`, `dsh://updates`, `dsh://task/<safe-id>`, `dsh://session/<safe-id>`, and `dsh://preset/preview`. Safe identifiers contain lowercase ASCII letters, digits, dot, underscore, or hyphen and are at most 128 characters.
+Desktop accepts only `dsh://extensions`, `dsh://updates`, `dsh://task/<safe-id>`, `dsh://session/<safe-id>`, `dsh://run/<safe-id>`, and `dsh://preset/preview`. Safe identifiers contain lowercase ASCII letters, digits, dot, underscore, or hyphen and are at most 128 characters.
 
 Credentials, ports, fragments, queries, traversal, percent-encoded separators, unknown routes, commands, paths, URLs, and package specifications are rejected before dispatch. Links are normalized into structured records, queued in a bounded list until Runtime is ready, deduplicated for the application lifetime, and dispatched once.
 
@@ -12,6 +12,6 @@ The installer registers `.dshpreset` with DeepSeek Harness Desktop. Initial laun
 
 ## Notifications
 
-Desktop Contract `notifications.show` accepts structured `category`, `id`, `title`, `body`, and optional allowlisted `deepLink`. Categories are `task`, `plugin-recovery`, `update`, and `preset`. Unknown fields and unsafe links are rejected.
+Desktop Contract `notifications.show` accepts structured `category`, `id`, `title`, `body`, and optional allowlisted `deepLink`. Categories are `task`, `run`, `plugin-recovery`, `update`, and `preset`. Unknown fields and unsafe links are rejected.
 
-The notification service deduplicates IDs, applies a per-category minimum interval, and suppresses native notifications while a Desktop window is focused. A click routes only the already validated structured deep link. Task surfaces may report completion or failure through the Contract; the main process reports plugin safe mode, downloaded updates, and Preset import completion or restoration.
+The notification service deduplicates IDs, applies a per-category minimum interval, and suppresses native notifications while a Desktop window is focused. A click routes only the already validated structured deep link. Task surfaces may report completion or failure through the Contract; run notifications open the Task Board through `dsh://run/<safe-id>`; the main process reports plugin safe mode, downloaded updates, and Preset import completion or restoration.

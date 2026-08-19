@@ -81,3 +81,14 @@ test('Candidate Lite fails if the stable package, lockfile, release, or updater 
   assert.equal(report.status, 'failed')
   assert.equal(report.stableCheckoutUnchanged, false)
 })
+
+test('Candidate Lite treats Worktree CWD and event changes as compatibility blockers', () => {
+  const report = reportWith([{ id: 'report', status: 'passed' }], {
+    executionEvidence: {
+      status: 'blocked',
+      candidate: { status: 'blocked', sessionCwd: 'C:/unexpected', eventSemantics: 'changed' },
+    },
+  })
+  assert.equal(report.status, 'failed')
+  assert.match(renderCandidateReportMarkdown(report), new RegExp('Session CWD and completion/cancel event semantics'))
+})

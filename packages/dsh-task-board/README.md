@@ -16,7 +16,8 @@ A hot-pluggable DeepSeek Harness (DSH) client GUI plugin: it adds a **task board
 - **Real execution**: on "执行" (Run), the plugin connects a workspace session through the client runtime (`workspaces.connectWorkspace`, reusing a blank session or letting the host create one), names the session after the task title, and drives a real agent via `session.prompt([{ type: 'text', text }], 'queue')`; it then subscribes to that session's snapshot and, once the round really finishes, sets the card to 已完成/已失败 and records the execution result. The execution session appears in the session list and can be opened to view the real transcript.
 - **Status write-back**: card status (进行中 → 完成/失败) is driven by the real session state; after a page refresh/restart, leftover running tasks are auto-reconciled against the current session state (reconcile).
 - **Scheduled tasks**: the details panel can schedule a task — an enable switch + a 5-field cron expression (分 时 日 月 周, supporting `*` / `*/n` / `a-b` / comma lists) + common presets (daily 09:00, every hour, every 10 minutes, Mondays 09:00); enabling computes and persists the "下次运行时间" (next run time), and the card shows a scheduled marker; at the due time it automatically takes the same real-execution path (as manual run), and the execution session remains linkable.
-- **Host-file persistence**: schema v2 is stored under the active profile at `state/task-board/tasks-v2.json` through fixed loopback same-origin routes; writes are serialized and atomically published, corrupt files are preserved beside the ledger, and live changes fan out over SSE.
+- **Host-file persistence**: the Host-owned v3 ledger stores Projects, compact Task Runs, and derived Evidence under `state/task-board/tasks-v3.json`; writes are serialized and atomically published, corrupt files are preserved, and v2 is copied to a backup before migration. Older Hosts keep the v2/localStorage fallback.
+- **Worktree review**: Desktop 2.6 tasks can choose shared-workspace or Git Worktree. When the typed Runtime Provider exposes workspace/session observation capabilities, the Host creates a controlled Worktree and the detail view offers bounded Evidence plus Commit, Merge, Keep, and confirmed Discard; missing capabilities fall back explicitly to shared-workspace.
 - **System-prompt injection**: the host half (`src/index.ts`) registers a `plugin:task-board` section (order 200) via `SystemPrompt.section`, declaring this plugin's existence, capabilities, and limits to every agent — it is injected when the plugin is in the composition (after mount + DSH restart) and disappears when removed (after unmount + restart), so an agent needs no external docs to know how to work with this board.
 
 ## Directory structure
@@ -108,19 +109,19 @@ The rows registered in the profile manifest:
 
 ## Data storage location
 
-- The authoritative v2 ledger lives at `DSH_HOME/profiles/<profile>/state/task-board/tasks-v2.json`; `profileName` defaults to the running `DSH_PROFILE` (or `web`).
-- On first use with an empty Host ledger, v1 is copied from `dsh.taskBoard.v1`, read back, and verified by count plus content hash before migration is marked complete. The v1 key is not deleted in 2.4.x.
-- When the Host endpoint is unavailable, the board uses v1 localStorage. Host updates synchronize through SSE; there is no high-frequency storage poll.
+- The authoritative v3 ledger lives at `DSH_HOME/profiles/<profile>/state/task-board/tasks-v3.json`; `profileName` defaults to the running `DSH_PROFILE` (or `web`).
+- A v2 document is copied to a timestamped backup, migrated without inferring Worktree isolation, read back, and verified before the v3 marker is written. The v2 source and browser v1 key remain available for older environments.
+- When the v3 Host endpoint is unavailable, the board selects the compatible v2 Host or v1 localStorage path. Host updates synchronize through SSE; there is no high-frequency storage poll.
 
 ## Security model
 
 - Host routes are exact paths, accept loopback same-origin requests only, cap request bodies, and never accept profile names or filesystem paths from the browser.
-- The persisted execution rows contain task fields and session/workspace/run references and timestamps, not model messages, tool output, or complete transcripts.
+- Persisted Task Runs and Evidence contain task fields, opaque session/workspace/run references, revisions, bounded file summaries, and capability evidence, not model messages, tool output, Secrets, raw patches, or complete transcripts.
 
 ## Known limitations
 
 - Scheduling remains browser-side: a DSH page must stay open, missed closed-page runs are skipped, and this release adds no background scheduler or replay queue.
-- Task Presets, Worktree automation, background scheduling, and a public Task Board SDK are outside this contract.
+- Worktree execution requires the optional Runtime Provider capabilities; absent capabilities use shared-workspace. Background scheduling and a public Task Board SDK are outside this contract.
 
 ## Manual verification steps
 

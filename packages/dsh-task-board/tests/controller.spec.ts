@@ -4,7 +4,10 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
+import { InMemoryEvidenceStore } from '../src/core/evidence.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
+import { EvidenceReviewService } from '../src/core/review.ts'
+import { createProject, type Evidence, type TaskRunReference } from '../src/core/runs.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 
@@ -352,6 +355,134 @@ describe('run loop', () => {
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId, outcome: 'succeeded' })
     expect(store.load()[0].status).toBe('done')
     expect(store.load()[0].executions[0].result).toBe('succeeded')
+  })
+
+  it('attaches blocked Worktree Run and Evidence references without shared execution', async () => {
+    const store = new InMemoryTaskStore()
+    const stub = new StubExec()
+    const project = createProject({ id: 'project-1', name: 'repo', workspaceId: 'workspace-1', defaultIsolation: 'git-worktree' })
+    const controller = new BoardController({
+      store,
+      exec: stub as unknown as ExecutionService,
+      sessions: new FakeSessions(),
+      now: () => NOW,
+      uuid,
+      worktreeExecution: {
+        resolveProject: () => project,
+        runTask: async (_task, execution) => ({
+          mode: 'blocked',
+          run: {
+            runId: execution.runId ?? execution.id,
+            workspaceId: project.workspaceId,
+            worktreeId: 'wt-blocked',
+            baseRevision: 'base',
+            startedAt: execution.startedAt,
+            finishedAt: NOW,
+            resultStatus: 'failed',
+            evidenceId: `ev-${execution.id}`,
+            fallbackReason: 'provider CWD drift',
+            runtimeProviderEvidence: { createSession: 'available', sessionCwdVerified: false },
+          },
+          evidenceId: `ev-${execution.id}`,
+          fallbackReason: 'provider CWD drift',
+          capabilityEvidence: { createSession: 'available', sessionCwdVerified: false },
+          resultStatus: 'failed',
+        }),
+      },
+    })
+    controller.start()
+    const task = controller.createTask({ title: 'isolated', description: '', prompt: 'run', projectId: project.id, isolationMode: 'git-worktree' })!
+    await controller.runTask(task.id)
+    const persisted = store.load()[0]
+    expect(persisted.status).toBe('failed')
+    expect(persisted.runs?.at(-1)).toMatchObject({ worktreeId: 'wt-blocked', resultStatus: 'failed', fallbackReason: 'provider CWD drift' })
+    expect(persisted.runs?.at(-1)?.evidenceId).toMatch(/^ev-/u)
+    expect(stub.runCalls).toHaveLength(0)
+  })
+
+  it('uses Worktree restart reconciliation and attaches the final Evidence without shared replay', async () => {
+    const store = new InMemoryTaskStore()
+    const base = createTask({ title: 'resume', description: '', prompt: 'do not replay', projectId: 'project-1', isolationMode: 'git-worktree' }, NOW, 'task-resume')
+    const run: TaskRunReference = {
+      runId: 'run-resume', sessionId: 'session-1', workspaceId: 'workspace-1', worktreeId: 'wt-1',
+      baseRevision: 'base', startedAt: NOW, resultStatus: 'running', runtimeProviderEvidence: {},
+    }
+    store.save([{ ...base, status: 'running', runs: [run], executions: [{ id: 'run-resume', runId: 'run-resume', sessionId: 'session-1', workspaceId: 'workspace-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }] }])
+    let sharedReconciles = 0
+    let worktreeReconciles = 0
+    const controller = new BoardController({
+      store,
+      exec: { run: async () => {}, reconcile: () => { sharedReconciles += 1; return undefined } } as unknown as ExecutionService,
+      sessions: new FakeSessions(),
+      now: () => NOW + 10,
+      uuid,
+      worktreeExecution: {
+        runTask: async () => { throw new Error('must not replay') },
+        reconcileTask: async (_task, execution) => {
+          worktreeReconciles += 1
+          return {
+            mode: 'git-worktree',
+            run: { ...run, finishedAt: NOW + 10, finalRevision: 'final', resultStatus: 'awaiting-review', evidenceId: 'ev-run-resume' },
+            evidenceId: 'ev-run-resume',
+            capabilityEvidence: {},
+            sessionId: execution.sessionId,
+            resultStatus: 'awaiting-review',
+          }
+        },
+      },
+    })
+    controller.start()
+    await flush()
+    await flush()
+    const persisted = store.load()[0]
+    expect(worktreeReconciles).toBe(1)
+    expect(sharedReconciles).toBe(0)
+    expect(persisted.status).toBe('done')
+    expect(persisted.runs?.[0]).toMatchObject({ resultStatus: 'awaiting-review', evidenceId: 'ev-run-resume', finalRevision: 'final' })
+  })
+})
+
+describe('review state synchronization', () => {
+  it('keeps the TaskRun status aligned through commit, merge, keep, and discard', async () => {
+    const store = new InMemoryTaskStore()
+    const evidenceStore = new InMemoryEvidenceStore()
+    const base = createTask({ title: 'review', description: '', prompt: '' }, NOW, 'task-review')
+    const run: TaskRunReference = {
+      runId: 'run-review', workspaceId: 'workspace-1', worktreeId: 'wt-1', startedAt: NOW,
+      finishedAt: NOW, resultStatus: 'awaiting-review', evidenceId: 'ev-review', runtimeProviderEvidence: {},
+    }
+    store.save([{ ...base, status: 'done', runs: [run] }])
+    const evidence: Evidence = {
+      evidenceId: 'ev-review', runId: run.runId, workspaceId: run.workspaceId, worktreeId: run.worktreeId,
+      changedFiles: [], additions: 0, deletions: 0, clean: false, dirty: true,
+      resultStatus: 'awaiting-review', startedAt: NOW, finishedAt: NOW,
+      diffSource: 'git-graph', runtimeProviderEvidence: {}, audit: [],
+    }
+    evidenceStore.put(evidence)
+    const reviewService = new EvidenceReviewService({
+      store: evidenceStore,
+      worktrees: {
+        commitWorktree: async () => ({ ok: true, value: { revision: 'commit' } }),
+        mergeWorktree: async () => ({ ok: true, value: { revision: 'merge' } }),
+        removeWorktree: async () => ({ ok: true, value: {} }),
+      },
+      now: () => NOW + 1,
+    })
+    const controller = new BoardController({
+      store, evidenceStore, reviewService,
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions: new FakeSessions(), now: () => NOW + 1, uuid,
+    })
+    controller.start()
+    await controller.commitEvidence('ev-review', 'accept')
+    expect(store.load()[0].runs?.[0].resultStatus).toBe('accepted')
+    await controller.mergeEvidence('ev-review', 'main')
+    expect(store.load()[0].runs?.[0].resultStatus).toBe('accepted')
+    await controller.keepEvidence('ev-review')
+    expect(store.load()[0].runs?.[0].resultStatus).toBe('kept')
+    await controller.discardEvidence('ev-review', true)
+    expect(store.load()[0].runs?.[0].resultStatus).toBe('discarded')
+    expect(evidenceStore.get('ev-review')?.audit.map(entry => entry.action)).toEqual(['commit', 'merge', 'keep', 'discard'])
   })
 })
 

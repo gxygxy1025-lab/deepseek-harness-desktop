@@ -31,6 +31,50 @@ export const unmergedArgv = (): string[] => ['diff', '--name-only', '--diff-filt
 /** `git worktree list --porcelain` — all worktrees and their checked-out branches. */
 export const worktreeListArgv = (): string[] => ['worktree', 'list', '--porcelain']
 
+/** `git worktree add -b <branch> <path> <base>`; values stay individual argv entries. */
+export const worktreeAddArgv = (path: string, branch: string, baseRef: string): string[] => [
+  'worktree', 'add', '--no-checkout', '-b', branch, path, baseRef,
+]
+
+/** Populate a newly-created worktree at its branch tip. */
+export const worktreeCheckoutArgv = (): string[] => ['reset', '--hard', 'HEAD']
+
+/** `git worktree remove [--force] <path>`. */
+export const worktreeRemoveArgv = (path: string, force = false): string[] => [
+  'worktree', 'remove', ...(force ? ['--force'] : []), path,
+]
+
+/** A bounded numstat diff for evidence and the Git Graph preview. */
+export const diffNumstatArgv = (baseRef?: string, finalRef?: string): string[] => [
+  'diff', '--numstat', '--find-renames', ...(baseRef === undefined ? [] : [baseRef]), ...(finalRef === undefined ? [] : [finalRef]),
+]
+
+/** A bounded patch preview; callers enforce the byte cap. */
+export const diffPatchArgv = (baseRef?: string, finalRef?: string): string[] => [
+  'diff', '--binary', '--no-ext-diff', '--find-renames', ...(baseRef === undefined ? [] : [baseRef]), ...(finalRef === undefined ? [] : [finalRef]),
+]
+
+/** Current branch/head in one stable command. */
+export const revParseArgv = (ref = 'HEAD'): string[] => ['rev-parse', '--verify', ref]
+
+/** Bare-repository probe. */
+export const bareRepositoryArgv = (): string[] => ['rev-parse', '--is-bare-repository']
+
+/** Merge preflight without touching the index/worktree. */
+export const mergeTreeArgv = (target: string, source: string): string[] => ['merge-tree', '--write-tree', target, source]
+
+/** Stage all worktree changes for an explicit user commit. */
+export const addAllArgv = (): string[] => ['add', '--all']
+
+/** Commit with a separate message argv. */
+export const commitArgv = (message: string): string[] => ['commit', '--no-verify', '-m', message]
+
+/** Explicit merge into the target branch. */
+export const mergeArgv = (source: string): string[] => ['merge', '--no-edit', '--no-ff', source]
+
+/** Delete a task branch only after the worktree is gone and it is removable. */
+export const deleteBranchArgv = (branch: string): string[] => ['branch', '-d', branch]
+
 /** `git rev-parse --verify --quiet refs/heads/<branch>` — branch existence probe. */
 export const verifyRefArgv = (branch: string): string[] => ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]
 
