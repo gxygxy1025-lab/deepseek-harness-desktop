@@ -26,7 +26,7 @@
     "peerDependencies": {}
   },
   "lockfile": {
-    "sha256": "0ad4191004722b095725bc1cdf6ae52d909bb6adfaff3c7683a1fb1420fc74f8"
+    "sha256": "8d190e3ef5a5ca394b23673acda0c66b7de06432cd1dfc6c324cf0392a1745a9"
   },
   "provider": {
     "providerId": "dsh-cli-provider-v1",

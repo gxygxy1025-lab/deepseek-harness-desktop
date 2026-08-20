@@ -8,6 +8,7 @@ const REQUIRED_PACKAGED_PEERS = Object.freeze([
   '@deepseek-ai/dsh-atomic-write',
   '@deepseek-ai/dsh-attachment',
   '@deepseek-ai/dsh-brand',
+  '@deepseek-ai/dsh-host-directory-picker',
   '@deepseek-ai/dsh-host-webserver',
   '@deepseek-ai/dsh-sandbox-policy',
   '@deepseek-ai/dsh-settings',
