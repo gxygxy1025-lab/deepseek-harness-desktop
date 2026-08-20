@@ -12,6 +12,8 @@ test('main preload exposes product actions without extension mutation channels',
   assert.match(source, /desktop:skills-list/u)
   assert.match(source, /desktop:settings-window-bounds-get/u)
   assert.match(source, /desktop:settings-window-bounds-set/u)
+  assert.doesNotMatch(source, /desktop:background-status/u)
+  assert.doesNotMatch(source, /desktop:close-behavior-(?:get|set)/u)
   assert.doesNotMatch(source, /extensions:plugin-(?:install|update|remove|enable)/u)
   assert.doesNotMatch(source, /extensions:skill-import/u)
   assert.doesNotMatch(source, /extensions:qqbot-/u)

@@ -7,10 +7,15 @@ import {
   RUNTIME_CAPABILITY_IDS,
   RUNTIME_PROVIDER_ID,
 } from '../apps/dsh-desktop/src/runtime-provider.mjs'
+import { scanRuntimeSeams } from './audit-dsh-coupling.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 export const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '..')
 export const KNOWN_GOOD_PATH = resolve(REPOSITORY_ROOT, 'apps/dsh-desktop/runtime-support/known-good.json')
+export const RUNTIME_SUPPORT_STATUSES = Object.freeze(['known-good', 'supported', 'candidate', 'blocked'])
+export const STABLE_RUNTIME_SUPPORT_STATUSES = Object.freeze(['known-good', 'supported'])
+
+const RUNTIME_SUPPORT_STATUS_SET = new Set(RUNTIME_SUPPORT_STATUSES)
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -19,6 +24,13 @@ function sha256(value) {
 function exactVersion(value, label) {
   if (typeof value !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(value)) {
     throw new Error(`${label} must be an exact version`)
+  }
+  return value
+}
+
+function supportStatus(value) {
+  if (!RUNTIME_SUPPORT_STATUS_SET.has(value)) {
+    throw new Error(`runtime support status must be one of ${RUNTIME_SUPPORT_STATUSES.join(', ')}`)
   }
   return value
 }
@@ -43,7 +55,17 @@ function patchRegistryIds(source) {
   return ids
 }
 
-export async function createRuntimeSupportManifest(root = REPOSITORY_ROOT) {
+async function collectClientSlots(root) {
+  const seams = await scanRuntimeSeams(root)
+  return [...new Set(
+    seams
+      .filter((seam) => seam.category === 'slot' && typeof seam.operation === 'string')
+      .map((seam) => seam.operation),
+  )].toSorted()
+}
+
+export async function createRuntimeSupportManifest(root = REPOSITORY_ROOT, { supportStatus: requestedSupportStatus = 'known-good' } = {}) {
+  const evidenceStatus = supportStatus(requestedSupportStatus)
   const paths = {
     rootManifest: resolve(root, 'package.json'),
     desktopManifest: resolve(root, 'apps/dsh-desktop/package.json'),
@@ -51,12 +73,13 @@ export async function createRuntimeSupportManifest(root = REPOSITORY_ROOT) {
     lockfile: resolve(root, 'pnpm-lock.yaml'),
     patchRegistry: resolve(root, 'packages/dsh-desktop-compat/src/patch-registry.ts'),
   }
-  const [rootText, desktopText, runtimeText, lockfile, patchRegistry] = await Promise.all([
+  const [rootText, desktopText, runtimeText, lockfile, patchRegistry, slots] = await Promise.all([
     readFile(paths.rootManifest, 'utf8'),
     readFile(paths.desktopManifest, 'utf8'),
     readFile(paths.runtimeManifest, 'utf8'),
     readFile(paths.lockfile, 'utf8'),
     readFile(paths.patchRegistry, 'utf8'),
+    collectClientSlots(root),
   ])
   const rootManifest = JSON.parse(rootText)
   const desktopManifest = JSON.parse(desktopText)
@@ -71,11 +94,13 @@ export async function createRuntimeSupportManifest(root = REPOSITORY_ROOT) {
   return {
     schemaVersion: 1,
     derived: true,
+    supportStatus: evidenceStatus,
     authority: {
       desktopManifest: 'apps/dsh-desktop/package.json',
       rootManifest: 'package.json',
       lockfile: 'pnpm-lock.yaml',
       runtimePackageManifest: 'apps/dsh-desktop/node_modules/@deepseek-ai/dsh/package.json',
+      clientSlotScan: 'scripts/audit-dsh-coupling.mjs',
     },
     desktop: {
       version: exactVersion(desktopManifest.version, 'Desktop version'),
@@ -96,7 +121,7 @@ export async function createRuntimeSupportManifest(root = REPOSITORY_ROOT) {
     },
     provider: {
       providerId: RUNTIME_PROVIDER_ID,
-      supportStatus: 'known-good',
+      supportStatus: evidenceStatus,
       upstreamVersion: installedVersion,
       capabilities: RUNTIME_CAPABILITY_IDS.map((id) => ({
         id,
@@ -107,6 +132,10 @@ export async function createRuntimeSupportManifest(root = REPOSITORY_ROOT) {
       registry: 'packages/dsh-desktop-compat/src/patch-registry.ts',
       sha256: sha256(patchRegistry),
       ids: patchRegistryIds(patchRegistry),
+    },
+    clientSlots: {
+      source: 'scripts/audit-dsh-coupling.mjs',
+      ids: slots,
     },
     packagedRuntimeIdentity: {
       packageRoot: 'resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh',
@@ -125,9 +154,11 @@ export function renderRuntimeSupportManifest(manifest) {
 async function atomicWrite(path, content) {
   const temporary = `${path}.tmp-${process.pid}-${Date.now()}`
   const backup = `${path}.bak-${process.pid}-${Date.now()}`
-  await writeFile(temporary, content, { flag: 'wx' })
+  JSON.parse(content)
+  await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' })
   let movedExisting = false
   try {
+    JSON.parse(await readFile(temporary, 'utf8'))
     try {
       await rename(path, backup)
       movedExisting = true
@@ -149,22 +180,34 @@ async function atomicWrite(path, content) {
 export async function checkRuntimeSupport({ root = REPOSITORY_ROOT, outputPath = KNOWN_GOOD_PATH } = {}) {
   const expected = renderRuntimeSupportManifest(await createRuntimeSupportManifest(root))
   const actual = await readFile(outputPath, 'utf8')
-  return { current: actual === expected, expected, actual }
+  const parsed = JSON.parse(actual)
+  const stable = STABLE_RUNTIME_SUPPORT_STATUSES.includes(parsed?.supportStatus)
+  return { current: actual === expected && stable, expected, actual }
 }
 
 async function main() {
-  const content = renderRuntimeSupportManifest(await createRuntimeSupportManifest())
+  const statusIndex = process.argv.indexOf('--support-status')
+  const requestedSupportStatus = statusIndex >= 0 ? process.argv[statusIndex + 1] : 'known-good'
+  const content = renderRuntimeSupportManifest(await createRuntimeSupportManifest(REPOSITORY_ROOT, {
+    supportStatus: requestedSupportStatus,
+  }))
   if (process.argv.includes('--stdout')) {
     process.stdout.write(content)
     return
   }
   if (process.argv.includes('--check')) {
+    if (!STABLE_RUNTIME_SUPPORT_STATUSES.includes(requestedSupportStatus)) {
+      throw new Error('Known Good check may only use known-good or supported status')
+    }
     const actual = await readFile(KNOWN_GOOD_PATH, 'utf8')
     if (actual !== content) throw new Error('Known Good runtime manifest is stale; run pnpm runtime-support:write')
     console.log('Known Good runtime manifest is current')
     return
   }
   if (!process.argv.includes('--write')) throw new Error('use --write or --check')
+  if (!STABLE_RUNTIME_SUPPORT_STATUSES.includes(requestedSupportStatus)) {
+    throw new Error('Known Good output may only use known-good or supported status')
+  }
   await mkdir(dirname(KNOWN_GOOD_PATH), { recursive: true })
   await atomicWrite(KNOWN_GOOD_PATH, content)
   console.log('wrote Known Good runtime support manifest')

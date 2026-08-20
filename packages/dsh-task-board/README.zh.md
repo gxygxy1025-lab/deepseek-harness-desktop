@@ -15,8 +15,8 @@
 - **任务详情**：点卡片打开详情（标题/描述/执行 Prompt/执行记录），**不会**一点就执行；详情内提供「执行 / 重新执行」「删除（带确认）」「查看会话（跳转到执行 transcript）」以及手动移到待规划/待办。
 - **真实执行**：点「执行」后，插件通过客户端 runtime 连接工作区会话（`workspaces.connectWorkspace`，空白会话复用或 host 新建），把任务标题设为会话名，以任务 Prompt 调用 `session.prompt([{ type: 'text', text }], 'queue')` 驱动真实 agent；随后订阅该会话快照，轮次真实结束后把卡片置为 已完成/已失败 并记录执行结果。执行会话会出现在会话列表，可点进对话查看真实 transcript。
 - **状态回写**：卡片状态（进行中 → 完成/失败）由真实会话状态驱动；刷新页面/重启后，遗留的 running 任务会按会话现状自动对账（reconcile）。
-- **定时任务**：详情面板可为任务配置定时执行——启用开关 + 5 段 cron 表达式（分 时 日 月 周，支持 `*` / `*/n` / `a-b` / 逗号列表）+ 常用预设（每天 09:00、每小时、每 10 分钟、每周一 09:00）；启用即计算并持久化「下次运行时间」，卡片显示定时标识；到点自动走真实执行链路（同手动执行），执行会话照常可跳转。
-- **Host 文件持久化**：Host-owned v3 台账把 Project、紧凑 Task Run 和派生 Evidence 保存到 `state/task-board/tasks-v3.json`；写入串行并原子发布，损坏文件会保留，v2 会在迁移前复制备份。旧 Host 继续使用 v2/localStorage 回退。
+- **定时任务**：详情面板可为任务配置定时执行——启用开关 + 5 段 cron 表达式（分 时 日 月 周，支持 `*` / `*/n` / `a-b` / 逗号列表）+ 常用预设（每天 09:00、每小时、每 10 分钟、每周一 09:00）；启用即计算并持久化「下次运行时间」，卡片显示定时标识。用户明确启用后台自动化后，Desktop Runtime Provider 的 host-job adapter 可在 Host 端认领到期槽位；其他环境继续由原有浏览器链路按手动执行的真实路径运行。
+- **Host 文件持久化**：Host-owned v3 台账把 Project、紧凑 Task Run、派生 Evidence 和可选的持久调度状态保存到 `state/task-board/tasks-v3.json`；写入串行并原子发布，损坏文件会保留，v2 会在迁移前复制备份。持久状态包含 IANA 时区、有界 misfire/running 策略、确定性 run key、provider evidence 与会过期的租约。旧 Host 继续使用 v2/localStorage 回退。
 - **Worktree 审核**：Desktop 2.6 任务可选择 shared-workspace 或 Git Worktree；Typed Runtime Provider 提供 workspace/session 观察能力时，Host 创建受控 Worktree，详情展示有界 Evidence 并提供 Commit、Merge、Keep、二次确认 Discard；缺少能力时明确回退到 shared-workspace。
 - **系统提示词注入**：host 半边（`src/index.ts`）通过 `SystemPrompt.section` 注册 `plugin:task-board` 段（order 200），向每个 agent 声明本插件存在、能力与限制——插件在组合中（mount 后重启 DSH）即注入，移出组合（unmount 后重启）即消失，agent 无需任何外部文档就能知道如何与本看板协作。
 
@@ -25,7 +25,7 @@
 ```
 package.json / tsconfig.json / tsdown.config.ts   # 独立仓库构建
 build/tsdown.client.ts + build/web/src/platform.ts # 从 DSH checkout 复制的 client bundle 预设（与运行版本保持同步）
-src/index.ts / src/host/*.ts                       # host 半边：SystemPrompt + profile 文件存储 + 固定 HTTP/SSE 路由
+src/index.ts / src/host/*.ts                       # host 半边：SystemPrompt + profile 文件存储 + 固定路由 + 持久调度 adapter
 src/client/index.ts                                # apply(ctx)：接线 runtime 服务 + 挂载 DOM
 src/client/sidebar-entry.ts                        # 侧边栏入口注入（自愈式 MutationObserver）
 src/client/board-mount.tsx                         # 中间列看板挂载 + 显隐切换
@@ -33,7 +33,7 @@ src/client/board/*.tsx                             # React 看板视图（列/�
 src/client/board.module.css                        # 样式（--dsw-* token，随主题/皮肤自适应）
 src/core/tasks.ts                                  # 任务模型 + 状态机（纯函数）
 src/core/schedule.ts                               # cron 解析 + 下次运行时刻（纯函数）
-src/core/scheduler.ts                              # 浏览器调度器（每分钟 tick 触发到期任务）
+src/core/scheduler.ts / scheduler-authority.ts     # 浏览器回退 tick + Host/client 调度归属契约
 src/core/store.ts / src/client/host-store.ts       # 持久化接缝、Host 客户端、localStorage 回退与迁移
 src/core/execution.ts                              # 真实执行服务（会话连接/prompt/结算观察）
 src/core/controller.ts                             # 控制器（台账状态、视图状态、导航感知）
@@ -48,7 +48,7 @@ scripts/dsh-task-board.js                          # 一键挂载/卸载/状态 
 - **持久化使用受限 Host 通道**：Host 只暴露固定台账与事件路径，文件位置由 `DSH_HOME` 和配置的 profile 决定，浏览器不能传入文件系统路径；客户端保留 localStorage v1 作为降级与回滚来源。
 - **执行走客户端 runtime**：`ctx.sessions.list` 订阅会话状态（`running` / `byId`），`ctx.workspaces.connectWorkspace()` 创建/复用会话，`session.prompt()` 真实驱动 agent，`ctx.sessions.open()` 跳转 transcript。
 - **后台结算靠列表对账**：未打开的会话没有对话快照窗口（cold），所以执行结算以会话列表为准——每次列表变化都对账 running 任务；结果判定依次取「列表缺失→已取消 / 仍在跑→等待 / 对话快照可见→按 lastAgentError / 原始历史尾部→turn-error 节点证明失败 / 否则按成功」，对账幂等。
-- **定时任务仍在浏览器端调度**：持久化由 Host 承担，但「到点执行」仍由标签页内调度器完成——每分钟 tick 一次，页面从后台恢复可见时立即补 tick；到点触发前先把「下次运行」顺延到下一个 cron 匹配点再执行，同一 tick 不会重复触发；页面加载早期（会话列表基线未就绪）不触发，避免误执行。限制：需要标签页保持打开（关闭期间错过的调度按「错过即跳过」处理，下次打开时只补跑已顺延的到期任务）；任务处于「进行中」时到点跳过本次，等下一个 cron 匹配点。
+- **定时归属是显式的**：只有用户明确开启后台自动化后，Desktop 可执行 host-job adapter 才会让 Host 认领到期槽位；它在派发前原子推进 cron 游标并写入确定性 TaskRun，租约阻止另一个 Host 抢占仍有效的槽位；旧 owner 过期后，只能用同一确定性 key 重派尚未持久化会话身份的已认领运行。浏览器仅在固定 Host 状态路由明确报告可执行归属后关闭旧 ticker，并在每次回退调度认领前复查该门禁。旧 Web Host、状态格式异常或没有 adapter 时，浏览器端继续作为安全回退，并保持原有错过即跳过的语义。
 - **多标签页同源共享同一份台账**：Host 变更通过 SSE 事件通知，localStorage 降级模式通过 storage 事件通知；两种通道都会重读最新台账，删除的任务不会从其他标签页的陈旧副本中被写回复活。
 
 ## 安装
@@ -120,8 +120,9 @@ profile 清单中注册的行：
 
 ## 已知限制
 
-- 调度仍在浏览器端：必须保持 DSH 页面打开，页面关闭期间错过的任务会跳过，本版本没有后台调度器或补跑队列。
-- Worktree 执行需要可选 Runtime Provider 能力；缺少能力时使用 shared-workspace。后台调度与公开 Task Board SDK 不属于本契约。
+- 持久 Host Scheduler 只会在 Desktop Runtime Provider 有意提供 host-job adapter 时启用（通常以用户 opt-in 后台自动化为前提）；其余运行时，以及 Host 状态路由不可用或格式错误时，明确保留浏览器调度回退。
+- Host 在派发前推进 `nextRunAt` 并写入确定性 TaskRun。睡眠/重启错过的周期默认 `skip`；显式 `run-once` 最多合并补跑一个槽位，`queue-next` 在任务运行中最多保留一个待执行槽位。旧 owner 租约过期后，只会以原确定性 key 重派尚未记录会话身份的已认领运行。应用完全退出后不承诺继续执行。
+- Worktree 执行仍需要可选 Runtime Provider 能力；缺少能力时使用 shared-workspace。
 
 ## 手动验证步骤
 
@@ -129,7 +130,7 @@ profile 清单中注册的行：
 2. 侧边栏「新会话」下方出现「任务看板」入口行；点击 → 中间列切换为五列看板。
 3. 「+ 新建任务」填标题/描述/Prompt → 卡片出现在「待办」。
 4. 点卡片 → 详情可见内容与 Prompt；点「执行」→ 卡片变「进行中」（会话列表出现以任务标题命名的会话）；agent 跑完后卡片落「已完成」或「已失败」，详情执行记录有结果与时间，可「查看会话」跳转到真实 transcript。
-5. 定时任务：详情 →「定时运行」勾选启用，选预设「每 10 分钟」（cron `*/10 * * * *`），卡片出现定时标识；等待下一个整 10 分钟点，观察卡片自动进入「进行中」并最终完成，详情「上次触发」出现时间、执行记录新增一条（会话可跳转）。
+5. 定时任务：详情 →「定时运行」勾选启用，选预设「每 10 分钟」（cron `*/10 * * * *`），卡片出现定时标识。若已启用 Desktop host-job adapter，可关闭看板后等待下一个整 10 分钟点；否则保持标签页打开。卡片会自动进入「进行中」并最终完成，详情「上次触发」出现时间、执行记录新增一条（会话可跳转）。
 6. 刷新页面/重启 DSH → 任务仍在；卸载插件 → GUI 恢复原状。
 
 ## 验收对照
@@ -139,6 +140,6 @@ profile 清单中注册的行：
 - 点卡片开详情（内容 + 执行记录）；详情内有「执行」「删除」按钮
 - 执行真实启动会话（会话列表可见 transcript）；卡片状态随真实执行进度变化；详情可跳转到执行会话
 - 删除有确认环节，删除后本地存储同步移除
-- 定时任务：cron 配置/预设/校验、下次运行时间、到点自动真实执行、状态回写、定时卡片标识、刷新后调度恢复（浏览器端调度，标签页需保持打开）
+- 定时任务：cron 配置/预设/校验、下次运行时间、到点自动真实执行、状态回写、定时卡片标识，并且只有一个明确归属：已 opt-in 且可执行的 Desktop Host 调度，或需要保持标签页打开的浏览器回退
 - 一键挂载/卸载；卸载后 GUI 恢复原状，其它 managed 段不受影响
 - README + 覆盖存储读写/状态流转/执行触发/cron 解析/调度器的自动化测试

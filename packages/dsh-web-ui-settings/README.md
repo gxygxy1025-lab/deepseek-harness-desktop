@@ -2,12 +2,12 @@
 
 English | [中文](README.zh.md)
 
-The dsh web UI plugin group for the DSH settings page: it adds a single card that groups the dsh web UI family settings, hosting the enable switches and configuration forms of the family plugins.
+The dsh web UI plugin group for the DSH settings page: it adds a first-level settings section that hosts the enable switches and configuration forms of the family plugins.
 
 ## What it is
 
-- **One card for the family**: on the DSH settings page it registers a card that hosts the enable switches and configuration forms of the dsh web UI family plugins.
-- **Community plugin index**: a card inside the group lists community-contributed plugins and links to each contributor's own repository (registry in `community.json`, regenerated with `scripts/community-index`).
+- **One section for the family**: on the DSH settings page it registers a first-level section with a static heading and cards for the dsh web UI family plugins.
+- **Desktop market remains separate**: DeepSeek Harness Desktop uses Extension Dock's Plugin Market (`dshmarket`) for discovery, installation, recovery, and rollback. This package deliberately does not restore the obsolete in-group community card.
 
 ## Install
 
@@ -26,8 +26,23 @@ pnpm install && pnpm -r build
 dsh plugin --profile web add link:$(pwd)/packages/dsh-web-ui-settings
 ```
 
-Restart `dsh web` for the card to appear in the settings page.
+Restart `dsh web` for the section to appear in the settings page.
+
+## Proxy configuration
+
+The bridge remains loopback-only when `trustedProxyHosts` is empty. An authenticated reverse proxy on the same host may opt in an exact authority and name the environment variable carrying its shared token:
+
+```yaml
+- id: ui-web-ui-settings
+  config:
+    trustedProxyHosts:
+      - dsh.example.com
+    proxyTokenEnv: DSH_WEB_UI_SETTINGS_PROXY_TOKEN
+```
+
+Keep the token out of profile configuration. The proxy must authenticate before forwarding, replace the internal token header, and forward only to DSH's loopback listener.
 
 ## Known limitations
 
-- The card shows on the dsh settings page only when its prerequisite (`@deepseek-ai/dsh-client-ui-settings`) is present.
+- The section shows on the dsh settings page only when its prerequisite (`@deepseek-ai/dsh-client-ui-settings`) is present.
+- Authenticated-proxy mode does not provide authentication itself; deployments without a correctly ordered proxy must leave `trustedProxyHosts` empty.

@@ -8,9 +8,9 @@
  * The seam keeps the controller independent of transport; tests exercise the
  * in-memory, localStorage, remote Host, and atomic Host-file implementations.
  */
-import { isValidCron } from './schedule.ts'
-import { isIsolationMode, normalizeTaskRun } from './runs.ts'
-import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
+import { isValidCron, isValidTimeZone } from './schedule.ts'
+import { isIsolationMode, normalizeRuntimeProviderEvidence, normalizeTaskRun } from './runs.ts'
+import type { ScheduleLease, ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
 import { isTaskStatus } from './tasks.ts'
 
 /** Persistence seam for the task ledger. */
@@ -114,12 +114,47 @@ function normalizeSchedule(schedule: unknown): ScheduleRule | undefined {
   // schedule instead of being dropped for later repair.
   if (typeof rule.cron !== 'string') return undefined
   if (rule.cron.trim() === '' || !isValidCron(rule.cron)) return undefined
+  const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+  const lease = normalizeScheduleLease(rule.lease)
+  const lastFailure = normalizeScheduleFailure(rule.lastFailure)
+  const timezone = typeof rule.timezone === 'string' && isValidTimeZone(rule.timezone) ? rule.timezone : undefined
+  const misfirePolicy = rule.misfirePolicy === 'run-once' || rule.misfirePolicy === 'skip' ? rule.misfirePolicy : undefined
+  const runningPolicy = rule.runningPolicy === 'queue-next' || rule.runningPolicy === 'skip' ? rule.runningPolicy : undefined
   return {
     enabled: rule.enabled === true,
     cron: rule.cron,
-    nextRunAt: typeof rule.nextRunAt === 'number' ? rule.nextRunAt : undefined,
-    lastTriggeredAt: typeof rule.lastTriggeredAt === 'number' ? rule.lastTriggeredAt : undefined,
+    nextRunAt: finite(rule.nextRunAt) ? rule.nextRunAt : undefined,
+    lastTriggeredAt: finite(rule.lastTriggeredAt) ? rule.lastTriggeredAt : undefined,
+    ...(timezone === undefined ? {} : { timezone }),
+    ...(misfirePolicy === undefined ? {} : { misfirePolicy }),
+    ...(runningPolicy === undefined ? {} : { runningPolicy }),
+    ...(typeof rule.lastRunId === 'string' && rule.lastRunId.length <= 128 ? { lastRunId: rule.lastRunId } : {}),
+    ...(finite(rule.lastScheduledAt) ? { lastScheduledAt: rule.lastScheduledAt } : {}),
+    ...(finite(rule.queuedAt) ? { queuedAt: rule.queuedAt } : {}),
+    ...(lease === undefined ? {} : { lease }),
+    ...(typeof rule.providerEvidence === 'object' && rule.providerEvidence !== null ? { providerEvidence: normalizeRuntimeProviderEvidence(rule.providerEvidence) } : {}),
+    ...(lastFailure === undefined ? {} : { lastFailure }),
   }
+}
+
+function normalizeScheduleLease(value: unknown): ScheduleLease | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const row = value as Record<string, unknown>
+  if (typeof row.ownerId !== 'string' || row.ownerId.length === 0 || row.ownerId.length > 128) return undefined
+  if (typeof row.acquiredAt !== 'number' || !Number.isFinite(row.acquiredAt)) return undefined
+  if (typeof row.renewedAt !== 'number' || !Number.isFinite(row.renewedAt)) return undefined
+  if (typeof row.expiresAt !== 'number' || !Number.isFinite(row.expiresAt)) return undefined
+  if (row.expiresAt < row.acquiredAt) return undefined
+  return { ownerId: row.ownerId, acquiredAt: row.acquiredAt, renewedAt: row.renewedAt, expiresAt: row.expiresAt }
+}
+
+function normalizeScheduleFailure(value: unknown): ScheduleRule['lastFailure'] | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const row = value as Record<string, unknown>
+  if (typeof row.at !== 'number' || !Number.isFinite(row.at)) return undefined
+  if (typeof row.executionKey !== 'string' || row.executionKey.length === 0 || row.executionKey.length > 128) return undefined
+  if (typeof row.message !== 'string' || row.message.length === 0) return undefined
+  return { at: row.at, executionKey: row.executionKey, message: row.message.slice(0, 500) }
 }
 
 /** Parse + validate a persisted ledger document; invalid rows are dropped. */

@@ -1,4 +1,4 @@
-export const DESKTOP_API_VERSION = '1.1.0'
+export const DESKTOP_API_VERSION = '1.2.0'
 
 export const DESKTOP_SURFACES = Object.freeze({
   MAIN: 'main',
@@ -21,6 +21,7 @@ export const DESKTOP_CAPABILITIES = Object.freeze({
   SKILLS_IMPORT: 'skills.import',
   NOTIFICATIONS_SHOW: 'notifications.show',
   DEEP_LINKS_SUBSCRIBE: 'deep-links.subscribe',
+  WORKSPACE_FILES_OPEN: 'workspace-files.open',
 })
 
 const CAPABILITIES_BY_SURFACE = Object.freeze({
@@ -31,6 +32,7 @@ const CAPABILITIES_BY_SURFACE = Object.freeze({
     DESKTOP_CAPABILITIES.SKILLS_READ,
     DESKTOP_CAPABILITIES.NOTIFICATIONS_SHOW,
     DESKTOP_CAPABILITIES.DEEP_LINKS_SUBSCRIBE,
+    DESKTOP_CAPABILITIES.WORKSPACE_FILES_OPEN,
   ]),
   [DESKTOP_SURFACES.EXTENSIONS]: Object.freeze([
     DESKTOP_CAPABILITIES.RUNTIME_READ,

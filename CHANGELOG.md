@@ -6,6 +6,32 @@
 
 English: No changes yet.
 
+## 2.7.0 - 2026-08-20
+
+中文：
+
+- 修复旧版空对象、空列表或仅注释的全局/Profile 补丁文件造成的启动失败，以及状态订阅竞态或 IPC 异常让启动页停在 8% 的问题；Windows 11 上移除 PowerShell 5.1 `-WindowStyle Hidden` 与 Electron Node 模式的冲突，窗口继续由 `spawn` 的 `windowsHide` 隐藏。
+- 内置 Runtime 升级到 `@deepseek-ai/dsh` `0.1.0-rc.7` release train；插件市场升级到 `dshmarket` `1.15.0`，Web UI 聚合升级到 `0.2.3`，Codex Connect 升级到兼容 rc.7 的 `0.1.0-alpha.4.11`，并恢复 `dsh-live-stats` `0.1.20`。
+- 新增可持久化的关闭行为和系统托盘生命周期。默认仍为退出；只有用户选择“最小化到托盘并启用后台自动化”时，主窗口关闭后才保留 Runtime 与后台自动化，显式退出、更新和安全/崩溃路径仍会完整停止。
+- Task Board 增加有租约、确定性运行键、时区、misfire/running 策略和恢复语义的 Host 持久调度器。用户启用后台自动化后，Desktop Runtime Provider 会以真实 DSH Session 执行并回写 Task Run；没有可用 Host adapter 时浏览器调度保持为回退。
+- Extension Dock 识别 `dsh.compatibility` 的 Desktop、Runtime、Desktop API、能力、Surface 和运行时证据，并在每次清单变更/启动对账写入原子 `desktop-plugins.lock.json`；不兼容社区 bundle 会被阻止或停用，未声明项保持明确的人工确认路径。
+- 当用户自行添加的插件、游离 loader、profile 配置或依赖链接损坏而无法被依赖树识别时，启动恢复会将这些非受管输入可逆隔离到私有快照并以 Desktop 基线重试；内置 Runtime 健康时不再永久卡在启动页，扩展中心可恢复原始配置。
+- 启动页新增“导出诊断日志”，即使 Runtime 尚未就绪也能生成脱敏诊断包；工具调用对模型偶发包了一层 `arguments` 对象的有效 JSON 进行严格 schema 校验后仅展开一层，其他请求仍交由官方校验明确报错。
+- 新增不导入 Electron/DSH 私有模块的 browser-safe `@linxin666/dsh-desktop-client` SDK，以及仅主窗口拥有的安全“外部打开工作区文件”能力。预览只提交工作区根和相对路径，Host 解析已注册工作区后才交给系统 Shell，绝不把可用绝对路径返回给 Renderer。
+- 将 Candidate Lite 扩展为 Candidate Matrix，并增加 Stable 支持矩阵、候选队列和离线社区插件质量报告；Candidate 仍不能自动改动 Stable 依赖、lockfile、更新元数据或发布。
+
+English:
+
+- Fixed startup failures caused by legacy empty-object, empty-list, or comment-only global/Profile patch files, and prevented status-subscription races or IPC errors from leaving the startup screen at 8%. On Windows 11, removed the PowerShell 5.1 `-WindowStyle Hidden` conflict with Electron Node mode while retaining spawn-level `windowsHide`.
+- Upgraded the embedded Runtime to the `@deepseek-ai/dsh` `0.1.0-rc.7` release train, dshmarket to `1.15.0`, the Web UI aggregate to `0.2.3`, Codex Connect to rc.7-compatible `0.1.0-alpha.4.11`, and restored `dsh-live-stats` `0.1.20`.
+- Added persisted close behavior and tray lifecycle. Quit remains the default; only an explicit **minimize to tray and enable background automation** choice keeps the Runtime and background automation alive after the main window closes. Explicit quit, update, safe-mode, and crash paths still stop cleanly.
+- Added a Host durable scheduler for Task Board with leases, deterministic run keys, time zones, misfire/running policies, and recovery semantics. When background automation is enabled, the Desktop Runtime Provider executes real DSH Sessions and writes back Task Runs; browser scheduling remains the fallback without a usable Host adapter.
+- Extension Dock now understands `dsh.compatibility` Desktop, Runtime, Desktop API, capability, Surface, and runtime-evidence requirements, and writes an atomic `desktop-plugins.lock.json` after each manifest mutation or startup reconciliation. Incompatible community bundles are blocked or disabled; undeclared metadata remains an explicit confirmation path.
+- When user-added plugins, detached loaders, profile configuration, or dependency links are broken and cannot be identified from the dependency tree, startup recovery reversibly quarantines those unmanaged inputs in a private snapshot and retries from the Desktop baseline. A healthy embedded Runtime no longer remains permanently stranded on startup, and Extension Dock can restore the original configuration.
+- The startup screen now offers **Export diagnostic log** even before Runtime readiness, producing a redacted diagnostic bundle. Tool calls that contain one accidental `arguments` envelope are unwrapped only after strict schema validation; every other request continues to receive the upstream validation error.
+- Added the browser-safe `@linxin666/dsh-desktop-client` SDK, with no Electron or private DSH imports, and a main-window-only safe **open workspace file externally** capability. Preview submits only a workspace root plus relative path; the Host resolves a registered workspace before Shell receives it and never returns a usable absolute path to a renderer.
+- Expanded Candidate Lite into Candidate Matrix with a Stable support matrix, candidate queue, and offline community-plugin quality report. Candidates still cannot automatically change Stable dependencies, lockfile, updater metadata, or a release.
+
 ## 2.6.0 - 2026-08-19
 
 中文：

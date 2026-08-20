@@ -10,6 +10,17 @@
 
 实现仅运行在宿主端，使用公开的 `agent/status`、Agent inbox、`followup` 和 `tools/post-execute` SDK 接口。它不会修改 DeepSeek Harness 的文件；上游运行时补齐文档约定的取消行为后，可以直接移除这个包。
 
+## 工具调用参数恢复
+
+部分模型适配器会额外输出一层传输包装，例如
+`{"arguments":{"command":"...","description":"..."}}`。Desktop 在公开的
+`llm/stream` 钩子中、Agent loop 解析工具调用之前处理它。只有当前工具 schema
+接受内层对象、同时拒绝外层包装时，才会展开恰好一层 `arguments`；有歧义、格式错误、
+未知工具或其他无效调用一律保持原样，仍由 DSH 的正常 schema 校验处理。
+
+每次恢复或拒绝都会写入有界的运行日志诊断，包含 provider、model、工具名、调用 id、
+来源和原因；日志不会写入原始工具参数。
+
 ## 安装
 
 DeepSeek Harness Desktop 2.0 会在隔离的 desktop profile 中自动挂载这个 bundle。这个包不作为通用 Web UI 插件提供。

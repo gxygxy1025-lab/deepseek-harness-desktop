@@ -1,53 +1,57 @@
-# DeepSeek Harness Desktop 2.6.0
+# DeepSeek Harness Desktop 2.7.0
 
 ## 中文
 
 ### 本次亮点
 
-- Task Board v3 提供 Project、Task Run、派生 Evidence 和 Git Worktree 审核流。任务可明确选择 shared-workspace 或 Git Worktree，旧任务继续使用 shared-workspace。
-- v2 账本复制迁移到 Host-owned `tasks-v3.json`，原文件先备份；原子写入、回读校验和迁移标记让失败恢复保持可诊断。
-- Git Graph Host 提供受控 Worktree 创建、状态、差异、提交、合并和移除。Renderer 只传不透明 id，不传路径和任意 Git 参数；Discard 需要二次确认。
-- Runtime Provider 缺少 Worktree 所需能力时返回明确原因并回退现有 shared-workspace；Provider 返回的 Session CWD 与 Worktree 不一致时阻断，不伪造隔离。
-- Evidence 面板展示有限文件摘要、增删统计、差异预览、revision、Session/运行入口和能力证据，不保存完整会话、工具结果或 Secret。运行通知支持 `dsh://run/<safe-id>`。
-- 官方正式版默认启用有界匿名产品统计且不提供应用内关闭开关，仅记录固定类别和区间的产品事件及官网安装包点击汇总。统计不包含持久标识、IP、对话、文件、路径、凭据、日志或堆栈，原始事件不落库，按日汇总最长保留 365 天；源码、开发、测试与 Fork 构建不包含官方统计端点。
+- Windows 启动链路不再把 Runtime 包在 PowerShell 5.1 的 `-WindowStyle Hidden` 中；该组合在 Electron Node 模式下可能零输出并以 `0xFFFFFFFF` 退出。窗口隐藏继续由 `spawn` 的 `windowsHide` 处理，旧的空补丁、状态订阅和 IPC 失败也不会把启动页永久留在 8%。
+- 内置 Runtime 统一到 `@deepseek-ai/dsh` `0.1.0-rc.7`；同步带入 `dshmarket` `1.15.0`、Web UI 聚合 `0.2.3`、rc.7 兼容的 Codex Connect 与 `dsh-live-stats` `0.1.20`。升级只使用经过验证的精确依赖图，不跟随 `latest`。
+- 关闭行为可在“退出”“最小化到托盘并启用后台自动化”“每次询问”之间选择并持久化。默认仍是退出；只有明确选择常驻托盘时，关闭主窗口才保留 Runtime，更新、显式退出、安全模式和崩溃恢复仍走完整关停。
+- Task Board Host Scheduler 将 cron 槽位、IANA 时区、misfire/running 策略、租约和确定性运行键持久化。已启用后台自动化的 Desktop 通过真实 DSH Session 执行到期任务并回写 Task Run；未提供或失效的 Host adapter 始终退回浏览器调度，完全退出应用后不承诺继续运行。
+- Extension Dock 展示并校验插件声明的 Desktop/DSH/Desktop API 范围、能力、Surface 与运行时证据，在 profile 写入原子 `desktop-plugins.lock.json` 诊断记录。`@linxin666/dsh-desktop-client` 向浏览器插件提供窄且可探测的 Desktop API；预览的“外部打开”只接受工作区根与相对路径，Host 验证已注册工作区后才把路径交给操作系统。
+- 用户自行加入但无法从依赖树可靠识别的插件、游离 loader、损坏 profile 配置或链接，不再只能靠重装依赖解决：Desktop 会把非受管启动输入可逆隔离到私有快照，以内置基线重试；Runtime 基线正常时可进入应用，并可在扩展中心恢复原始配置。启动页同时提供始终可用的“导出诊断日志”，导出的诊断包会脱敏。
+- 针对部分模型把工具 JSON 又包成 `{"arguments": {...}}` 的问题，Desktop 只会在内层参数通过当前工具 schema、外层不通过时展开一层；歧义、未知工具或无效参数不会被猜测性改写，仍返回准确的原始校验错误。
+- Candidate Matrix 以受审查的精确候选版本和临时 worktree 运行兼容性矩阵，生成本地 Stable 支持矩阵与社区插件质量报告。候选报告只提供证据，不能修改 Stable manifest、lockfile、更新元数据或发布。
 
 ### 验证
 
-- Task Board 与 Git Graph 类型检查通过，新增 v3 migration、Worktree execution、Worktree Host service、review 和 Evidence 测试。
-- Candidate fixture 使用真实临时 Git 仓库验证注册参数、Session CWD、started/completed/cancelled 事件、取消语义和重启恢复；失败 Candidate 不改变 Stable 元数据。
-- 深链和通知回归覆盖 `run` 路由、ID 校验、去重、限频、前台抑制和点击白名单；发布门禁继续执行类型检查、全仓测试、文档、安装包内容校验、Windows 打包 E2E 和真实 Runtime 烟测。
-- 匿名统计客户端、固定事件词汇、发布配置、网站下载 Beacon 和 Cloudflare 聚合 Worker 均有自动化覆盖；Worker 的 17 项测试验证来源、字段、大小、认证、聚合与保留边界。
+- 覆盖 Windows Runtime invocation、旧 patch 兼容、启动状态、托盘关闭决策、插件兼容性与 lock、主窗口 IPC、工作区路径验证和 Renderer Surface 边界的回归测试。
+- Host Scheduler 测试覆盖 lease、到期槽位、misfire/running 策略、确定性执行键、失效 owner 接管、Host 状态路由、浏览器回退和真实 Runtime adapter。调度执行使用真实 DSH Agent/Session 事件来结束成功、取消或失败的 Task Run。
+- Candidate/Stable 生成器测试验证精确版本输入、矩阵状态、导出/peer/slot/Provider 证据与离线社区质量报告；Stable 守卫拒绝由 Candidate 改写正式依赖图。
+- 发布门禁继续执行类型检查、全仓与脚本测试、文档配对/链接检查、运行时支持生成校验、安装包内容校验、Windows 打包 E2E 和真实 Runtime 烟测。
 
 ### 下载与校验
 
-下载 `DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。安装器 SHA-256 以发布页相邻校验文件为准。
+下载 `DeepSeek-Harness-Desktop-Setup-2.7.0-x64.exe`，并使用同一 GitHub Release 中的 `SHA256SUMS.txt` 校验安装包。安装器 SHA-256 以发布页相邻校验文件为准。
 
 ### 说明
 
-这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。安装包当前未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”，请仅从项目 GitHub Release 下载并核对 SHA-256。Task Board 的 Worktree 功能按 Runtime Provider capability 协商；Stable 未提供可选能力时会安全回退到 shared-workspace。下载安装、启动或继续使用官方正式版，即表示已阅读并在适用法律允许的范围内同意仓库及官网公开的隐私政策；统计数据仅用于产品改进。
+这是社区构建版本，并非 DeepSeek、OpenAI 或腾讯官方发行版。安装包当前未使用商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”，请仅从项目 GitHub Release 下载并核对 SHA-256。已有用户不会被静默改为后台常驻：保持默认“退出”或选择“每次询问”时，关闭窗口会停止应用；只有明确选择“最小化到托盘并启用后台自动化”才会让后台调度保留。下载安装、启动或继续使用官方正式版，即表示已阅读并在适用法律允许的范围内同意仓库及官网公开的隐私政策；统计数据仅用于产品改进。
 
 ## English
 
 ### Highlights
 
-- Task Board v3 adds Projects, compact Task Runs, derived Evidence, and explicit Git Worktree review. Each task chooses shared-workspace or Git Worktree, while legacy tasks remain shared-workspace.
-- The v2 ledger migrates copy-first to the Host-owned `tasks-v3.json`; the source is backed up before an atomic write, read-back verification, and migration marker are recorded.
-- Git Graph Host provides controlled Worktree create, status, diff, commit, merge, and remove operations. Renderers send opaque ids only, never paths or arbitrary Git arguments; Discard requires a second confirmation.
-- Missing Worktree capabilities return a bounded reason and use the existing shared-workspace executor. A Session CWD that differs from the controlled Worktree path is blocked rather than reported as isolated.
-- The Evidence panel shows bounded file summaries, additions/deletions, diff preview, revisions, Session/run links, and capability evidence without storing full history, tool results, or Secrets. Run notifications support `dsh://run/<safe-id>`.
-- Official release builds enable bounded anonymous product metrics by default without an in-app off switch. They record only fixed product categories, duration buckets, and aggregate installer-link clicks. Metrics exclude persistent identifiers, IP addresses, conversations, files, paths, credentials, logs, and stack traces; raw events are not retained, daily aggregates expire after at most 365 days, and source, development, test, and Fork builds contain no official endpoint.
+- The Windows startup path no longer wraps Runtime in PowerShell 5.1 `-WindowStyle Hidden`, which could exit with no output and `0xFFFFFFFF` in Electron Node mode. Spawn-level `windowsHide` still owns window suppression, while legacy empty patches, status subscriptions, and IPC failures cannot strand the startup page at 8%.
+- The embedded Runtime is aligned on `@deepseek-ai/dsh` `0.1.0-rc.7`, alongside `dshmarket` `1.15.0`, the `0.2.3` Web UI aggregate, rc.7-compatible Codex Connect, and `dsh-live-stats` `0.1.20`. Upgrades use the verified exact dependency graph rather than `latest`.
+- Persisted close behavior offers **quit**, **minimize to tray and enable background automation**, and **ask every time**. Quit remains the default; only an explicit persistent-tray choice keeps the Runtime after the main window closes. Update, explicit quit, safe-mode, and crash recovery still use full shutdown.
+- Task Board Host Scheduler persists cron slots, IANA time zones, misfire/running policies, leases, and deterministic run keys. A Desktop with enabled background automation executes due work through real DSH Sessions and writes Task Runs back; absent or unhealthy Host adapters always fall back to browser scheduling, and no execution is promised after the application fully exits.
+- Extension Dock displays and evaluates declared Desktop/DSH/Desktop API ranges, capabilities, Surfaces, and runtime evidence, then records an atomic `desktop-plugins.lock.json` diagnostic in the profile. `@linxin666/dsh-desktop-client` provides a narrow, discoverable Desktop API to browser plugins; preview **Open externally** accepts only a workspace root plus relative path and reaches the OS only after Host validates the registered workspace.
+- User-added plugins, detached loaders, broken profile configuration, or links that cannot be identified reliably from the dependency tree no longer require reinstalling dependencies as the only escape. Desktop reversibly quarantines unmanaged startup input into a private snapshot and retries from the embedded baseline; when that Runtime baseline is healthy, the app opens and the original configuration can be restored from Extension Dock. The startup screen also offers an always-available, redacted **Export diagnostic log** bundle.
+- For model output that accidentally wraps a tool JSON value in `{"arguments": {...}}`, Desktop unwraps exactly one layer only when the inner value satisfies the current tool schema and the outer value does not. Ambiguous, unknown-tool, and invalid inputs are never guessed or rewritten and retain their precise upstream validation error.
+- Candidate Matrix runs a reviewed exact candidate in a temporary worktree and produces a local Stable support matrix plus community-plugin quality report. Candidate reports provide evidence only and cannot modify a Stable manifest, lockfile, updater metadata, or release.
 
 ### Verification
 
-- Task Board and Git Graph typechecks pass, with focused coverage for v3 migration, Worktree execution, Host Worktree service, review, and Evidence.
-- The Candidate fixture uses a real temporary Git repository to verify registration arguments, exact Session CWD, started/completed/cancelled events, cancellation semantics, and restart reconciliation. A failing Candidate cannot change Stable metadata.
-- Deep-link and notification regressions cover the `run` route, safe ids, deduplication, rate limits, foreground suppression, and allowlisted click routing. Release gates retain repository type checks, all tests, documentation, packaged payload verification, Windows E2E checks, and a real Runtime smoke test.
-- Automated coverage includes the metrics client, closed event vocabulary, release configuration, website download beacon, and aggregate Cloudflare Worker. The Worker's 17 tests verify origin, field, size, authentication, aggregation, and retention boundaries.
+- Regression coverage includes Windows Runtime invocation, legacy patch compatibility, startup status, tray-close decisions, plugin compatibility and lock state, main-window IPC, workspace-path validation, and renderer-Surface boundaries.
+- Host Scheduler tests cover leases, due slots, misfire/running policies, deterministic execution keys, expired-owner takeover, the Host status route, browser fallback, and the real Runtime adapter. Scheduler execution resolves Task Runs from real DSH Agent/Session events as succeeded, cancelled, or failed.
+- Candidate/Stable generator tests verify exact-version input, matrix state, export/peer/slot/Provider evidence, and the offline community quality report. Stable guards reject any Candidate attempt to rewrite the release dependency graph.
+- Release gates retain type checks, repository and script tests, documentation pairing/link checks, runtime-support generation checks, packaged-payload verification, Windows packaged E2E, and a real Runtime smoke test.
 
 ### Download and verification
 
-Download `DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Treat the adjacent checksum file as authoritative for the installer SHA-256.
+Download `DeepSeek-Harness-Desktop-Setup-2.7.0-x64.exe` and verify it with `SHA256SUMS.txt` from the same GitHub Release. Treat the adjacent checksum file as authoritative for the installer SHA-256.
 
 ### Notice
 
-This is a community build, not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not currently signed with a commercial code-signing certificate, so Windows SmartScreen may display an unknown publisher. Download only from the project GitHub Release and verify SHA-256. Worktree support is negotiated by Runtime Provider capabilities; Stable safely falls back to shared-workspace when optional capabilities are absent. Installing, launching, or continuing to use an official release means that you have read and, where applicable law permits, agree to the privacy policy published in the repository and on the website; metrics are used only to improve the product.
+This is a community build, not an official DeepSeek, OpenAI, or Tencent distribution. The installer is not currently signed with a commercial code-signing certificate, so Windows SmartScreen may display an unknown publisher. Download only from the project GitHub Release and verify SHA-256. Existing users are never silently changed to a background-resident mode: keeping the default **quit** behavior or choosing **ask every time** stops the app on close; only an explicit **minimize to tray and enable background automation** choice retains scheduling. Installing, launching, or continuing to use an official release means that you have read and, where applicable law permits, agree to the privacy policy published in the repository and on the website; metrics are used only to improve the product.

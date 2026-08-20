@@ -1,8 +1,13 @@
 import { execFile, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { delimiter, join, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import {
+  DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV,
+  isDesktopWorkspaceFileOpenToken,
+} from '@linxin666/dsh-desktop-compat/workspace-file-open-policy'
 import { emitBestEffort } from './best-effort-events.mjs'
 
 const READY_LINE = /^dsh web:\s+(http:\/\/\S+)/u
@@ -11,6 +16,13 @@ export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000
 export const DESKTOP_PROFILE_NAME = 'desktop'
 const STABLE_RUNTIME_RESET_MS = 60_000
 const WINDOWS_CONSOLE_PRELOAD_PATH = fileURLToPath(new URL('./windows-console-preload.cjs', import.meta.url))
+
+function createWorkspaceFileOpenCapabilityToken() {
+  // base64url encodes 32 CSPRNG bytes as the exact opaque token shape shared
+  // with the Desktop compat Host route. This value stays in main-process
+  // memory and the runtime child's environment only.
+  return randomBytes(32).toString('base64url')
+}
 
 function runtimeArguments(cliPath, preferredPort, consolePreloadPath) {
   return [
@@ -51,7 +63,9 @@ export function createRuntimeInvocation({
   // DSH child no console to inherit. A hidden PowerShell host supplies one;
   // the required preload explicitly attaches the GUI-subsystem DSH process
   // to it so restricted-token pwsh children can share it without flashing a
-  // new console window.
+  // new console window. Window suppression belongs to spawn's windowsHide
+  // option: PowerShell 5.1 can terminate a GUI-subsystem Node-mode child with
+  // 0xFFFFFFFF when -WindowStyle Hidden is also supplied.
   const command = [
     `& ${[executable, ...args].map(quotePowerShellLiteral).join(' ')} | ForEach-Object { [Console]::Out.WriteLine($_) }`,
     'exit $LASTEXITCODE',
@@ -64,8 +78,6 @@ export function createRuntimeInvocation({
       '-NoLogo',
       '-NoProfile',
       '-NonInteractive',
-      '-WindowStyle',
-      'Hidden',
       '-EncodedCommand',
       Buffer.from(command, 'utf16le').toString('base64'),
     ],
@@ -192,6 +204,7 @@ export class DshRuntimeController extends EventEmitter {
     preferredPort = 0,
     onReadyPort = () => {},
     environmentProvider = () => ({}),
+    workspaceFileOpenTokenFactory = createWorkspaceFileOpenCapabilityToken,
     preflight = () => {},
     now = Date.now,
   }) {
@@ -220,9 +233,13 @@ export class DshRuntimeController extends EventEmitter {
     this.preferredPort = preferredPort
     this.onReadyPort = onReadyPort
     if (typeof environmentProvider !== 'function') throw new TypeError('environmentProvider must be a function')
+    if (typeof workspaceFileOpenTokenFactory !== 'function') {
+      throw new TypeError('workspace file open token factory must be a function')
+    }
     if (typeof preflight !== 'function') throw new TypeError('runtime preflight must be a function')
     if (typeof now !== 'function') throw new TypeError('runtime clock must be a function')
     this.environmentProvider = environmentProvider
+    this.workspaceFileOpenTokenFactory = workspaceFileOpenTokenFactory
     this.preflight = preflight
     this.now = now
     this.child = undefined
@@ -235,34 +252,57 @@ export class DshRuntimeController extends EventEmitter {
     this.sameCrashCount = 0
     this.readySince = undefined
     this.manualStop = false
+    this.workspaceFileOpenToken = undefined
     this.stopResolver = undefined
     this.status = Object.freeze({ state: 'stopped', url: undefined, error: undefined })
   }
 
-  #setStatus(state, details = {}) {
+  #redactWorkspaceFileOpenToken(value, token = this.workspaceFileOpenToken) {
+    const message = String(value)
+    if (!isDesktopWorkspaceFileOpenToken(token) || !message.includes(token)) return message
+    return message.replaceAll(token, '[redacted]')
+  }
+
+  #setStatus(state, details = {}, redactionToken = this.workspaceFileOpenToken) {
     this.status = Object.freeze({
       state,
       url: details.url,
-      error: details.error,
+      error: details.error === undefined
+        ? undefined
+        : this.#redactWorkspaceFileOpenToken(details.error, redactionToken),
       restartAttempt: this.restartAttempt,
       pid: this.child?.pid,
       ...(details.restartBlocked === 'repeated-crash' ? { restartBlocked: details.restartBlocked } : {}),
     })
     emitBestEffort(this, 'status', [this.status], (error) => {
-      this.#appendDiagnostic(`[observer] status observer failed: ${this.#errorMessage(error)}`)
+      this.#appendDiagnostic(
+        `[observer] status observer failed: ${this.#errorMessage(error, redactionToken)}`,
+        redactionToken,
+      )
     })
   }
 
-  #errorMessage(error) {
-    return String(error instanceof Error ? error.message : error).slice(0, 1_000)
+  #errorMessage(error, redactionToken = this.workspaceFileOpenToken) {
+    return this.#redactWorkspaceFileOpenToken(
+      String(error instanceof Error ? error.message : error),
+      redactionToken,
+    ).slice(0, 1_000)
   }
 
-  #appendDiagnostic(value) {
+  #appendDiagnostic(value, redactionToken = this.workspaceFileOpenToken) {
     try {
-      void Promise.resolve(this.logStore.append(value)).catch(() => {})
+      void Promise.resolve(this.logStore.append(this.#redactWorkspaceFileOpenToken(value, redactionToken))).catch(() => {})
     } catch {
       // Diagnostics are best-effort and never own runtime lifecycle progress.
     }
+  }
+
+  /**
+   * Return the current private Host capability only to Electron-main callers.
+   * It is intentionally not projected into runtime status or the provider.
+   */
+  getWorkspaceFileOpenToken() {
+    return this.status.state === 'ready' ? this.workspaceFileOpenToken : undefined
   }
 
   start({ preserveRestartAttempt = false } = {}) {
@@ -292,6 +332,8 @@ export class DshRuntimeController extends EventEmitter {
       this.readySince = undefined
     }
     this.manualStop = false
+    // A restart must never reuse an authority accepted by a previous Host.
+    this.workspaceFileOpenToken = undefined
     this.#setStatus('starting')
 
     const readyPromise = new Promise((resolve, reject) => {
@@ -313,6 +355,17 @@ export class DshRuntimeController extends EventEmitter {
       this.#failBeforeReady(error)
       return readyPromise
     }
+    let workspaceFileOpenToken
+    try {
+      workspaceFileOpenToken = this.workspaceFileOpenTokenFactory()
+      if (!isDesktopWorkspaceFileOpenToken(workspaceFileOpenToken)) {
+        throw new TypeError('workspace file open token factory returned an invalid token')
+      }
+    } catch (error) {
+      this.#failBeforeReady(error)
+      return readyPromise
+    }
+    this.workspaceFileOpenToken = workspaceFileOpenToken
     const environment = {
       ...process.env,
       ...additionalEnvironment,
@@ -320,6 +373,9 @@ export class DshRuntimeController extends EventEmitter {
       DSH_PROFILE: DESKTOP_PROFILE_NAME,
       DSH_SKIN_PROFILE: DESKTOP_PROFILE_NAME,
       DSH_SKINS_DIR: join(this.dshHome, 'profiles', DESKTOP_PROFILE_NAME, 'node_modules', '@linxin666'),
+      // Override an ambient parent value. The token is new for every Host
+      // spawn and never appears in argv, diagnostics, or public status.
+      [DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV]: workspaceFileOpenToken,
       ELECTRON_RUN_AS_NODE: '1',
       PATH: [...this.pathEntries, process.env.PATH].filter(Boolean).join(delimiter),
     }
@@ -348,15 +404,18 @@ export class DshRuntimeController extends EventEmitter {
       return readyPromise
     }
 
-    const stdout = createLineReader((line) => this.#handleLine('stdout', line))
-    const stderr = createLineReader((line) => this.#handleLine('stderr', line))
+    // Keep the per-child value in these closures. The authority itself is
+    // cleared as soon as the child stops, but stdio/error events can arrive
+    // after that transition and must still be safe to persist.
+    const stdout = createLineReader((line) => this.#handleLine('stdout', line, workspaceFileOpenToken))
+    const stderr = createLineReader((line) => this.#handleLine('stderr', line, workspaceFileOpenToken))
     this.child.stdout?.on('data', (chunk) => stdout.write(chunk))
     this.child.stdout?.on('end', () => stdout.end())
     this.child.stderr?.on('data', (chunk) => stderr.write(chunk))
     this.child.stderr?.on('end', () => stderr.end())
     const child = this.child
-    child.once('error', (error) => this.#handleChildError(child, error))
-    child.once('exit', (code, signal) => this.#handleExit(child, code, signal))
+    child.once('error', (error) => this.#handleChildError(child, error, workspaceFileOpenToken))
+    child.once('exit', (code, signal) => this.#handleExit(child, code, signal, workspaceFileOpenToken))
     this.startupTimer = this.schedule(() => {
       if (this.status.state !== 'starting') return
       const error = new Error(`DSH runtime did not become ready within ${this.startupTimeoutMs}ms`)
@@ -365,17 +424,21 @@ export class DshRuntimeController extends EventEmitter {
     return readyPromise
   }
 
-  async #handleLine(stream, line) {
-    this.#appendDiagnostic(`[${stream}] ${line}`)
-    emitBestEffort(this, 'line', [{ stream, line }], (error) => {
-      this.#appendDiagnostic(`[observer] line observer failed: ${this.#errorMessage(error)}`)
+  async #handleLine(stream, line, redactionToken = this.workspaceFileOpenToken) {
+    const sanitizedLine = this.#redactWorkspaceFileOpenToken(line, redactionToken)
+    this.#appendDiagnostic(`[${stream}] ${sanitizedLine}`, redactionToken)
+    emitBestEffort(this, 'line', [{ stream, line: sanitizedLine }], (error) => {
+      this.#appendDiagnostic(
+        `[observer] line observer failed: ${this.#errorMessage(error, redactionToken)}`,
+        redactionToken,
+      )
     })
     if (stream !== 'stdout' || this.status.state !== 'starting') return
     let url
     try {
       url = parseDshReadyUrl(line)
     } catch (error) {
-      this.#failBeforeReady(error)
+      this.#failBeforeReady(error, redactionToken)
       return
     }
     if (url === undefined) return
@@ -383,7 +446,7 @@ export class DshRuntimeController extends EventEmitter {
       await this.probeReady(url)
     } catch (error) {
       if (this.status.state === 'starting') {
-        this.#failBeforeReady(error)
+        this.#failBeforeReady(error, redactionToken)
       }
       return
     }
@@ -394,12 +457,18 @@ export class DshRuntimeController extends EventEmitter {
     this.preferredPort = readyPort
     try {
       void Promise.resolve(this.onReadyPort(readyPort)).catch((error) => {
-        this.#appendDiagnostic(`[port] failed to persist preferred port: ${this.#errorMessage(error)}`)
+        this.#appendDiagnostic(
+          `[port] failed to persist preferred port: ${this.#errorMessage(error, redactionToken)}`,
+          redactionToken,
+        )
       })
     } catch (error) {
-      this.#appendDiagnostic(`[port] failed to persist preferred port: ${this.#errorMessage(error)}`)
+      this.#appendDiagnostic(
+        `[port] failed to persist preferred port: ${this.#errorMessage(error, redactionToken)}`,
+        redactionToken,
+      )
     }
-    this.#setStatus('ready', { url })
+    this.#setStatus('ready', { url }, redactionToken)
     this.readySince = this.now()
     this.resolveReady?.(url)
     this.resolveReady = undefined
@@ -407,18 +476,19 @@ export class DshRuntimeController extends EventEmitter {
     this.readyPromise = undefined
   }
 
-  #failBeforeReady(error) {
+  #failBeforeReady(error, redactionToken = this.workspaceFileOpenToken) {
     this.cancelSchedule(this.startupTimer)
     this.startupTimer = undefined
-    this.#setStatus('crashed', { error: error.message })
+    this.#setStatus('crashed', { error: error.message }, redactionToken)
     this.rejectReady?.(error)
     this.resolveReady = undefined
     this.rejectReady = undefined
     this.readyPromise = undefined
-    this.#terminateFailedStartupChild()
+    this.workspaceFileOpenToken = undefined
+    this.#terminateFailedStartupChild(redactionToken)
   }
 
-  #terminateFailedStartupChild() {
+  #terminateFailedStartupChild(redactionToken = this.workspaceFileOpenToken) {
     const child = this.child
     if (child === undefined || child.exitCode !== null || this.failedStartupCleanup) return
 
@@ -446,23 +516,32 @@ export class DshRuntimeController extends EventEmitter {
     void Promise.resolve()
       .then(() => this.terminateProcessTree(child))
       .catch((error) => {
-        this.#appendDiagnostic(`[process] failed-startup tree shutdown failed: ${error.message}`)
+        this.#appendDiagnostic(
+          `[process] failed-startup tree shutdown failed: ${this.#errorMessage(error, redactionToken)}`,
+          redactionToken,
+        )
         if (child.exitCode === null) child.kill('SIGKILL')
       })
   }
 
-  #handleChildError(child, error) {
+  #handleChildError(child, error, redactionToken = this.workspaceFileOpenToken) {
     if (this.child !== child) {
-      this.#appendDiagnostic(`[process] stale child error: ${error.message}`)
+      this.#appendDiagnostic(
+        `[process] stale child error: ${this.#errorMessage(error, redactionToken)}`,
+        redactionToken,
+      )
       return
     }
-    this.#appendDiagnostic(`[process] ${error.message}`)
-    if (this.status.state === 'starting') this.#failBeforeReady(error)
+    this.#appendDiagnostic(`[process] ${this.#errorMessage(error, redactionToken)}`, redactionToken)
+    if (this.status.state === 'starting') this.#failBeforeReady(error, redactionToken)
   }
 
-  #handleExit(child, code, signal) {
+  #handleExit(child, code, signal, redactionToken = this.workspaceFileOpenToken) {
     if (this.child !== child) {
-      this.#appendDiagnostic(`[process] stale child exited code=${String(code)} signal=${String(signal)}`)
+      this.#appendDiagnostic(
+        `[process] stale child exited code=${String(code)} signal=${String(signal)}`,
+        redactionToken,
+      )
       return
     }
     this.cancelSchedule(this.startupTimer)
@@ -473,13 +552,17 @@ export class DshRuntimeController extends EventEmitter {
       : 0
     this.readySince = undefined
     this.child = undefined
-    this.#appendDiagnostic(`[process] exited code=${String(code)} signal=${String(signal)}`)
+    this.workspaceFileOpenToken = undefined
+    this.#appendDiagnostic(`[process] exited code=${String(code)} signal=${String(signal)}`, redactionToken)
 
     if (previousState === 'starting' && this.rejectReady) {
-      this.#failBeforeReady(new Error(`DSH runtime exited before readiness with code ${String(code)}`))
+      this.#failBeforeReady(
+        new Error(`DSH runtime exited before readiness with code ${String(code)}`),
+        redactionToken,
+      )
     }
     if (this.manualStop || previousState === 'stopping') {
-      this.#setStatus('stopped')
+      this.#setStatus('stopped', {}, redactionToken)
       this.stopResolver?.()
       this.stopResolver = undefined
       return
@@ -497,14 +580,14 @@ export class DshRuntimeController extends EventEmitter {
       this.sameCrashCount = 1
     }
     const exitError = formatRuntimeExit(code, signal)
-    this.#setStatus('crashed', { error: exitError })
+    this.#setStatus('crashed', { error: exitError }, redactionToken)
     if (!this.autoRestart) return
     if (this.sameCrashCount >= 2) {
       this.#setStatus('crashed', {
         error: `${exitError}. Automatic restart stopped after the same crash repeated to prevent a restart loop; open the runtime logs for details.`,
         restartBlocked: 'repeated-crash',
-      })
-      this.#appendDiagnostic(`[process] automatic restart circuit opened for ${fingerprint}`)
+      }, redactionToken)
+      this.#appendDiagnostic(`[process] automatic restart circuit opened for ${fingerprint}`, redactionToken)
       return
     }
     this.#scheduleRestart()
@@ -534,11 +617,15 @@ export class DshRuntimeController extends EventEmitter {
 
   async #performStop() {
     this.manualStop = true
+    // Do not retain an authority while shutdown is in progress. The child
+    // event handlers captured it separately for redaction of late output.
+    const redactionToken = this.workspaceFileOpenToken
+    this.workspaceFileOpenToken = undefined
     if (this.restartTimer !== undefined) {
       this.cancelSchedule(this.restartTimer)
       this.restartTimer = undefined
     }
-    this.#setStatus('stopping')
+    this.#setStatus('stopping', {}, redactionToken)
     if (this.readyPromise) {
       const rejectReady = this.rejectReady
       this.cancelSchedule(this.startupTimer)
@@ -552,14 +639,14 @@ export class DshRuntimeController extends EventEmitter {
       await this.failedStartupCleanup
       if (this.child === undefined || this.child.exitCode !== null) {
         this.child = undefined
-        if (this.status.state !== 'stopped') this.#setStatus('stopped')
+        if (this.status.state !== 'stopped') this.#setStatus('stopped', {}, redactionToken)
         return
       }
     }
     const child = this.child
     if (child === undefined || child.exitCode !== null) {
       this.child = undefined
-      this.#setStatus('stopped')
+      this.#setStatus('stopped', {}, redactionToken)
       return
     }
     const exited = new Promise((resolve) => {
@@ -569,7 +656,10 @@ export class DshRuntimeController extends EventEmitter {
     try {
       await this.terminateProcessTree(child)
     } catch (error) {
-      this.#appendDiagnostic(`[process] process-tree shutdown failed: ${error.message}`)
+      this.#appendDiagnostic(
+        `[process] process-tree shutdown failed: ${this.#errorMessage(error, redactionToken)}`,
+        redactionToken,
+      )
       child.kill('SIGKILL')
     }
     await exited

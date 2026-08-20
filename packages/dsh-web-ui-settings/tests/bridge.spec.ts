@@ -5,9 +5,11 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace, SettingsProvider } from '@deepseek-ai/dsh-settings'
-import { makeBridgeHandlers } from '../src/bridge.ts'
+import { makeBridgeHandlers, makeBridgeRoutes, WEB_UI_SETTINGS_PROXY_TOKEN_HEADER } from '../src/bridge.ts'
+import { WEB_UI_SETTINGS_BRIDGE_PREFIX } from '../src/protocol.ts'
 
 /** One fake settings registration the fake seam serves. */
 interface FakeRegistration {
@@ -152,5 +154,107 @@ describe('bridge mutate', () => {
     if (result.ok) return
     expect(result.code).toBe('settings-rejected')
     expect(writes).toEqual([])
+  })
+})
+
+/** One minimal POST shaped enough for a WebRoute describe handler. */
+function bridgeRequest(options: {
+  host: string
+  origin?: string
+  token?: string
+  secFetchSite?: string
+  remoteAddress?: string
+}): IncomingMessage {
+  return {
+    method: 'POST',
+    socket: { remoteAddress: options.remoteAddress ?? '127.0.0.1' },
+    headers: {
+      host: options.host,
+      ...options.origin === undefined ? {} : { origin: options.origin },
+      ...options.token === undefined ? {} : { [WEB_UI_SETTINGS_PROXY_TOKEN_HEADER]: options.token },
+      ...options.secFetchSite === undefined ? {} : { 'sec-fetch-site': options.secFetchSite },
+    },
+  } as unknown as IncomingMessage
+}
+
+/** Capture a route's JSON response without opening a real listener. */
+function bridgeResponse(): { response: ServerResponse; status: () => number | undefined; body: () => unknown } {
+  let statusCode: number | undefined
+  let payload = ''
+  const response = {
+    writeHead: (status: number) => {
+      statusCode = status
+      return response
+    },
+    end: (body?: unknown) => { payload = body === undefined ? '' : String(body) },
+  } as unknown as ServerResponse
+  return {
+    response,
+    status: () => statusCode,
+    body: () => JSON.parse(payload) as unknown,
+  }
+}
+
+/** Invoke the bridge describe route and return its captured status/body. */
+async function describeRoute(
+  routes: ReturnType<typeof makeBridgeRoutes>,
+  request: IncomingMessage,
+): Promise<{ status: number | undefined; body: unknown }> {
+  const route = routes.find(candidate => candidate.path === WEB_UI_SETTINGS_BRIDGE_PREFIX + '/describe')
+  if (route === undefined) throw new Error('describe route was not registered')
+  const response = bridgeResponse()
+  await route.handler(request, response.response)
+  return { status: response.status(), body: response.body() }
+}
+
+describe('bridge route access', () => {
+  function routes(access?: Parameters<typeof makeBridgeRoutes>[1]) {
+    const { seam } = fakeSettings({
+      'task-board': { value: { enabled: true }, revision: 1 },
+    })
+    return makeBridgeRoutes({ settings: seam as unknown as SettingsProvider, readSettingsYaml: () => '' }, access)
+  }
+
+  it('keeps direct loopback requests working by default', async () => {
+    const result = await describeRoute(routes(), bridgeRequest({
+      host: 'localhost:3080',
+      origin: 'http://localhost:3080',
+    }))
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({ ok: true })
+  })
+
+  it('rejects a non-loopback Host unless an authenticated proxy explicitly admits it', async () => {
+    const result = await describeRoute(routes(), bridgeRequest({
+      host: 'desktop.example.test:8443',
+      origin: 'http://desktop.example.test:8443',
+      token: 'shared-secret',
+    }))
+    expect(result.status).toBe(403)
+    expect(result.body).toEqual({ error: 'forbidden' })
+  })
+
+  it('requires a configured Host, same-origin request, and injected token for proxy access', async () => {
+    const access = { trustedProxyHosts: ['desktop.example.test:8443'], proxyToken: 'shared-secret' }
+    const noToken = await describeRoute(routes(access), bridgeRequest({
+      host: 'desktop.example.test:8443',
+      origin: 'http://desktop.example.test:8443',
+    }))
+    expect(noToken.status).toBe(403)
+
+    const crossSite = await describeRoute(routes(access), bridgeRequest({
+      host: 'desktop.example.test:8443',
+      origin: 'https://attacker.example',
+      token: 'shared-secret',
+    }))
+    expect(crossSite.status).toBe(403)
+
+    const admitted = await describeRoute(routes(access), bridgeRequest({
+      host: 'desktop.example.test:8443',
+      origin: 'http://desktop.example.test:8443',
+      token: 'shared-secret',
+    }))
+    expect(admitted.status).toBe(200)
+    expect(admitted.body).toMatchObject({ ok: true })
   })
 })

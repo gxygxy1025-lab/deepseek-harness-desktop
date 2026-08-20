@@ -15,8 +15,8 @@ A hot-pluggable DeepSeek Harness (DSH) client GUI plugin: it adds a **task board
 - **Task details**: click a card to open details (title/description/execution prompt/execution log) — it does **not** execute on a single click; the details offer "执行 / 重新执行" (Run / Re-run), "删除" (Delete, with confirm), "查看会话" (View session, jumps to the execution transcript), and a manual move to 待规划/待办.
 - **Real execution**: on "执行" (Run), the plugin connects a workspace session through the client runtime (`workspaces.connectWorkspace`, reusing a blank session or letting the host create one), names the session after the task title, and drives a real agent via `session.prompt([{ type: 'text', text }], 'queue')`; it then subscribes to that session's snapshot and, once the round really finishes, sets the card to 已完成/已失败 and records the execution result. The execution session appears in the session list and can be opened to view the real transcript.
 - **Status write-back**: card status (进行中 → 完成/失败) is driven by the real session state; after a page refresh/restart, leftover running tasks are auto-reconciled against the current session state (reconcile).
-- **Scheduled tasks**: the details panel can schedule a task — an enable switch + a 5-field cron expression (分 时 日 月 周, supporting `*` / `*/n` / `a-b` / comma lists) + common presets (daily 09:00, every hour, every 10 minutes, Mondays 09:00); enabling computes and persists the "下次运行时间" (next run time), and the card shows a scheduled marker; at the due time it automatically takes the same real-execution path (as manual run), and the execution session remains linkable.
-- **Host-file persistence**: the Host-owned v3 ledger stores Projects, compact Task Runs, and derived Evidence under `state/task-board/tasks-v3.json`; writes are serialized and atomically published, corrupt files are preserved, and v2 is copied to a backup before migration. Older Hosts keep the v2/localStorage fallback.
+- **Scheduled tasks**: the details panel can schedule a task — an enable switch + a 5-field cron expression (分 时 日 月 周, supporting `*` / `*/n` / `a-b` / comma lists) + common presets (daily 09:00, every hour, every 10 minutes, Mondays 09:00); enabling computes and persists the "下次运行时间" (next run time), and the card shows a scheduled marker. An opt-in Desktop Runtime Provider host-job adapter can claim those slots in the Host; otherwise the existing browser path takes the same real-execution route as a manual run.
+- **Host-file persistence**: the Host-owned v3 ledger stores Projects, compact Task Runs, derived Evidence, and optional durable-schedule state under `state/task-board/tasks-v3.json`; writes are serialized and atomically published, corrupt files are preserved, and v2 is copied to a backup before migration. Durable state carries an IANA time zone, bounded misfire/running policy, deterministic run key, provider evidence, and an expiring lease. Older Hosts keep the v2/localStorage fallback.
 - **Worktree review**: Desktop 2.6 tasks can choose shared-workspace or Git Worktree. When the typed Runtime Provider exposes workspace/session observation capabilities, the Host creates a controlled Worktree and the detail view offers bounded Evidence plus Commit, Merge, Keep, and confirmed Discard; missing capabilities fall back explicitly to shared-workspace.
 - **System-prompt injection**: the host half (`src/index.ts`) registers a `plugin:task-board` section (order 200) via `SystemPrompt.section`, declaring this plugin's existence, capabilities, and limits to every agent — it is injected when the plugin is in the composition (after mount + DSH restart) and disappears when removed (after unmount + restart), so an agent needs no external docs to know how to work with this board.
 
@@ -25,7 +25,7 @@ A hot-pluggable DeepSeek Harness (DSH) client GUI plugin: it adds a **task board
 ```
 package.json / tsconfig.json / tsdown.config.ts   # standalone repo build
 build/tsdown.client.ts + build/web/src/platform.ts # client bundle preset copied from the DSH checkout (kept in sync with the running version)
-src/index.ts / src/host/*.ts                       # host half: SystemPrompt + profile file store + fixed HTTP/SSE routes
+src/index.ts / src/host/*.ts                       # host half: SystemPrompt + profile file store + fixed routes + durable scheduler adapter
 src/client/index.ts                                # apply(ctx): wires runtime services + mounts DOM
 src/client/sidebar-entry.ts                        # sidebar entry injection (self-healing MutationObserver)
 src/client/board-mount.tsx                         # middle-column board mount + show/hide toggle
@@ -33,7 +33,7 @@ src/client/board/*.tsx                             # React board views (columns/
 src/client/board.module.css                        # styles (--dsw-* tokens, adapting to theme/skin)
 src/core/tasks.ts                                  # task model + state machine (pure functions)
 src/core/schedule.ts                               # cron parsing + next-run time (pure functions)
-src/core/scheduler.ts                              # browser scheduler (ticks every minute to fire due tasks)
+src/core/scheduler.ts / scheduler-authority.ts     # browser fallback ticker + Host/client ownership contract
 src/core/store.ts / src/client/host-store.ts       # persistence seam, Host client, localStorage fallback + migration
 src/core/execution.ts                              # real execution service (session connect/prompt/settlement watch)
 src/core/controller.ts                             # controller (ledger state, view state, navigation awareness)
@@ -48,7 +48,7 @@ scripts/dsh-task-board.js                          # one-click mount/unmount/sta
 - **Persistence uses a bounded Host channel**: the host exposes only fixed ledger and event paths, resolves the file from `DSH_HOME` plus the configured profile, and never accepts a filesystem path from the browser. The client keeps localStorage v1 as a fallback and rollback source.
 - **Execution rides the client runtime**: `ctx.sessions.list` subscribes to session state (`running` / `byId`), `ctx.workspaces.connectWorkspace()` creates/reuses a session, `session.prompt()` drives a real agent, and `ctx.sessions.open()` jumps to the transcript.
 - **Background settlement relies on list reconciliation**: an unopened session has no chat-snapshot window (cold), so settlement keys off the session list — every list change reconciles running tasks; result judgment takes, in order, "missing from list → cancelled / still running → wait / chat snapshot visible → by lastAgentError / tail of raw history → a turn-error node proves failure / otherwise success", and reconciliation is idempotent.
-- **Scheduled tasks run in the browser scheduler**: persistence is host-backed, but "run at the due time" remains an in-tab scheduler — a tick every minute, with an immediate catch-up tick when the page returns from the background; before firing it first moves "next run" forward to the next cron match so the same tick never fires twice; it does not fire early in page load (before the session-list baseline is ready), avoiding mis-execution. Limitation: the tab must stay open (schedules missed while closed are "miss = skip", and only already-deferred due tasks are caught up on the next open); a task that is 进行中 (in progress) skips the current due time and waits for the next cron match.
+- **Scheduled ownership is explicit**: an executable Desktop host-job adapter, available only after the user opts into background automation, claims due slots in the Host. It atomically advances the cron cursor and records the deterministic TaskRun before dispatch; leases prevent a second Host from taking a live slot, while an expired-owner takeover can retry only the same admitted key that has no persisted session identity. Browser tabs disable their legacy ticker only after the fixed Host status route positively reports that executable authority, and re-check that gate before every fallback admission. Every other case — old Web hosts, malformed status, or no adapter — keeps the in-tab scheduler as the safe fallback, with the existing skip-on-miss behavior.
 - **Same-origin tabs share one ledger**: Host mutations emit SSE change events; local fallback mutations use browser storage events. Either channel reloads the newest ledger so a task deleted in one tab cannot keep firing or be written back from another tab's stale copy.
 
 ## Install
@@ -120,8 +120,9 @@ The rows registered in the profile manifest:
 
 ## Known limitations
 
-- Scheduling remains browser-side: a DSH page must stay open, missed closed-page runs are skipped, and this release adds no background scheduler or replay queue.
-- Worktree execution requires the optional Runtime Provider capabilities; absent capabilities use shared-workspace. Background scheduling and a public Task Board SDK are outside this contract.
+- A durable Host scheduler activates only when a Desktop Runtime Provider deliberately supplies its host-job adapter (normally after the user opts into background automation). In every other runtime, including an unavailable or malformed Host status route, the browser scheduler remains the explicit fallback.
+- The Host advances `nextRunAt` and writes the deterministic TaskRun before dispatch. Sleep/restart misfires default to `skip`; `run-once` deliberately coalesces one overdue slot, and `queue-next` retains at most one slot while a task is running. After an expired foreign lease, only an admitted run with no persisted session identity can be re-submitted under its same deterministic key. It does not promise execution after the application has fully exited.
+- Worktree execution still requires the optional Runtime Provider capabilities; absent capabilities use shared-workspace.
 
 ## Manual verification steps
 
@@ -129,7 +130,7 @@ The rows registered in the profile manifest:
 2. A "任务看板" (task board) entry row appears below "新会话" in the sidebar; click it → the middle column switches to the five-column board.
 3. "+ 新建任务" (New task) with title/description/Prompt → the card appears in 待办 (to do).
 4. Click the card → details show content and Prompt; click "执行" (Run) → the card becomes 进行中 (in progress) (a session named after the task title appears in the session list); after the agent finishes the card lands in 已完成 (done) or 已失败 (failed), the detail execution log has a result and time, and "查看会话" (View session) jumps to the real transcript.
-5. Scheduled task: details → tick "定时运行" (Scheduled run) to enable, pick the preset "每 10 分钟" (every 10 minutes, cron `*/10 * * * *`); a scheduled marker appears on the card; wait for the next whole 10-minute mark, watch the card automatically enter 进行中 (in progress) and eventually complete, with "上次触发" (last trigger) showing a time and a new execution-log row (the session is linkable).
+5. Scheduled task: details → tick "定时运行" (Scheduled run) to enable, pick the preset "每 10 分钟" (every 10 minutes, cron `*/10 * * * *`); a scheduled marker appears on the card. With the opted-in Desktop host-job adapter, close the board and wait for the next whole 10-minute mark; otherwise keep the tab open. The card enters 进行中 (in progress) and eventually completes, with "上次触发" (last trigger) and a new linkable execution-log row.
 6. Refresh the page / restart DSH → tasks remain; unmount the plugin → the GUI restores to its original state.
 
 ## Acceptance checklist
@@ -139,6 +140,6 @@ The rows registered in the profile manifest:
 - Click a card to open details (content + execution log); the details have "执行" (Run) and "删除" (Delete) buttons
 - Execution really starts a session (its transcript is visible in the session list); card status follows the real execution progress; the details can jump to the execution session
 - Delete has a confirm step, and the local store is synced-removed after deletion
-- Scheduled tasks: cron config/preset/validation, next-run time, auto real execution at the due time, status write-back, scheduled card marker, scheduling resumes after refresh (browser-side scheduling, the tab must stay open)
+- Scheduled tasks: cron config/preset/validation, next-run time, auto real execution at the due time, status write-back, scheduled card marker, and one explicit authority: opted-in executable Desktop Host scheduling or browser fallback (which requires the tab to stay open)
 - One-click mount/unmount; after unmount the GUI restores and other managed segments are unaffected
 - README + automated tests covering storage read/write, state transitions, execution trigger, cron parsing, and the scheduler

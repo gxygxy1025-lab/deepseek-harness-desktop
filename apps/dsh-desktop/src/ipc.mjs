@@ -5,8 +5,9 @@ import {
   desktopContractForSurface,
 } from './desktop-contract.mjs'
 import { normalizeDesktopNotification } from './notifications.mjs'
+import { openWorkspaceFile } from './workspace-files.mjs'
 
-const ACTIONS = new Set(['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'exit'])
+const ACTIONS = new Set(['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'export-diagnostics', 'exit'])
 const HELP_ACTIONS = new Set(['community', 'downloads', 'feedback', 'project', 'privacy', 'updates'])
 const TOOL_ACTIONS = new Set(['extensions'])
 const WINDOW_CHROME_THEMES = new Set(['light', 'dark'])
@@ -49,6 +50,7 @@ export function publicRecoveryStatus(status) {
   const incident = status.currentIncident
   return {
     safeMode: status.safeMode === true,
+    baselineQuarantineAvailable: status.baselineQuarantineAvailable === true,
     busy: status.busy === true,
     recoveryStage: Number.isInteger(status.recoveryStage) ? Math.max(0, Math.min(2, status.recoveryStage)) : 0,
     currentIncident: incident && typeof incident === 'object'
@@ -65,8 +67,27 @@ export function publicRecoveryStatus(status) {
   }
 }
 
-export function publicRuntimeStatus(status, recoveryStatus) {
+/**
+ * A deliberately small, read-only projection of the native background mode.
+ * It is carried inside the existing runtime-read Contract path rather than
+ * exposing the Tray or a mutable close-preference IPC to page code.
+ */
+export function publicBackgroundStatus(status) {
+  if (!status || typeof status !== 'object') return undefined
+  const closeBehavior = ['quit', 'minimize-to-tray', 'ask'].includes(status.closeBehavior)
+    ? status.closeBehavior
+    : undefined
+  if (typeof status.enabled !== 'boolean' || typeof status.trayAvailable !== 'boolean') return undefined
+  return Object.freeze({
+    enabled: status.enabled,
+    trayAvailable: status.trayAvailable,
+    ...(closeBehavior === undefined ? {} : { closeBehavior }),
+  })
+}
+
+export function publicRuntimeStatus(status, recoveryStatus, backgroundStatus) {
   const state = typeof status?.state === 'string' ? status.state : 'stopped'
+  const background = publicBackgroundStatus(backgroundStatus)
   return {
     state,
     error: typeof status?.error === 'string' ? status.error.slice(0, 4_000) : undefined,
@@ -74,6 +95,7 @@ export function publicRuntimeStatus(status, recoveryStatus) {
     restartAttempt: Number.isInteger(status?.restartAttempt) ? status.restartAttempt : 0,
     ...(status?.restartBlocked === 'repeated-crash' ? { restartBlocked: status.restartBlocked } : {}),
     ...(recoveryStatus ? { recovery: publicRecoveryStatus(recoveryStatus) } : {}),
+    ...(background === undefined ? {} : { background }),
   }
 }
 
@@ -106,6 +128,7 @@ export function registerDesktopIpc({
   pluginRecovery,
   ensureProfile,
   openLogs,
+  exportDiagnostics = async () => { throw new Error('diagnostic export is unavailable') },
   exitApp,
   handleHelpAction,
   handleToolAction,
@@ -120,6 +143,11 @@ export function registerDesktopIpc({
   listSkills = async () => ({ skills: [] }),
   showNotification = async () => false,
   notificationService,
+  getBackgroundStatus = () => undefined,
+  getRuntimeOrigin = () => undefined,
+  getWorkspaceFileOpenToken = () => undefined,
+  openWorkspaceTarget = openWorkspaceFile,
+  shell,
 }) {
   if (typeof surfaceRegistry?.assert !== 'function' || typeof surfaceRegistry?.surfaceOf !== 'function') {
     throw new TypeError('desktop IPC requires a desktop surface registry')
@@ -141,6 +169,7 @@ export function registerDesktopIpc({
     'desktop:settings-opened',
     'desktop:skills-list',
     'desktop:notification-show',
+    'desktop:workspace-file-open',
   ]
   for (const channel of channels) ipcMain.removeHandler(channel)
   const handle = (channel, allowedSurfaces, handler) => {
@@ -170,10 +199,11 @@ export function registerDesktopIpc({
     version,
     platform,
   }))
-  const getPublicStatus = async (status = controller.status) => publicRuntimeStatus(
-    status,
-    await pluginRecovery?.getState?.(),
-  )
+  const getPublicStatus = async (status = controller.status) => {
+    let background
+    try { background = getBackgroundStatus() } catch {}
+    return publicRuntimeStatus(status, await pluginRecovery?.getState?.(), background)
+  }
   handle('desktop:status', [main, extensions], () => getPublicStatus())
   handle('desktop:action', main, async (_event, _surface, rawAction) => {
     const action = normalizeDesktopAction(rawAction)
@@ -189,6 +219,7 @@ export function registerDesktopIpc({
     if (action === 'disable-plugin') return pluginRecovery?.disableCurrentAndRestart?.()
     if (action === 'safe-mode') return pluginRecovery?.enterSafeModeAndRestart?.()
     if (action === 'open-logs') return openLogs()
+    if (action === 'export-diagnostics') return exportDiagnostics()
     exitApp()
     return undefined
   })
@@ -223,6 +254,14 @@ export function registerDesktopIpc({
   handle('desktop:notification-show', [main, extensions], (_event, _surface, value) => {
     if (typeof notificationService?.show === 'function') return notificationService.show(value)
     return showNotification(normalizeNotification(value))
+  })
+  handle('desktop:workspace-file-open', main, async (_event, _surface, request) => {
+    return openWorkspaceTarget({
+      shell,
+      request,
+      getRuntimeOrigin,
+      getWorkspaceFileOpenToken,
+    })
   })
   const publishStatus = async (status = controller.status) => {
     const window = getWindow()

@@ -34,6 +34,8 @@ jobs:
       - run: pnpm dsh-imports:check
       - run: pnpm dsh-audit:check
       - run: pnpm runtime-support:check
+      - run: pnpm runtime-support-matrix:check
+      - run: pnpm community-plugin-quality:check
       - run: pnpm sync-shared:check
       - run: pnpm release:notes:check
       - run: pnpm website:check

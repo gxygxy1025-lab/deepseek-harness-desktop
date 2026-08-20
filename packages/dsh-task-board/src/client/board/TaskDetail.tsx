@@ -163,7 +163,13 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       <p className={css.scheduleMeta}>
         {t('detail.schedule.nextRun')} {nextLabel}
         {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
+        {schedule?.timezone !== undefined && <>{' · '}{t('detail.schedule.timezone')} {schedule.timezone}</>}
       </p>
+      {schedule?.lastFailure !== undefined && (
+        <p className={css.executionError}>
+          {t('detail.schedule.lastFailure')}: {schedule.lastFailure.message}
+        </p>
+      )}
     </section>
   )
 }

@@ -18,7 +18,7 @@ test('Candidate execution fixture compares Known Good and Candidate on one repos
   assert.match(renderCandidateExecutionMarkdown(report), /real Git Worktree CWD and event semantics/u)
 })
 
-test('Candidate capability loss is blocked for 2.6 but reports safe shared fallback', async () => {
+test('Candidate capability loss is blocked for isolated Worktree execution but reports safe shared fallback', async () => {
   const report = await runCandidateExecutionFixture({
     candidate: new DeterministicExecutionProvider({ providerId: 'candidate-missing', capabilities: ['workspace.register'] }),
   })

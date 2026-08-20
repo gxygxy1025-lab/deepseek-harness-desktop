@@ -12,13 +12,42 @@ export function createApplicationMenuTemplate({
   openPrivacy = () => shell.openExternal(PRIVACY_POLICY_URL),
   openProject = () => shell.openExternal(GITHUB_PROJECT_URL),
   checkForUpdates,
+  getCloseBehavior,
+  setCloseBehavior,
   onActionError = () => {},
 }) {
   const action = (operation) => () => runBestEffort(operation, onActionError)
+  const closeBehavior = typeof getCloseBehavior === 'function' ? getCloseBehavior() : 'quit'
+  const closeBehaviorEntry = typeof setCloseBehavior === 'function'
+    ? {
+        label: '关闭行为 / Close behavior',
+        submenu: [
+          {
+            type: 'radio',
+            label: '退出 / Quit',
+            checked: closeBehavior === 'quit',
+            click: action(() => setCloseBehavior('quit')),
+          },
+          {
+            type: 'radio',
+            label: '最小化到托盘并开启后台自动化 / Minimize to tray and enable background automation',
+            checked: closeBehavior === 'minimize-to-tray',
+            click: action(() => setCloseBehavior('minimize-to-tray')),
+          },
+          {
+            type: 'radio',
+            label: '每次询问 / Ask every time',
+            checked: closeBehavior === 'ask',
+            click: action(() => setCloseBehavior('ask')),
+          },
+        ],
+      }
+    : undefined
   return [
     {
       label: '应用 / App',
       submenu: [
+        ...(closeBehaviorEntry ? [closeBehaviorEntry, { type: 'separator' }] : []),
         { role: 'quit', label: '退出 / Quit' },
       ],
     },
@@ -104,6 +133,11 @@ export function installEditContextMenu({ webContents, Menu }) {
 
 export function installApplicationMenu(options) {
   const { Menu } = options
-  const template = createApplicationMenuTemplate(options)
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  const refresh = () => {
+    const template = createApplicationMenuTemplate(options)
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+    return template
+  }
+  refresh()
+  return refresh
 }

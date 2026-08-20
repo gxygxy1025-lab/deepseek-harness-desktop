@@ -1,0 +1,1229 @@
+{
+  "schemaVersion": 1,
+  "derived": true,
+  "source": {
+    "runtimeSupport": "apps/dsh-desktop/runtime-support/known-good.json",
+    "evidence": "apps/dsh-desktop/runtime-support/community-plugin-quality.source.json",
+    "normalStartupNetwork": false
+  },
+  "verifiedAt": "2026-08-20",
+  "desktopVersion": "2.7.0",
+  "upstreamVersion": "0.1.0-rc.7",
+  "entries": [
+    {
+      "packageName": "@linxin666/dsh-client-ui-aionui-panel",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-aionui-panel/package.json",
+      "license": "Apache-2.0",
+      "compatibility": {
+        "desktop": {
+          "range": ">=2.7.0 <3.0.0",
+          "api": "^1.2.0"
+        },
+        "runtime": {
+          "range": ">=0.1.0-rc.7 <0.2.0",
+          "evidence": {
+            "providerId": "dsh-cli-provider-v1",
+            "runtime": "0.1.0-rc.7",
+            "desktop": "2.7.0",
+            "verifiedAt": "2026-08-20",
+            "matrixArtifact": "runtime-support/supported-runtimes.json"
+          }
+        },
+        "capabilities": [
+          "workspace-files.open"
+        ],
+        "surfaces": [
+          "main"
+        ]
+      },
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-aionui-panel build",
+          "pnpm --filter @linxin666/dsh-client-ui-aionui-panel test",
+          "pnpm --filter @linxin666/dsh-client-ui-aionui-panel typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": true,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-git-graph",
+      "version": "0.1.18",
+      "manifestPath": "packages/dsh-git-graph/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown --config tsdown.prepare.config.ts"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-git-graph build",
+          "pnpm --filter @linxin666/dsh-client-ui-git-graph test",
+          "pnpm --filter @linxin666/dsh-client-ui-git-graph typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-mode-switcher",
+      "version": "0.1.0",
+      "manifestPath": "packages/dsh-mode-switcher/package.json",
+      "license": "BSD-3-Clause",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-mode-switcher build",
+          "pnpm --filter @linxin666/dsh-client-ui-mode-switcher test",
+          "pnpm --filter @linxin666/dsh-client-ui-mode-switcher typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-blue-fantasy",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/blue-fantasy/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-blue-fantasy build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-blue-fantasy test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-center",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/skin-center/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-center build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-center test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-dragon-heir",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/dragon-heir/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-dragon-heir build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-dragon-heir test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-harbor",
+      "version": "0.1.14",
+      "manifestPath": "packages/skins/harbor/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-harbor build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-harbor test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-miku",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/miku/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-miku build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-miku test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-minecraft",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/minecraft/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-minecraft build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-minecraft test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-qq2006",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/qq2006/package.json",
+      "license": "BSD-3-Clause",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-qq2006 build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-qq2006 test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-qq98",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/qq98/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-qq98 build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-qq98 test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-ths",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/ths/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-ths build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-ths test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-trading",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/trading/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-trading build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-trading test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-whale-song",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/whale-song/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-whale-song build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-whale-song test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-skin-xp",
+      "version": "0.1.15",
+      "manifestPath": "packages/skins/xp/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-skin-xp build",
+          "pnpm --filter @linxin666/dsh-client-ui-skin-xp test"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-task-board",
+      "version": "0.1.18",
+      "manifestPath": "packages/dsh-task-board/package.json",
+      "license": "Apache-2.0",
+      "compatibility": {
+        "desktop": {
+          "range": ">=2.7.0 <3.0.0",
+          "api": "^1.2.0"
+        },
+        "runtime": {
+          "range": ">=0.1.0-rc.7 <0.2.0",
+          "evidence": {
+            "providerId": "dsh-cli-provider-v1",
+            "runtime": "0.1.0-rc.7",
+            "desktop": "2.7.0",
+            "verifiedAt": "2026-08-20",
+            "matrixArtifact": "runtime-support/supported-runtimes.json"
+          }
+        },
+        "surfaces": [
+          "main"
+        ]
+      },
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "pnpm run build"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-task-board build",
+          "pnpm --filter @linxin666/dsh-client-ui-task-board test",
+          "pnpm --filter @linxin666/dsh-client-ui-task-board typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": true,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-client-ui-web-ui-settings",
+      "version": "0.2.3-desktop.1",
+      "manifestPath": "packages/dsh-web-ui-settings/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-client-ui-web-ui-settings build",
+          "pnpm --filter @linxin666/dsh-client-ui-web-ui-settings test",
+          "pnpm --filter @linxin666/dsh-client-ui-web-ui-settings typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-desktop-compat",
+      "version": "2.0.0",
+      "manifestPath": "packages/dsh-desktop-compat/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-desktop-compat build",
+          "pnpm --filter @linxin666/dsh-desktop-compat test",
+          "pnpm --filter @linxin666/dsh-desktop-compat typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-liangshen",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-liangshen/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-liangshen build",
+          "pnpm --filter @linxin666/dsh-liangshen test",
+          "pnpm --filter @linxin666/dsh-liangshen typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-live-stats",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-live-stats/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-live-stats build",
+          "pnpm --filter @linxin666/dsh-live-stats test",
+          "pnpm --filter @linxin666/dsh-live-stats typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-particle-theme",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-particle-theme/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-particle-theme build",
+          "pnpm --filter @linxin666/dsh-particle-theme test",
+          "pnpm --filter @linxin666/dsh-particle-theme typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-pet",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-pet/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown --config tsdown.prepare.config.ts"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-pet build",
+          "pnpm --filter @linxin666/dsh-pet test",
+          "pnpm --filter @linxin666/dsh-pet typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-remote-web-ui",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-remote-web-ui/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown --config tsdown.prepare.config.ts"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-remote-web-ui build",
+          "pnpm --filter @linxin666/dsh-remote-web-ui test",
+          "pnpm --filter @linxin666/dsh-remote-web-ui typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-skins",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-skins/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "node build.mjs"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-skins build"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": false,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-ssh",
+      "version": "0.1.18",
+      "manifestPath": "packages/dsh-ssh/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "pnpm run build"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-ssh build",
+          "pnpm --filter @linxin666/dsh-ssh test",
+          "pnpm --filter @linxin666/dsh-ssh typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-tool-describe-image",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-tool-describe-image/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-tool-describe-image build",
+          "pnpm --filter @linxin666/dsh-tool-describe-image test",
+          "pnpm --filter @linxin666/dsh-tool-describe-image typecheck"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": true,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    },
+    {
+      "packageName": "@linxin666/dsh-web-ui-all",
+      "version": "0.1.15",
+      "manifestPath": "packages/dsh-web-ui-all/package.json",
+      "license": "Apache-2.0",
+      "compatibility": null,
+      "installScripts": [
+        {
+          "name": "prepare",
+          "command": "tsdown"
+        }
+      ],
+      "build": {
+        "declared": true,
+        "status": "not-recorded"
+      },
+      "testCombination": {
+        "desktopVersion": "2.7.0",
+        "upstreamVersion": "0.1.0-rc.7",
+        "commands": [
+          "pnpm --filter @linxin666/dsh-web-ui-all build"
+        ]
+      },
+      "ci": {
+        "workflow": ".github/workflows/desktop-ci.yml",
+        "status": "not-recorded"
+      },
+      "smoke": {
+        "date": "2026-08-20",
+        "status": "not-recorded"
+      },
+      "desktopVerified": false,
+      "requirementsSatisfied": {
+        "license": true,
+        "exactVersion": true,
+        "compatibilityDeclared": false,
+        "buildDeclared": true,
+        "testsDeclared": false,
+        "ciPassed": false,
+        "smokePassed": false
+      }
+    }
+  ],
+  "policy": {
+    "desktopVerifiedMeans": "local license, exact-version, compatibility declaration, declared build/test, recorded CI, and recorded smoke conditions only",
+    "desktopVerifiedDoesNotMean": "security audit"
+  }
+}

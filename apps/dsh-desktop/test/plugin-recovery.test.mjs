@@ -1,13 +1,21 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { PluginManager } from '../src/extensions/plugins.mjs'
-import { DesktopPluginRecovery, PluginRecoveryStore, classifyPluginFailure } from '../src/plugin-recovery.mjs'
-import { BUILTIN_BUNDLES } from '../src/profile.mjs'
+import { PLUGIN_PACKAGE_MANIFEST_READ_ERROR, PluginManager } from '../src/extensions/plugins.mjs'
+import {
+  DesktopPluginRecovery,
+  PluginRecoveryStore,
+  classifyPluginFailure,
+  recoverProfileAfterPluginInspectionFailure,
+  isPluginPackageInspectionFailure,
+  shouldAutomaticallyEnterSafeMode,
+} from '../src/plugin-recovery.mjs'
+import { DesktopProfileBaselineQuarantine } from '../src/profile-baseline-quarantine.mjs'
+import { BUILTIN_BUNDLES, ensureDesktopProfile } from '../src/profile.mjs'
 
 test('plugin failure classifier identifies a missing dependency through a Unicode Windows path', () => {
   const result = classifyPluginFailure([
@@ -53,6 +61,631 @@ test('plugin failure classifier ignores incidental plugin names in host or port 
 
   assert.equal(result.identified, false)
   assert.equal(result.reasonCode, 'unknown')
+
+  const explicitBeforeHost = classifyPluginFailure([
+    "failed to load plugin '@community/example'",
+    'runtime startup failed: listen EADDRINUSE 127.0.0.1:43125',
+  ].join('\n'), {
+    activePlugins: ['@community/example'],
+  })
+  assert.equal(explicitBeforeHost.identified, false)
+})
+
+test('unknown plugin startup recovery excludes port and Windows launcher failures', () => {
+  const candidatePlugins = ['@community/opaque']
+  assert.equal(shouldAutomaticallyEnterSafeMode(
+    'DSH runtime did not become ready within 120000ms',
+    { candidatePlugins },
+  ), true)
+  assert.equal(shouldAutomaticallyEnterSafeMode(
+    'runtime startup failed: listen EADDRINUSE 127.0.0.1:43125',
+    { candidatePlugins },
+  ), false)
+  assert.equal(shouldAutomaticallyEnterSafeMode(
+    'runtime exited unexpectedly with Windows code 0xFFFFFFFF (signed -1)',
+    { candidatePlugins },
+  ), false)
+  assert.equal(shouldAutomaticallyEnterSafeMode(
+    'runtime exited unexpectedly with code=-1',
+    { candidatePlugins },
+  ), false)
+  assert.equal(shouldAutomaticallyEnterSafeMode(
+    'PowerShell -WindowStyle Hidden exited before readiness',
+    { candidatePlugins },
+  ), false)
+  assert.equal(shouldAutomaticallyEnterSafeMode(
+    'DSH runtime did not become ready within 120000ms',
+    { candidatePlugins: [] },
+  ), false)
+})
+
+test('private baseline quarantine preserves opaque profile and home loader bytes without parsing them', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-private-baseline-quarantine-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  const stateDir = join(root, 'recovery')
+  const profilePatch = Buffer.from('# opaque profile loader\n- insert: [broken\n', 'utf8')
+  const homePatch = Buffer.from('# opaque home loader\n- name: @external/unregistered\n  config: [\xff', 'binary')
+  const originalManifest = Buffer.from('{ this is not valid JSON\n', 'utf8')
+  const originalLinks = Buffer.from('{ this is not valid JSON either\n', 'utf8')
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'cordis.patch.yml'), profilePatch)
+    await writeFile(join(dshHome, 'cordis.patch.yml'), homePatch)
+    await writeFile(join(profileDir, 'package.json'), originalManifest)
+    await writeFile(join(profileDir, '.dsh-desktop-links.json'), originalLinks)
+    const quarantine = new DesktopProfileBaselineQuarantine({ dshHome, profileDir, stateDir })
+
+    assert.equal(await quarantine.hasUntrustedActivation(), true)
+    assert.deepEqual(await quarantine.getState(), { available: false })
+    assert.deepEqual(await quarantine.quarantine(), { changed: true, available: true })
+    assert.deepEqual(await quarantine.getState(), { available: true })
+    const baselineManifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.deepEqual(baselineManifest.dependencies, {})
+    assert.deepEqual(baselineManifest.dsh.profile.bundles, BUILTIN_BUNDLES)
+    assert.equal(await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8'), '')
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
+    assert.equal(await readFile(join(profileDir, '.dsh-desktop-links.json'), 'utf8'), '{}\n')
+
+    const archiveRoot = join(stateDir, 'private-baseline-quarantine', 'snapshots')
+    const [snapshotId] = await readdir(archiveRoot)
+    assert.deepEqual(await readFile(join(archiveRoot, snapshotId, 'profile-patch.bin')), profilePatch)
+    assert.deepEqual(await readFile(join(archiveRoot, snapshotId, 'home-patch.bin')), homePatch)
+    assert.deepEqual(await readFile(join(archiveRoot, snapshotId, 'profile-manifest.bin')), originalManifest)
+    assert.deepEqual(await readFile(join(archiveRoot, snapshotId, 'profile-links.bin')), originalLinks)
+
+    assert.equal(await quarantine.restore(), true)
+    assert.deepEqual(await quarantine.getState(), { available: false })
+    assert.deepEqual(await readFile(join(profileDir, 'cordis.patch.yml')), profilePatch)
+    assert.deepEqual(await readFile(join(dshHome, 'cordis.patch.yml')), homePatch)
+    assert.deepEqual(await readFile(join(profileDir, 'package.json')), originalManifest)
+    assert.deepEqual(await readFile(join(profileDir, '.dsh-desktop-links.json')), originalLinks)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('private baseline quarantine never trusts a spoofed Desktop marker label', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-private-baseline-spoofed-marker-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), [
+      '# --- dsh-desktop attacker-owned ---',
+      '- id: opaque-loader',
+      '  name: @user/unregistered',
+      '# --- end dsh-desktop attacker-owned ---',
+      '',
+    ].join('\n'))
+    const quarantine = new DesktopProfileBaselineQuarantine({
+      dshHome,
+      profileDir,
+      stateDir: join(root, 'recovery'),
+    })
+
+    assert.equal(await quarantine.hasUntrustedActivation(), true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a freshly ensured Desktop profile has no opaque activation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-private-baseline-default-profile-'))
+  const profileDir = join(root, 'profiles', 'desktop')
+  try {
+    await ensureDesktopProfile({ dshHome: root, packageRoots: new Map() })
+    const quarantine = new DesktopProfileBaselineQuarantine({
+      dshHome: root,
+      profileDir,
+      stateDir: join(root, 'recovery'),
+    })
+
+    assert.equal(await quarantine.hasUntrustedActivation(), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('opaque user loader startup failure reaches readiness through a reversible Desktop baseline', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-opaque-loader-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  const stateDir = join(root, 'recovery')
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), '- insert: [opaque user loader\n')
+    await writeFile(join(dshHome, 'cordis.patch.yml'), '- name: @external/unregistered\n')
+    const baselineQuarantine = new DesktopProfileBaselineQuarantine({ dshHome, profileDir, stateDir })
+    const controller = new EventEmitter()
+    controller.status = { state: 'starting' }
+    controller.stop = async () => {
+      controller.status = { state: 'stopped' }
+      controller.emit('status', controller.status)
+    }
+    let starts = 0
+    controller.start = async () => {
+      starts += 1
+      controller.status = { state: 'starting' }
+      controller.emit('status', controller.status)
+      controller.status = { state: 'ready', url: 'http://127.0.0.1:14567/' }
+      controller.emit('status', controller.status)
+      return controller.status.url
+    }
+    const pluginManager = {
+      inventory: async () => { throw new Error('dependency tree is not recognizable') },
+      recoveryCandidates: async () => [],
+      enterSafeMode: async () => { throw new Error('safe mode must not require a manifest candidate') },
+    }
+    const store = new PluginRecoveryStore({ profileDir, stateDir, builtInBundles: BUILTIN_BUNDLES })
+    let ensured = 0
+    const recovery = new DesktopPluginRecovery({
+      controller,
+      pluginManager,
+      store,
+      ensureProfile: async () => { ensured += 1 },
+      builtInBundles: BUILTIN_BUNDLES,
+      baselineQuarantine,
+      schedule: () => ({ unref() {} }),
+      cancelSchedule: () => {},
+    })
+    await recovery.initialize()
+    controller.status = { state: 'crashed', error: 'DSH runtime did not become ready within 120000ms' }
+    controller.emit('status', controller.status)
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (controller.status.state === 'ready') break
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    const state = await recovery.getState()
+    assert.equal(starts, 1)
+    assert.equal(ensured, 1)
+    assert.equal(controller.status.state, 'ready')
+    assert.equal(state.safeMode, true)
+    assert.equal(state.baselineQuarantineAvailable, true)
+    assert.equal(state.currentIncident.reasonCode, 'untrusted-profile-loader')
+    assert.deepEqual(state.disabledPlugins, [])
+    assert.equal(await baselineQuarantine.restore(), true)
+    await recovery.dispose()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('an interrupted active baseline is reapplied before retrying, after the runtime is stopped', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-active-baseline-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  const stateDir = join(root, 'recovery')
+  const opaquePatch = '- insert: [opaque user loader\n'
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), opaquePatch)
+    const privateBaseline = new DesktopProfileBaselineQuarantine({ dshHome, profileDir, stateDir })
+    const events = []
+    const baselineQuarantine = {
+      getState: () => privateBaseline.getState(),
+      hasUntrustedActivation: () => privateBaseline.hasUntrustedActivation(),
+      quarantine: async () => {
+        events.push('quarantine')
+        return privateBaseline.quarantine()
+      },
+      restore: () => privateBaseline.restore(),
+    }
+    const controller = new EventEmitter()
+    controller.status = { state: 'starting' }
+    controller.stop = async () => {
+      events.push('stop')
+      controller.status = { state: 'stopped' }
+      controller.emit('status', controller.status)
+    }
+    controller.start = async () => {
+      events.push('start')
+      controller.status = { state: 'starting' }
+      controller.emit('status', controller.status)
+      controller.status = { state: 'ready', url: 'http://127.0.0.1:14569/' }
+      controller.emit('status', controller.status)
+      return controller.status.url
+    }
+    const store = new PluginRecoveryStore({ profileDir, stateDir, builtInBundles: BUILTIN_BUNDLES })
+    const recovery = new DesktopPluginRecovery({
+      controller,
+      pluginManager: {
+        inventory: async () => { throw new Error('dependency tree is not recognizable') },
+        recoveryCandidates: async () => [],
+        enterSafeMode: async () => { throw new Error('safe mode must not run without candidates') },
+      },
+      store,
+      ensureProfile: async () => { events.push('ensure') },
+      builtInBundles: BUILTIN_BUNDLES,
+      baselineQuarantine,
+      schedule: () => ({ unref() {} }),
+      cancelSchedule: () => {},
+    })
+    await recovery.initialize()
+
+    // Simulate a process interruption after active.json was committed and
+    // before the profile patch was replaced.  The next crash must reconcile
+    // this existing archive instead of returning early because it is active.
+    await privateBaseline.quarantine()
+    await writeFile(join(profileDir, 'cordis.patch.yml'), opaquePatch)
+    events.splice(0)
+    controller.status = { state: 'crashed', error: 'DSH runtime did not become ready within 120000ms' }
+    controller.emit('status', controller.status)
+    for (let attempt = 0; attempt < 100 && controller.status.state !== 'ready'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+
+    assert.equal(controller.status.state, 'ready')
+    assert.deepEqual(events, ['stop', 'quarantine', 'ensure', 'start'])
+    assert.equal(await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8'), '')
+    assert.equal((await recovery.getState()).baselineQuarantineAvailable, true)
+    await recovery.dispose()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a persisted baseline marker remains visible and safe after a later process restart', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-persisted-baseline-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  const stateDir = join(root, 'recovery')
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), '- name: @user/unregistered\n')
+    const baselineQuarantine = new DesktopProfileBaselineQuarantine({ dshHome, profileDir, stateDir })
+    await baselineQuarantine.quarantine()
+
+    const controller = new EventEmitter()
+    controller.status = { state: 'stopped' }
+    controller.stop = async () => {}
+    controller.start = async () => {}
+    const store = new PluginRecoveryStore({ profileDir, stateDir, builtInBundles: BUILTIN_BUNDLES })
+    const recovery = new DesktopPluginRecovery({
+      controller,
+      pluginManager: {
+        inventory: async () => [],
+        recoveryCandidates: async () => [],
+        enterSafeMode: async () => { throw new Error('unexpected safe mode') },
+      },
+      store,
+      ensureProfile: async () => { throw new Error('a fully applied baseline should not be regenerated here') },
+      builtInBundles: BUILTIN_BUNDLES,
+      baselineQuarantine,
+    })
+    await recovery.initialize()
+
+    const state = await recovery.getState()
+    assert.equal(state.safeMode, true)
+    assert.equal(state.baselineQuarantineAvailable, true)
+    assert.equal(state.currentIncident.reasonCode, 'untrusted-profile-loader')
+    assert.equal(state.currentIncident.resolution, 'baseline-quarantine-active')
+    await recovery.dispose()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('opaque baseline fallback never quarantines host startup failures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-opaque-host-'))
+  try {
+    const controller = new EventEmitter()
+    controller.status = { state: 'starting' }
+    controller.stop = async () => {}
+    controller.start = async () => {}
+    let quarantines = 0
+    const baselineQuarantine = {
+      getState: async () => ({ available: false }),
+      hasUntrustedActivation: async () => true,
+      quarantine: async () => { quarantines += 1; return { changed: true, available: true } },
+      restore: async () => true,
+    }
+    const store = new PluginRecoveryStore({ profileDir: join(root, 'profile'), stateDir: join(root, 'recovery') })
+    const recovery = new DesktopPluginRecovery({
+      controller,
+      pluginManager: {
+        inventory: async () => { throw new Error('unrecognized tree') },
+        recoveryCandidates: async () => [],
+        enterSafeMode: async () => { throw new Error('must not enter safe mode') },
+      },
+      store,
+      ensureProfile: async () => {},
+      baselineQuarantine,
+    })
+    await recovery.initialize()
+    controller.status = { state: 'crashed', error: 'listen EADDRINUSE 127.0.0.1:43125' }
+    controller.emit('status', controller.status)
+    for (let attempt = 0; attempt < 30; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5))
+    assert.equal(quarantines, 0)
+    assert.equal((await recovery.getState()).baselineQuarantineAvailable, false)
+    await recovery.dispose()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a remaining opaque patch loader falls back to the baseline after manifest safe mode retries once', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-safe-mode-to-baseline-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  const stateDir = join(root, 'recovery')
+  const packageName = '@community/recognized-manifest'
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: { [packageName]: '1.0.0' },
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES, packageName] } },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), '- insert: [unregistered patch loader\n')
+    const baselineQuarantine = new DesktopProfileBaselineQuarantine({ dshHome, profileDir, stateDir })
+    const controller = new EventEmitter()
+    controller.status = { state: 'starting' }
+    controller.stop = async () => {
+      controller.status = { state: 'stopped' }
+      controller.emit('status', controller.status)
+    }
+    let starts = 0
+    controller.start = async () => {
+      starts += 1
+      controller.status = { state: 'starting' }
+      controller.emit('status', controller.status)
+      if (starts === 1) {
+        queueMicrotask(() => {
+          controller.status = { state: 'crashed', error: 'DSH runtime did not become ready within 120000ms' }
+          controller.emit('status', controller.status)
+        })
+        return undefined
+      }
+      controller.status = { state: 'ready', url: 'http://127.0.0.1:14568/' }
+      controller.emit('status', controller.status)
+      return controller.status.url
+    }
+    let safeModeCalls = 0
+    const pluginManager = {
+      inventory: async () => [{ name: packageName, builtIn: false }],
+      recoveryCandidates: async () => [packageName],
+      enterSafeMode: async () => {
+        safeModeCalls += 1
+        return {
+          result: {
+            changed: true,
+            disabled: [packageName],
+            disabledDependencies: { [packageName]: '1.0.0' },
+          },
+          commit: () => true,
+          rollback: async () => true,
+        }
+      },
+    }
+    const store = new PluginRecoveryStore({ profileDir, stateDir, builtInBundles: BUILTIN_BUNDLES })
+    const recovery = new DesktopPluginRecovery({
+      controller,
+      pluginManager,
+      store,
+      ensureProfile: async () => {},
+      builtInBundles: BUILTIN_BUNDLES,
+      baselineQuarantine,
+      schedule: () => ({ unref() {} }),
+      cancelSchedule: () => {},
+    })
+    await recovery.initialize()
+    controller.status = { state: 'crashed', error: 'DSH runtime did not become ready within 120000ms' }
+    controller.emit('status', controller.status)
+    for (let attempt = 0; attempt < 160; attempt += 1) {
+      if (controller.status.state === 'ready') break
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    const state = await recovery.getState()
+    assert.equal(safeModeCalls, 1)
+    assert.equal(starts, 2)
+    assert.equal(controller.status.state, 'ready')
+    assert.equal(state.baselineQuarantineAvailable, true)
+    assert.equal(state.currentIncident.reasonCode, 'untrusted-profile-loader')
+    await recovery.dispose()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('package inspection recovery quarantines user dependencies without reading their broken manifests', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-inspection-'))
+  const profileDir = join(root, 'profile')
+  const stateDir = join(root, 'recovery')
+  const packageName = '@community/broken-manifest'
+  try {
+    const packageRoot = join(profileDir, 'node_modules', ...packageName.split('/'))
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), `${JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: { [packageName]: '1.0.0' },
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES, packageName] } },
+    }, null, 2)}\n`)
+    await writeFile(join(packageRoot, 'package.json'), '{ broken')
+    const store = new PluginRecoveryStore({ profileDir, stateDir, builtInBundles: BUILTIN_BUNDLES })
+    const manager = new PluginManager({
+      profileDir,
+      pnpmCli: 'pnpm.mjs',
+      runner: async () => {},
+      beforeMutation: (event) => store.captureSnapshot({ kind: 'before-mutation', label: event.type }),
+    })
+
+    const recovered = await recoverProfileAfterPluginInspectionFailure({
+      pluginManager: manager,
+      store,
+      ensureProfile: async () => {},
+      error: Object.assign(new Error('invalid package manifest while checking compatibility'), {
+        code: PLUGIN_PACKAGE_MANIFEST_READ_ERROR,
+      }),
+    })
+    const state = await store.getState()
+    const manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.equal(recovered.recovered, true)
+    assert.deepEqual(recovered.disabledPlugins, [packageName])
+    assert.equal(state.safeMode, true)
+    assert.equal(state.currentIncident.reasonCode, 'plugin-inspection-failed')
+    assert.deepEqual(state.currentIncident.candidatePlugins, [packageName])
+    assert.equal(manifest.dependencies[packageName], undefined)
+    assert.equal(manifest.dsh.profile.bundles.includes(packageName), false)
+    assert.equal(await readFile(join(packageRoot, 'package.json'), 'utf8'), '{ broken')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('generic compatibility provider failures preserve every user plugin', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-provider-'))
+  const profileDir = join(root, 'profile')
+  const packageName = '@community/healthy'
+  try {
+    await mkdir(profileDir, { recursive: true })
+    const packageRoot = join(profileDir, 'node_modules', ...packageName.split('/'))
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), `${JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: { [packageName]: '1.0.0' },
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES, packageName] } },
+    }, null, 2)}\n`)
+    await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
+      name: packageName,
+      version: '1.0.0',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }))
+    const store = new PluginRecoveryStore({ profileDir, stateDir: join(root, 'recovery') })
+    const manager = new PluginManager({
+      profileDir,
+      pnpmCli: 'pnpm.mjs',
+      hostCompatibility: () => { throw new Error('runtime compatibility provider metadata is unavailable') },
+    })
+    let providerError
+    try {
+      await manager.reconcileCompatibility()
+    } catch (error) {
+      providerError = error
+    }
+    assert.match(providerError?.message ?? '', /provider metadata is unavailable/u)
+    assert.equal(isPluginPackageInspectionFailure(providerError), false)
+    let safeModeCalls = 0
+    manager.enterSafeMode = async () => {
+      safeModeCalls += 1
+      throw new Error('must not enter safe mode for a host compatibility failure')
+    }
+    const result = await recoverProfileAfterPluginInspectionFailure({
+      pluginManager: manager,
+      store,
+      ensureProfile: async () => {},
+      error: providerError,
+    })
+    assert.equal(result.recovered, false)
+    assert.equal(safeModeCalls, 0)
+    const manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+    assert.equal(manifest.dependencies[packageName], '1.0.0')
+    assert.equal(manifest.dsh.profile.bundles.includes(packageName), true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('unattributed timeout uses lightweight profile candidates when normal inventory is unavailable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-unattributed-timeout-'))
+  const packageName = '@community/opaque'
+  try {
+    const controller = new EventEmitter()
+    controller.status = { state: 'starting' }
+    controller.stop = async () => {
+      controller.status = { state: 'stopped' }
+      controller.emit('status', controller.status)
+    }
+    let starts = 0
+    controller.start = async () => {
+      starts += 1
+      controller.status = { state: 'starting' }
+      controller.emit('status', controller.status)
+      controller.status = { state: 'ready', url: 'http://127.0.0.1:1234/' }
+      controller.emit('status', controller.status)
+      return controller.status.url
+    }
+    let safeModeCalls = 0
+    const pluginManager = {
+      inventory: async () => { throw new Error('broken third-party package.json') },
+      recoveryCandidates: async () => [packageName],
+      enterSafeMode: async () => {
+        safeModeCalls += 1
+        return {
+          result: {
+            changed: true,
+            disabled: [packageName],
+            disabledDependencies: { [packageName]: '1.0.0' },
+          },
+          commit: () => true,
+          rollback: async () => true,
+        }
+      },
+    }
+    const profileDir = join(root, 'profile')
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({ dependencies: {} }))
+    const store = new PluginRecoveryStore({
+      profileDir,
+      stateDir: join(root, 'recovery'),
+      builtInBundles: BUILTIN_BUNDLES,
+    })
+    const recovery = new DesktopPluginRecovery({
+      controller,
+      pluginManager,
+      store,
+      ensureProfile: async () => {},
+      builtInBundles: BUILTIN_BUNDLES,
+      schedule: () => ({ unref() {} }),
+      cancelSchedule: () => {},
+    })
+    await recovery.initialize()
+    controller.status = { state: 'crashed', error: 'DSH runtime did not become ready within 120000ms' }
+    controller.emit('status', controller.status)
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if ((await recovery.getState()).safeMode) break
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    const state = await recovery.getState()
+    assert.equal(safeModeCalls, 1)
+    assert.equal(starts, 1)
+    assert.equal(state.safeMode, true)
+    assert.equal(state.currentIncident.reasonCode, 'unattributed-plugin-startup')
+    assert.deepEqual(state.currentIncident.candidatePlugins, [packageName])
+    assert.deepEqual(state.disabledPlugins, [packageName])
+    await recovery.dispose()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('unknown host failures preserve community plugins instead of entering automatic safe mode', async () => {
@@ -333,6 +966,89 @@ test('plugin recovery store preserves incidents and snapshot contents across res
   }
 })
 
+test('a host failure after one isolated plugin does not disable the remaining plugins', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-second-host-failure-'))
+  const profileDir = join(root, 'profile')
+  const firstPlugin = '@community/first'
+  const secondPlugin = '@community/second'
+  try {
+    const controller = new EventEmitter()
+    controller.status = { state: 'starting' }
+    controller.stop = async () => {
+      controller.status = { state: 'stopped' }
+      controller.emit('status', controller.status)
+    }
+    let starts = 0
+    controller.start = async () => {
+      starts += 1
+      controller.status = { state: 'starting' }
+      controller.emit('status', controller.status)
+      queueMicrotask(() => {
+        controller.status = { state: 'crashed', error: 'listen EADDRINUSE 127.0.0.1:43125' }
+        controller.emit('status', controller.status)
+      })
+    }
+    const disabled = []
+    let safeModeCalls = 0
+    const pluginManager = {
+      inventory: async () => [
+        { name: firstPlugin, builtIn: false },
+        { name: secondPlugin, builtIn: false },
+      ],
+      recoveryCandidates: async () => [firstPlugin, secondPlugin],
+      setEnabled: async (name, enabled) => {
+        assert.equal(enabled, false)
+        return {
+          result: { dependencySpec: '1.0.0' },
+          commit: () => disabled.push(name),
+          rollback: async () => {},
+        }
+      },
+      enterSafeMode: async () => {
+        safeModeCalls += 1
+        return {
+          result: { changed: true, disabled: [secondPlugin], disabledDependencies: { [secondPlugin]: '1.0.0' } },
+          commit: () => {},
+          rollback: async () => {},
+        }
+      },
+    }
+    const store = new PluginRecoveryStore({ profileDir, stateDir: join(root, 'recovery'), builtInBundles: BUILTIN_BUNDLES })
+    const recovery = new DesktopPluginRecovery({
+      controller,
+      pluginManager,
+      store,
+      ensureProfile: async () => {},
+      builtInBundles: BUILTIN_BUNDLES,
+      schedule: () => ({ unref() {} }),
+      cancelSchedule: () => {},
+    })
+    await recovery.initialize()
+    controller.emit('line', {
+      stream: 'stderr',
+      line: `failed to load plugin '${firstPlugin}'`,
+    })
+    controller.status = { state: 'crashed', error: `failed to load plugin '${firstPlugin}'` }
+    controller.emit('status', controller.status)
+    for (let attempt = 0; attempt < 100 && starts === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    for (let attempt = 0; attempt < 100 && safeModeCalls === 0 && controller.status.state !== 'crashed'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    // Let the queued second crash run after the original isolated retry.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    assert.equal(starts, 1)
+    assert.deepEqual(disabled, [firstPlugin])
+    assert.equal(safeModeCalls, 0)
+    assert.equal((await recovery.getState()).safeMode, false)
+    await recovery.dispose()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('desktop plugin recovery isolates once and enters safe mode after the next failure', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-recovery-flow-'))
   const profileDir = join(root, 'profile')
@@ -373,9 +1089,9 @@ test('desktop plugin recovery isolates once and enters safe mode after the next 
       controller.status = { state: 'starting' }
       controller.emit('status', controller.status)
       if (starts === 1) {
-        controller.status = { state: 'crashed', error: 'another startup failure' }
+        controller.status = { state: 'crashed', error: 'failed to load plugin bootstrap after the isolated retry' }
         controller.emit('status', controller.status)
-        throw new Error('another startup failure')
+        throw new Error('failed to load plugin bootstrap after the isolated retry')
       }
       controller.status = { state: 'ready', url: 'http://127.0.0.1:1234/' }
       controller.emit('status', controller.status)

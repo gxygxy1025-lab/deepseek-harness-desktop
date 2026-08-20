@@ -1,22 +1,24 @@
 {
   "schemaVersion": 1,
   "derived": true,
+  "supportStatus": "known-good",
   "authority": {
     "desktopManifest": "apps/dsh-desktop/package.json",
     "rootManifest": "package.json",
     "lockfile": "pnpm-lock.yaml",
-    "runtimePackageManifest": "apps/dsh-desktop/node_modules/@deepseek-ai/dsh/package.json"
+    "runtimePackageManifest": "apps/dsh-desktop/node_modules/@deepseek-ai/dsh/package.json",
+    "clientSlotScan": "scripts/audit-dsh-coupling.mjs"
   },
   "desktop": {
-    "version": "2.6.0",
-    "rootVersion": "2.6.0",
+    "version": "2.7.0",
+    "rootVersion": "2.7.0",
     "nodeEngine": "^22.19.0 || >=24.0.0",
     "packageManager": "pnpm@11.22.0"
   },
   "runtime": {
     "packageName": "@deepseek-ai/dsh",
-    "version": "0.1.0-rc.6",
-    "integrity": "sha512-brpZfED7ieRa2PQ5tUxMhHrM1pb2CmKFVM/f6yMULBDMicahk+Z2OsHgTwTDnoiZm23Ftu9rQz0NN4pflaoJcg==",
+    "version": "0.1.0-rc.7",
+    "integrity": "sha512-ZceDCJ8FAywih+USW/OMk9jEhunlvJBGEz4kqrhau23hPzbciOazZrywH0nBRsaalSeAJ1JGBmjtw4OSjToStw==",
     "bin": {
       "dsh": "lib/bin.js"
     },
@@ -24,12 +26,12 @@
     "peerDependencies": {}
   },
   "lockfile": {
-    "sha256": "c403249b0708588a11620c15178500ef2e57e01974e6d87b55b90a3f1ee56df7"
+    "sha256": "0ad4191004722b095725bc1cdf6ae52d909bb6adfaff3c7683a1fb1420fc74f8"
   },
   "provider": {
     "providerId": "dsh-cli-provider-v1",
     "supportStatus": "known-good",
-    "upstreamVersion": "0.1.0-rc.6",
+    "upstreamVersion": "0.1.0-rc.7",
     "capabilities": [
       {
         "id": "runtime.lifecycle",
@@ -59,11 +61,25 @@
   },
   "compatPatches": {
     "registry": "packages/dsh-desktop-compat/src/patch-registry.ts",
-    "sha256": "e99e7dbc5c8843fde40e9dd961b2d72ea82cb82279a1a61aa64d8786689a5bc6",
+    "sha256": "56459061af4b45f848cda3faf13916f5301ad158272022169a18413a7981efc9",
     "ids": [
       "queued-turn-continuation",
       "cancellation-presentation",
+      "tool-call-arguments-envelope",
       "desktop-skin-profile-isolation"
+    ]
+  },
+  "clientSlots": {
+    "source": "scripts/audit-dsh-coupling.mjs",
+    "ids": [
+      "conversation.composer.dock",
+      "conversation.input.dock",
+      "conversation.input.selector.context",
+      "conversation.session.header.actions",
+      "settings.section",
+      "sidebar.footer.action",
+      "sidebar.remote",
+      "web-ui.plugin.item"
     ]
   },
   "packagedRuntimeIdentity": {

@@ -15,6 +15,8 @@ test('safe mode is visible and exposes one-click recovery outside the runtime re
   assert.match(html, /id="restore-safe-mode"[^>]*hidden/u)
   assert.match(renderer, /restoreDisabledPlugins\(\)/u)
   assert.match(renderer, /restoreSafeMode\.hidden = !state\.safeMode/u)
+  assert.match(renderer, /baselineQuarantineAvailable/u)
+  assert.match(renderer, /恢复原始加载配置并重启/u)
   assert.match(preload, /extensions:recovery-restore-all/u)
   assert.match(electron, /title: '插件安全模式'/u)
   assert.match(electron, /buttons: \['打开插件恢复', '稍后'\]/u)

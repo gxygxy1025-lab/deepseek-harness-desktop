@@ -63,6 +63,33 @@ test('Tools and Help menus expose Extension Dock and community actions', () => {
   ])
 })
 
+test('App menu exposes all persisted close choices and makes background automation an explicit opt-in', async () => {
+  const changes = []
+  const template = createApplicationMenuTemplate({
+    app: { getVersion: () => '2.7.0' },
+    shell: { openExternal: () => {} },
+    controller: { restart: () => {} },
+    openCommunity: () => {},
+    openFeedback: () => {},
+    openExtensions: () => {},
+    openLogs: () => {},
+    checkForUpdates: () => {},
+    getCloseBehavior: () => 'ask',
+    setCloseBehavior: async (value) => { changes.push(value) },
+  })
+  const app = template.find((entry) => entry.label === '应用 / App')
+  const closeBehavior = app.submenu.find((entry) => entry.label === '关闭行为 / Close behavior')
+  const ask = closeBehavior.submenu.find((entry) => entry.label.includes('Ask every time'))
+  const background = closeBehavior.submenu.find((entry) => entry.label.includes('enable background automation'))
+  assert.equal(ask.type, 'radio')
+  assert.equal(ask.checked, true)
+  assert.equal(background.type, 'radio')
+  assert.equal(background.checked, false)
+  background.click()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(changes, ['minimize-to-tray'])
+})
+
 test('Edit menu and native context menu expose paste without renderer clipboard access', () => {
   const template = createApplicationMenuTemplate({
     app: { getVersion: () => '2.4.0' },

@@ -12,6 +12,7 @@
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from 'schemastery'
@@ -21,6 +22,7 @@ import { HostTaskFileStore, resolveTaskBoardStatePath } from './host/file-store.
 import { makeTaskBoardRoutes } from './host/routes.ts'
 import { makeTaskBoardV3Routes } from './host/v3-routes.ts'
 import { HostTaskStoreV3, resolveTaskBoardV3StatePath } from './host/v3-file-store.ts'
+import { HostDurableScheduler, type HostScheduledTaskRunner } from './host/durable-scheduler.ts'
 
 /** Order of the announcement section within the tool-guidance band. */
 const SECTION_ORDER = 200
@@ -36,9 +38,11 @@ export * from './core/evidence.ts'
 export * from './core/review.ts'
 export * from './core/worktree-execution.ts'
 export * from './host/v3-file-store.ts'
+export * from './host/durable-scheduler.ts'
+export * from './core/scheduler-authority.ts'
 
 /** Model-facing announcement: plugin presence, capabilities, and limits. */
-export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 插件（DSH Web GUI 的任务看板）：侧边栏「任务看板」入口；在 dsh-web-ui 插件全家桶仓库（packages/dsh-task-board）统一维护，经聚合包 web-ui-all 一键安装。能力：多列看板管理任务；任务可真实执行（驱动 agent 会话）；任务支持 5 段 cron 定时执行（如 0 23 * * *）；Desktop 2.6 可记录 Project、Task Run 和派生 Evidence，并在 Runtime Provider 支持时使用受控 Git Worktree 审核。数据优先保存到当前 DSH profile 的 state/task-board/tasks-v3.json，Host 不可用时兼容旧 Host 与浏览器 localStorage v1；缺少 Worktree 能力会明确回退 shared-workspace，不伪造隔离状态。限制：定时调度仍在浏览器端，需 GUI 标签页打开，错过即跳过；执行消耗 API 额度。用户提到「任务看板 / 看板 / 定时任务」时即指本插件，请据此协作。'
+export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 插件（DSH Web GUI 的任务看板）：侧边栏「任务看板」入口；在 dsh-web-ui 插件全家桶仓库（packages/dsh-task-board）统一维护，经聚合包 web-ui-all 一键安装。能力：多列看板管理任务；任务可真实执行（驱动 agent 会话）；任务支持 5 段 cron 定时执行（如 0 23 * * *）；Desktop 2.6 可记录 Project、Task Run 和派生 Evidence，并在 Runtime Provider 支持时使用受控 Git Worktree 审核。Desktop 2.7 在用户明确开启后台自动化且 Runtime Provider 提供 host-job adapter 时，可由 Host 以租约、时区 cron 和确定性 TaskRun 认领计划；否则保留浏览器调度回退，避免双执行。数据优先保存到当前 DSH profile 的 state/task-board/tasks-v3.json，Host 不可用时兼容旧 Host 与浏览器 localStorage v1；缺少 Worktree 能力会明确回退 shared-workspace，不伪造隔离状态。限制：应用完全退出后不承诺调度继续执行；执行消耗 API 额度。用户提到「任务看板 / 看板 / 定时任务」时即指本插件，请据此协作。'
 
 /**
  * Settings namespace of the board's announcement capability — the section the
@@ -46,6 +50,17 @@ export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 插件（DSH 
  * half spells the same value and must not depend on a Host package.
  */
 export const TASK_BOARD_SETTINGS_NAMESPACE = settingsNamespace('task-board')
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /**
+     * Optional Runtime Provider adapter. Desktop supplies it only after the
+     * user has opted into background automation; ordinary dsh web leaves it
+     * absent and keeps the legacy browser scheduler as the explicit fallback.
+     */
+    taskBoardHostScheduleRunner?: HostScheduledTaskRunner
+  }
+}
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
@@ -92,15 +107,46 @@ export function apply(ctx: Context, config?: Config): void {
       for (const dispose of disposers) dispose()
     }
   }, 'task-board: host file store')
+  const v3Store = new HostTaskStoreV3({
+    path: resolveTaskBoardV3StatePath(dshHome, profileName),
+    v2Path: resolveTaskBoardStatePath(dshHome, profileName),
+  })
+  let hostScheduler: HostDurableScheduler | undefined
+  const schedulerStatus = {
+    status: () => hostScheduler?.status() ?? {
+      available: false,
+      mode: 'client-fallback' as const,
+      provider: 'unavailable' as const,
+      reason: 'Runtime Provider host-job capability is unavailable; browser scheduler remains active.',
+    },
+  }
   ctx.effect(() => {
-    const v3Store = new HostTaskStoreV3({
-      path: resolveTaskBoardV3StatePath(dshHome, profileName),
-      v2Path: resolveTaskBoardStatePath(dshHome, profileName),
-    })
-    const family = makeTaskBoardV3Routes(v3Store)
+    const family = makeTaskBoardV3Routes(v3Store, { scheduler: schedulerStatus })
     const disposers = family.routes.map(route => ctx.webServer.register(route))
-    return () => { for (const dispose of disposers) dispose() }
+    return () => {
+      family.dispose()
+      for (const dispose of disposers) dispose()
+    }
   }, 'task-board: v3 Host file store')
+  // This optional dependency is intentionally not part of the base `inject`
+  // list: the browser-only runtime does not provide it. When a Desktop Runtime
+  // Provider exposes a host-job adapter, the scheduler starts and the fixed
+  // status route atomically flips clients to Host ownership.
+  ctx.inject(['taskBoardHostScheduleRunner'], (schedulerCtx) => {
+    const runner = schedulerCtx.taskBoardHostScheduleRunner
+    if (runner === undefined || (config?.enabled ?? true) === false) return
+    const scheduler = new HostDurableScheduler({
+      store: v3Store,
+      runner,
+      ownerId: `task-board-${randomUUID()}`,
+    })
+    hostScheduler = scheduler
+    scheduler.start()
+    return () => {
+      scheduler.dispose()
+      if (hostScheduler === scheduler) hostScheduler = undefined
+    }
+  })
 
   // The live source the announcement reads: the settings section once the web
   // settings surface is served, the composition entry otherwise

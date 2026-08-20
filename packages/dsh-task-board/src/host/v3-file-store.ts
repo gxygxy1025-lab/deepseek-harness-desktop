@@ -39,6 +39,26 @@ export interface TaskStoreV3Snapshot {
   evidences: Evidence[]
 }
 
+/**
+ * Result of a serialized Host-ledger mutation. `changed: false` keeps the
+ * existing revision and avoids a needless disk write; every changed mutation
+ * is read, transformed, verified, and atomically published as one queue item.
+ */
+export interface HostTaskStoreV3Mutation<T> {
+  result: T
+  changed?: boolean
+}
+
+/** A stale browser document must never overwrite a Host-admitted TaskRun. */
+export class TaskLedgerRevisionConflictError extends Error {
+  readonly code = 'task-board-revision-conflict'
+
+  constructor(readonly current: TaskLedgerDocumentV3) {
+    super('task-board v3 ledger revision conflict')
+    this.name = 'TaskLedgerRevisionConflictError'
+  }
+}
+
 function cloneSnapshot(value: TaskStoreV3Snapshot): TaskStoreV3Snapshot {
   return structuredClone(value)
 }
@@ -50,6 +70,7 @@ function cloneSnapshot(value: TaskStoreV3Snapshot): TaskStoreV3Snapshot {
 export class HostTaskStoreV3 {
   private document: TaskLedgerDocumentV3 | undefined
   private queue: Promise<void> = Promise.resolve()
+  private readonly listeners = new Set<(document: TaskLedgerDocumentV3) => void>()
   private readonly now: () => number
   private readonly randomId: () => string
 
@@ -59,17 +80,14 @@ export class HostTaskStoreV3 {
   }
 
   async load(): Promise<TaskLedgerDocumentV3> {
-    await this.queue
-    if (this.document !== undefined) return structuredClone(this.document)
-    const v3Raw = await readText(this.options.path)
-    if (v3Raw !== undefined) {
-      const parsed = parseLedgerDocumentV3(v3Raw)
-      if (parsed !== undefined) {
-        this.document = parsed
-        return structuredClone(parsed)
-      }
-    }
-    return this.migrateFromV2(v3Raw !== undefined ? 'invalid-v3' : undefined)
+    // Initialization is a write-sensitive transition too: two concurrent
+    // route/scheduler reads must not each perform an independent migration.
+    let result: TaskLedgerDocumentV3 | undefined
+    await this.enqueue(async () => {
+      const current = this.document ?? await this.loadWithoutQueue()
+      result = structuredClone(current)
+    })
+    return result as TaskLedgerDocumentV3
   }
 
   async save(value: TaskStoreV3Snapshot | TaskLedgerDocumentV3 | readonly TaskRecord[]): Promise<TaskLedgerDocumentV3> {
@@ -78,6 +96,7 @@ export class HostTaskStoreV3 {
       const current = this.document ?? await this.loadWithoutQueue()
       let snapshot: TaskStoreV3Snapshot
       if (isDocument(value)) {
+        if (value.revision !== current.revision) throw new TaskLedgerRevisionConflictError(structuredClone(current))
         snapshot = { projects: value.projects, tasks: value.tasks, evidences: value.evidences }
       } else if (Array.isArray(value)) {
         snapshot = { projects: current.projects, tasks: value as TaskRecord[], evidences: current.evidences }
@@ -92,18 +111,77 @@ export class HostTaskStoreV3 {
       })
       await this.publish(next)
       this.document = next
+      this.notify(next)
       result = structuredClone(next)
     })
     return result as TaskLedgerDocumentV3
   }
 
-  async clear(): Promise<TaskLedgerDocumentV3> {
-    return this.save({ projects: [], tasks: [], evidences: [] })
+  /**
+   * Serialize a read/modify/write transition over the authoritative document.
+   * The mutator receives an isolated clone and may update projects, tasks, or
+   * Evidence together. This is the primitive the durable scheduler uses to
+   * advance `nextRunAt` and append its TaskRun before asking a provider to run.
+   */
+  async mutate<T>(
+    operation: (document: TaskLedgerDocumentV3) => HostTaskStoreV3Mutation<T> | Promise<HostTaskStoreV3Mutation<T>>,
+  ): Promise<T> {
+    let result: T | undefined
+    await this.enqueue(async () => {
+      const current = this.document ?? await this.loadWithoutQueue()
+      const working = structuredClone(current)
+      const outcome = await operation(working)
+      if (outcome.changed !== false) {
+        const next = createLedgerDocumentV3({
+          projects: working.projects,
+          tasks: working.tasks,
+          evidences: working.evidences,
+          revision: current.revision + 1,
+          updatedAt: this.now(),
+          migration: working.migration,
+        })
+        await this.publish(next)
+        this.document = next
+        this.notify(next)
+      }
+      result = outcome.result
+    })
+    return result as T
+  }
+
+  /** Clear only the revision the caller actually observed (when supplied). */
+  async clear(expectedRevision?: number): Promise<TaskLedgerDocumentV3> {
+    let result: TaskLedgerDocumentV3 | undefined
+    await this.enqueue(async () => {
+      const current = this.document ?? await this.loadWithoutQueue()
+      if (expectedRevision !== undefined && expectedRevision !== current.revision) {
+        throw new TaskLedgerRevisionConflictError(structuredClone(current))
+      }
+      const next = createLedgerDocumentV3({
+        projects: [],
+        tasks: [],
+        evidences: [],
+        revision: current.revision + 1,
+        updatedAt: this.now(),
+        migration: current.migration,
+      })
+      await this.publish(next)
+      this.document = next
+      this.notify(next)
+      result = structuredClone(next)
+    })
+    return result as TaskLedgerDocumentV3
   }
 
   async snapshot(): Promise<TaskStoreV3Snapshot> {
     const document = await this.load()
     return { projects: document.projects, tasks: document.tasks, evidences: document.evidences }
+  }
+
+  /** Mutation-driven cross-window synchronization; no polling is required. */
+  subscribe(listener: (document: TaskLedgerDocumentV3) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
   }
 
   private async enqueue(operation: () => Promise<void>): Promise<void> {
@@ -192,6 +270,16 @@ export class HostTaskStoreV3 {
       await rename(temporary, this.options.path)
     } finally {
       await rm(temporary, { force: true }).catch(() => {})
+    }
+  }
+
+  private notify(document: TaskLedgerDocumentV3): void {
+    for (const listener of [...this.listeners]) {
+      try {
+        listener(structuredClone(document))
+      } catch {
+        // A browser/SSE observer must never break the authoritative write.
+      }
     }
   }
 }

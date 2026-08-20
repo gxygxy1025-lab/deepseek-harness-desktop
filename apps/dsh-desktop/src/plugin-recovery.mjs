@@ -3,13 +3,53 @@ import { EventEmitter } from 'node:events'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { PLUGIN_PACKAGE_MANIFEST_READ_ERROR } from './extensions/plugins.mjs'
+
 const STATE_VERSION = 1
-const RECOVERY_POLICY_VERSION = 2
+const RECOVERY_POLICY_VERSION = 4
+const LEGACY_FALSE_POSITIVE_POLICY_VERSION = 2
 const MAX_INCIDENTS = 20
 const MAX_TECHNICAL_DETAILS = 8_000
+const MAX_RECOVERY_CANDIDATES = 48
+
+const HOST_STARTUP_FAILURE = /(?:\bEADDRINUSE\b|\blisten\b[^\r\n]{0,160}\b(?:127\.0\.0\.1|localhost|::1)\b|\bport\s+\d{2,5}\s+(?:is\s+)?(?:already\s+)?(?:in\s+use|occupied)\b|\b(?:spawn|createprocess)\b[^\r\n]{0,160}\b(?:ENOENT|EACCES|EPERM)\b|\bpermission denied\b|\bPowerShell\b|\bWindows\s+code\s+0xFFFFFFFF\b|\bsigned\s+-1\b|\bcode\s*(?:=|:)?\s*-1\b|\b4294967295\b|\b-WindowStyle\b|\bruntime integrity\b|\bapp\.asar\b)/iu
+const PLUGIN_BOOTSTRAP_FAILURE = /(?:did not become ready|tim(?:ed|e)[ -]?out|exited before readiness|failed to (?:import|load)|\b(?:plugin|bundle|loader|cordis|patch|module)\b)/iu
 
 function asMessage(value) {
   return String(value ?? '').slice(-MAX_TECHNICAL_DETAILS)
+}
+
+function recoveryCandidates(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value
+    .filter((name) => typeof name === 'string' && name.trim().length > 0)
+    .map((name) => name.trim().slice(0, 256)))].toSorted().slice(0, MAX_RECOVERY_CANDIDATES)
+}
+
+/**
+ * A generic early crash should not be blamed on third-party plugins merely
+ * because some are installed. In particular, port contention and the known
+ * Windows GUI/PowerShell launcher failure need their own repair path. For a
+ * plugin-shaped startup failure, though, an intact profile manifest gives us a
+ * reversible last resort even when inspecting a package's own manifest fails.
+ */
+export function isHostStartupFailure(rawText) {
+  const technicalDetails = asMessage(rawText)
+  return HOST_STARTUP_FAILURE.test(technicalDetails)
+}
+
+export function isPluginBootstrapFailure(rawText) {
+  const technicalDetails = asMessage(rawText)
+  return !isHostStartupFailure(technicalDetails) && PLUGIN_BOOTSTRAP_FAILURE.test(technicalDetails)
+}
+
+export function shouldAutomaticallyEnterSafeMode(rawText, { candidatePlugins = [] } = {}) {
+  return recoveryCandidates(candidatePlugins).length > 0 && isPluginBootstrapFailure(rawText)
+}
+
+/** A tagged package-manifest read failure is safe to recover before runtime startup. */
+export function isPluginPackageInspectionFailure(error) {
+  return error?.code === PLUGIN_PACKAGE_MANIFEST_READ_ERROR
 }
 
 function packagePattern(name) {
@@ -55,6 +95,17 @@ export function classifyPluginFailure(rawText, {
   protectedPlugins = [],
 } = {}) {
   const technicalDetails = asMessage(rawText)
+  // A later host failure is more reliable than a plugin name printed earlier
+  // in the same bounded log window.  Never mutate a user profile for a port,
+  // launcher, integrity, or permission failure.
+  if (isHostStartupFailure(technicalDetails)) {
+    return Object.freeze({
+      identified: false,
+      reasonCode: 'unknown',
+      summary: '运行环境启动失败，已保留插件配置',
+      technicalDetails,
+    })
+  }
   const active = new Set(activePlugins.filter((name) => typeof name === 'string'))
   const protectedSet = new Set(protectedPlugins.filter((name) => typeof name === 'string'))
   const explicit = explicitPlugin(technicalDetails)
@@ -158,6 +209,7 @@ function publicIncident(incident) {
     reasonCode: incident.reasonCode,
     summary: incident.summary,
     technicalDetails: incident.technicalDetails,
+    candidatePlugins: Object.freeze(recoveryCandidates(incident.candidatePlugins)),
     resolution: incident.resolution,
   }
 }
@@ -245,7 +297,16 @@ export class PluginRecoveryStore extends EventEmitter {
   getLegacyAutoSafeModeRepair() {
     return this.#enqueue(async () => {
       await this.#initialize()
-      if (this.state.policyVersion >= RECOVERY_POLICY_VERSION) return undefined
+      // Only Desktop releases before policy v2 entered safe mode for every
+      // unknown timeout. Policy v3 deliberately recovers plugin-shaped
+      // unknown failures, so do not undo a v2/v3 recovery on upgrade.
+      if (this.state.policyVersion >= LEGACY_FALSE_POSITIVE_POLICY_VERSION) {
+        if (this.state.policyVersion !== RECOVERY_POLICY_VERSION) {
+          this.state.policyVersion = RECOVERY_POLICY_VERSION
+          await this.#save()
+        }
+        return undefined
+      }
       const incident = this.state.incidents.find((item) => item.id === this.state.currentIncidentId)
       const legacyUnknownTimeout = this.state.safeMode === true
         && incident?.identified !== true
@@ -351,6 +412,7 @@ export class PluginRecoveryStore extends EventEmitter {
         reasonCode: analysis?.reasonCode ?? 'unknown',
         summary: String(analysis?.summary ?? '插件启动失败').slice(0, 500),
         technicalDetails: asMessage(analysis?.technicalDetails),
+        candidatePlugins: recoveryCandidates(analysis?.candidatePlugins),
       }
       this.state.incidents.unshift(incident)
       this.state.incidents.splice(MAX_INCIDENTS)
@@ -448,6 +510,97 @@ export class PluginRecoveryStore extends EventEmitter {
   }
 }
 
+async function appendRecoveryLog(log, message) {
+  try {
+    await log(message)
+  } catch {
+    // Recovery diagnostics must never turn a recoverable startup error into a
+    // fatal one.
+  }
+}
+
+/**
+ * Recover from a failure while inspecting community package manifests before
+ * the runtime controller exists. Normal inventory opens every package.json,
+ * but this path uses only the profile manifest and then delegates the actual
+ * reversible mutation to PluginManager.enterSafeMode().
+ */
+export async function recoverProfileAfterPluginInspectionFailure({
+  pluginManager,
+  store,
+  ensureProfile,
+  error,
+  log = async () => {},
+} = {}) {
+  if (
+    !pluginManager
+    || typeof pluginManager.recoveryCandidates !== 'function'
+    || typeof pluginManager.enterSafeMode !== 'function'
+    || !store
+    || typeof store.recordIncident !== 'function'
+    || typeof ensureProfile !== 'function'
+  ) {
+    throw new TypeError('plugin inspection recovery requires a profile-aware plugin manager, store, and profile repair function')
+  }
+
+  if (!isPluginPackageInspectionFailure(error)) {
+    await appendRecoveryLog(log, '[plugin-recovery] compatibility failure was not a package-manifest inspection error; preserving plugins')
+    return Object.freeze({ recovered: false, candidatePlugins: Object.freeze([]) })
+  }
+
+  let candidatePlugins
+  try {
+    candidatePlugins = recoveryCandidates(await pluginManager.recoveryCandidates())
+  } catch (candidateError) {
+    await appendRecoveryLog(
+      log,
+      `[plugin-recovery] profile candidate read failed; preserving plugins: ${asMessage(candidateError instanceof Error ? candidateError.message : candidateError)}`,
+    )
+    return Object.freeze({ recovered: false, candidatePlugins: Object.freeze([]) })
+  }
+  if (candidatePlugins.length === 0) {
+    await appendRecoveryLog(log, '[plugin-recovery] package inspection failed without user plugin candidates; preserving plugins')
+    return Object.freeze({ recovered: false, candidatePlugins: Object.freeze([]) })
+  }
+
+  const technicalDetails = asMessage(error instanceof Error ? error.message : error)
+  const incident = await store.recordIncident({
+    identified: false,
+    reasonCode: 'plugin-inspection-failed',
+    summary: `无法读取用户插件清单，已暂时停用 ${candidatePlugins.length} 个用户插件以恢复启动`,
+    technicalDetails,
+    candidatePlugins,
+  })
+  let transaction
+  try {
+    transaction = await pluginManager.enterSafeMode()
+    const disabled = recoveryCandidates(transaction?.result?.disabled)
+    if (transaction?.result?.changed !== true || disabled.length === 0) {
+      await appendRecoveryLog(log, '[plugin-recovery] package inspection fallback found no mutable user plugin; preserving profile')
+      return Object.freeze({ recovered: false, candidatePlugins: Object.freeze(candidatePlugins) })
+    }
+    await ensureProfile()
+    await store.rememberDisabledDependencies(transaction.result.disabledDependencies)
+    await store.setSafeMode(true)
+    await store.resolveIncident(incident.id, 'safe-mode-auto-inspection')
+    transaction.commit()
+    await appendRecoveryLog(
+      log,
+      `[plugin-recovery] package inspection failed; entered reversible safe mode; disabled=${disabled.join(',')}`,
+    )
+    return Object.freeze({
+      recovered: true,
+      candidatePlugins: Object.freeze(candidatePlugins),
+      disabledPlugins: Object.freeze(disabled),
+      incident,
+    })
+  } catch (recoveryError) {
+    await transaction?.rollback?.().catch(() => {})
+    await ensureProfile().catch(() => {})
+    throw recoveryError
+  }
+}
+
 export class DesktopPluginRecovery extends EventEmitter {
   constructor({
     controller,
@@ -459,6 +612,7 @@ export class DesktopPluginRecovery extends EventEmitter {
     schedule = setTimeout,
     cancelSchedule = clearTimeout,
     log = async () => {},
+    baselineQuarantine,
   }) {
     super()
     if (!controller || !pluginManager || !store || typeof ensureProfile !== 'function') {
@@ -473,6 +627,18 @@ export class DesktopPluginRecovery extends EventEmitter {
     this.schedule = schedule
     this.cancelSchedule = cancelSchedule
     this.log = log
+    if (
+      baselineQuarantine !== undefined
+      && (
+        typeof baselineQuarantine.quarantine !== 'function'
+        || typeof baselineQuarantine.restore !== 'function'
+        || typeof baselineQuarantine.getState !== 'function'
+        || typeof baselineQuarantine.hasUntrustedActivation !== 'function'
+      )
+    ) {
+      throw new TypeError('baselineQuarantine must provide quarantine, restore, getState, and hasUntrustedActivation')
+    }
+    this.baselineQuarantine = baselineQuarantine
     this.lines = []
     this.recoveryStage = 0
     this.crashHandled = false
@@ -481,6 +647,7 @@ export class DesktopPluginRecovery extends EventEmitter {
     this.disposed = false
     this.stableTimer = undefined
     this.operationQueue = Promise.resolve()
+    this.backgroundOperations = new Set()
     this.onLine = (entry) => this.#handleLine(entry)
     this.onStatus = (status) => this.#handleStatus(status)
     this.onStoreChange = () => this.#publish()
@@ -488,7 +655,15 @@ export class DesktopPluginRecovery extends EventEmitter {
 
   async initialize() {
     await this.store.getState()
-    const legacyRepair = await this.store.getLegacyAutoSafeModeRepair()
+    const baselineActive = await this.#baselineQuarantineAvailable()
+    if (baselineActive) await this.#reconcilePersistedBaseline()
+
+    // A persisted baseline intentionally keeps all user loaders isolated.
+    // Do not let the pre-v2 legacy repair put dependencies back into that
+    // profile before the user has explicitly chosen Restore.
+    const legacyRepair = baselineActive
+      ? undefined
+      : await this.store.getLegacyAutoSafeModeRepair()
     if (legacyRepair) {
       let prepared
       try {
@@ -553,6 +728,13 @@ export class DesktopPluginRecovery extends EventEmitter {
     return result
   }
 
+  #trackBackground(operation) {
+    const task = Promise.resolve().then(operation)
+    this.backgroundOperations.add(task)
+    void task.finally(() => this.backgroundOperations.delete(task)).catch(() => {})
+    return task
+  }
+
   #handleLine(entry) {
     if (typeof entry?.line !== 'string') return
     this.lines.push(`[${entry.stream === 'stderr' ? 'stderr' : 'stdout'}] ${entry.line}`)
@@ -572,7 +754,7 @@ export class DesktopPluginRecovery extends EventEmitter {
       return
     }
     if (status?.state === 'ready') {
-      void this.store.captureSnapshot({ kind: 'last-known-good', label: '上次可用配置' }).catch((error) => {
+      void this.#trackBackground(() => this.store.captureSnapshot({ kind: 'last-known-good', label: '上次可用配置' })).catch((error) => {
         void this.#log(`[plugin-recovery] failed to capture last-known-good: ${error.message}`)
       })
       if (this.stableTimer !== undefined) this.cancelSchedule(this.stableTimer)
@@ -607,9 +789,126 @@ export class DesktopPluginRecovery extends EventEmitter {
     return inventory.filter((item) => !item.builtIn).map((item) => item.name)
   }
 
+  async #profileRecoveryCandidates() {
+    if (typeof this.pluginManager.recoveryCandidates !== 'function') return []
+    try {
+      return recoveryCandidates(await this.pluginManager.recoveryCandidates())
+    } catch (error) {
+      await this.#log(`[plugin-recovery] lightweight profile candidate read failed: ${asMessage(error instanceof Error ? error.message : error)}`)
+      return []
+    }
+  }
+
+  async #baselineQuarantineAvailable() {
+    if (!this.baselineQuarantine) return false
+    try {
+      return (await this.baselineQuarantine.getState())?.available === true
+    } catch (error) {
+      await this.#log('[plugin-recovery] private baseline recovery state is unavailable')
+      return false
+    }
+  }
+
+  async #hasUntrustedProfileActivation() {
+    if (!this.baselineQuarantine) return false
+    try {
+      return await this.baselineQuarantine.hasUntrustedActivation() === true
+    } catch (error) {
+      await this.#log('[plugin-recovery] opaque user activation check is unavailable')
+      return false
+    }
+  }
+
+  async #markBaselineRecoveryActive({ incident } = {}) {
+    const state = await this.store.getState()
+    let activeIncident = incident
+    if (
+      !activeIncident?.id
+      && ['untrusted-profile-loader', 'untrusted-profile-bootstrap'].includes(state.currentIncident?.reasonCode)
+    ) {
+      activeIncident = state.currentIncident
+    }
+    if (!activeIncident?.id) {
+      activeIncident = await this.store.recordIncident({
+        identified: false,
+        reasonCode: 'untrusted-profile-loader',
+        summary: '检测到已隔离的用户加载配置，桌面版正在使用可恢复的基线环境',
+        // This deliberately contains no path, file name, or source text from
+        // the private baseline archive.
+        technicalDetails: 'Desktop baseline recovery remains active',
+      })
+    }
+    if (!state.safeMode) await this.store.setSafeMode(true)
+    await this.store.resolveIncident(activeIncident.id, 'baseline-quarantine-active')
+    return activeIncident
+  }
+
+  async #reconcilePersistedBaseline() {
+    // An interruption can happen after active.json is durable but before all
+    // loader inputs were replaced.  Re-run the idempotent baseline application
+    // only when untrusted activation is still visible, then expose a durable
+    // safe-mode/restore state on every subsequent launch.
+    if (await this.#hasUntrustedProfileActivation()) {
+      await this.baselineQuarantine.quarantine()
+      await this.ensureProfile()
+      await this.#log('[plugin-recovery] reconciled an interrupted private baseline recovery')
+    }
+    await this.#markBaselineRecoveryActive()
+  }
+
+  async #quarantineUntrustedProfile({ incident } = {}) {
+    if (!this.baselineQuarantine) return false
+    let quarantined = false
+    try {
+      // stop() also cancels the controller's delayed auto-restart.  The raw
+      // loader bytes must never race a new child process while we archive and
+      // replace their profile inputs.
+      await this.controller.stop()
+      const result = await this.baselineQuarantine.quarantine()
+      quarantined = result?.changed === true
+      if (result?.available !== true) return false
+      await this.ensureProfile()
+      await this.#markBaselineRecoveryActive({ incident })
+      await this.#log('[plugin-recovery] untrusted user loader configuration quarantined; retrying Desktop baseline once')
+      try {
+        await this.controller.start()
+      } catch {
+        // The baseline is retained for the user to inspect or restore. Do not
+        // loop endlessly when the failure was actually in the host runtime.
+      }
+      return Object.freeze({ baselineQuarantine: true })
+    } catch (error) {
+      if (quarantined) {
+        await this.baselineQuarantine.restore().catch(() => {})
+        await this.ensureProfile().catch(() => {})
+      }
+      throw error
+    }
+  }
+
   async #recoverFromCrash(status) {
-    if (this.recoveryStage >= 2) return false
+    if (this.recoveryStage >= 3) return false
+    if (this.recoveryStage === 2) {
+      const technicalDetails = `${this.lines.join('\n')}\n${status?.error ?? ''}`
+      if (!isPluginBootstrapFailure(technicalDetails) || !await this.#hasUntrustedProfileActivation()) {
+        return false
+      }
+      this.recoveryStage = 3
+      const incident = await this.store.recordIncident({
+        identified: false,
+        reasonCode: 'untrusted-profile-loader',
+        summary: '安全模式后仍检测到无法识别的用户加载配置，已暂时切换到桌面基线以恢复启动',
+        technicalDetails,
+      })
+      await this.#log('[plugin-recovery] plugin-safe-mode retry still saw an opaque user loader; trying a reversible Desktop baseline once')
+      return this.#quarantineUntrustedProfile({ incident })
+    }
     if (this.recoveryStage === 1) {
+      const technicalDetails = `${this.lines.join('\n')}\n${status?.error ?? ''}`
+      if (!isPluginBootstrapFailure(technicalDetails)) {
+        await this.#log('[plugin-recovery] second startup failure is host-or-non-plugin; preserving remaining plugins')
+        return false
+      }
       await this.#log('[plugin-recovery] second startup failure; entering safe mode')
       return this.#enterSafeMode({ automatic: true })
     }
@@ -620,14 +919,54 @@ export class DesktopPluginRecovery extends EventEmitter {
     } catch (error) {
       await this.#log(`[plugin-recovery] plugin inventory unavailable: ${error.message}`)
     }
+    const profileCandidates = await this.#profileRecoveryCandidates()
+    const candidatePlugins = recoveryCandidates([...activePlugins, ...profileCandidates])
+    const technicalDetails = `${this.lines.join('\n')}\n${status?.error ?? ''}`
     const analysis = classifyPluginFailure(`${this.lines.join('\n')}\n${status?.error ?? ''}`, {
-      activePlugins,
+      activePlugins: candidatePlugins,
       protectedPlugins: this.builtInBundles,
     })
-    const incident = await this.store.recordIncident(analysis)
-    if (!analysis.identified) {
-      await this.#log('[plugin-recovery] culprit was not reliable; preserving all plugins')
-      return false
+    const automaticSafeModeEligible = !analysis.identified
+      && shouldAutomaticallyEnterSafeMode(technicalDetails, { candidatePlugins })
+    const baselineQuarantineEligible = !analysis.identified
+      && isPluginBootstrapFailure(technicalDetails)
+      && await this.#hasUntrustedProfileActivation()
+    const enrichedAnalysis = analysis.identified
+      ? analysis
+      : Object.freeze({
+        ...analysis,
+        candidatePlugins,
+        ...(automaticSafeModeEligible
+          ? {
+              reasonCode: 'unattributed-plugin-startup',
+              summary: `未能定位单个插件，已暂时停用 ${candidatePlugins.length} 个用户插件以恢复启动`,
+            }
+          : baselineQuarantineEligible
+            ? {
+                reasonCode: 'untrusted-profile-loader',
+                summary: '检测到无法识别的用户加载配置，已暂时切换到桌面基线以恢复启动',
+              }
+          : {}),
+      })
+    const incident = await this.store.recordIncident(enrichedAnalysis)
+    if (!enrichedAnalysis.identified) {
+      if (!automaticSafeModeEligible && !baselineQuarantineEligible) {
+        await this.#log(
+          `[plugin-recovery] culprit was not reliable; preserving all plugins; candidates=${candidatePlugins.length}; host-or-non-plugin startup failure`,
+        )
+        return false
+      }
+      this.recoveryStage = 2
+      if (automaticSafeModeEligible) {
+        await this.#log(
+          `[plugin-recovery] culprit was not individually identifiable; entering reversible safe mode for ${candidatePlugins.length} user plugin candidate(s)`,
+        )
+        const safeModeResult = await this.#enterSafeMode({ automatic: true, incident, requireChanges: true })
+        if (safeModeResult !== false) return safeModeResult
+      }
+      if (!baselineQuarantineEligible) return false
+      await this.#log('[plugin-recovery] no trusted mutable plugin candidate remains; trying a reversible Desktop baseline')
+      return this.#quarantineUntrustedProfile({ incident })
     }
 
     this.recoveryStage = 1
@@ -649,10 +988,14 @@ export class DesktopPluginRecovery extends EventEmitter {
     return true
   }
 
-  async #enterSafeMode({ automatic = false, incident } = {}) {
+  async #enterSafeMode({ automatic = false, incident, requireChanges = false } = {}) {
     this.recoveryStage = 2
     await this.controller.stop()
     const transaction = await this.pluginManager.enterSafeMode()
+    if (requireChanges && transaction.result.changed !== true) {
+      await this.#log('[plugin-recovery] safe mode had no mutable user plugins; preserving profile')
+      return false
+    }
     transaction.commit()
     await this.store.rememberDisabledDependencies(transaction.result.disabledDependencies)
     await this.store.setSafeMode(true)
@@ -669,7 +1012,12 @@ export class DesktopPluginRecovery extends EventEmitter {
 
   async getState() {
     const state = await this.store.getState()
-    return Object.freeze({ ...state, busy: this.busy, recoveryStage: this.recoveryStage })
+    return Object.freeze({
+      ...state,
+      baselineQuarantineAvailable: await this.#baselineQuarantineAvailable(),
+      busy: this.busy,
+      recoveryStage: this.recoveryStage,
+    })
   }
 
   disableCurrentAndRestart() {
@@ -707,18 +1055,26 @@ export class DesktopPluginRecovery extends EventEmitter {
       const disabledDependencies = await this.store.getDisabledDependencies()
       await this.controller.stop()
       let prepared
+      let baselineRestored = false
       try {
+        if (await this.#baselineQuarantineAvailable()) {
+          baselineRestored = await this.baselineQuarantine.restore()
+        }
         prepared = await this.#prepareDisabledDependencyRestore(disabledDependencies)
         await this.ensureProfile()
         await this.controller.start()
         for (const transaction of prepared.transactions) transaction.commit()
         await this.store.clearRecoveryMode('restored-by-user')
         await this.#log(`[plugin-recovery] user restored disabled plugins: ${prepared.restoredPlugins.join(',') || 'none'}`)
-        return Object.freeze({ restored: Object.freeze([...prepared.restoredPlugins]) })
+        return Object.freeze({
+          restored: Object.freeze([...prepared.restoredPlugins]),
+          ...(baselineRestored ? { baselineRestored: true } : {}),
+        })
       } catch (error) {
         for (const transaction of [...(prepared?.transactions ?? [])].reverse()) {
           await transaction.rollback().catch(() => {})
         }
+        if (baselineRestored) await this.baselineQuarantine.quarantine().catch(() => {})
         await this.ensureProfile()
         await this.controller.start().catch(() => {})
         throw error
@@ -800,5 +1156,6 @@ export class DesktopPluginRecovery extends EventEmitter {
     this.store.off('change', this.onStoreChange)
     if (this.stableTimer !== undefined) this.cancelSchedule(this.stableTimer)
     await this.operationQueue
+    await Promise.allSettled([...this.backgroundOperations])
   }
 }

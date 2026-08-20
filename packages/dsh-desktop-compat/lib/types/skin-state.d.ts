@@ -1,6 +1,6 @@
 import { Service, type Context } from '@deepseek-ai/cordis';
-export declare const SKIN_STATE_START = "# --- dsh-skin managed (auto-generated; do not edit) ---";
-export declare const SKIN_STATE_END = "# --- end dsh-skin managed ---";
+export declare const SKIN_STATE_START = "# --- dsh-desktop skin state (auto-generated; do not edit) ---";
+export declare const SKIN_STATE_END = "# --- end dsh-desktop skin state ---";
 export interface SkinLoaderEntry {
     options: {
         id?: string;

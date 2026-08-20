@@ -3,8 +3,11 @@ import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { Service, type Context } from '@deepseek-ai/cordis'
 
-export const SKIN_STATE_START = '# --- dsh-skin managed (auto-generated; do not edit) ---'
-export const SKIN_STATE_END = '# --- end dsh-skin managed ---'
+// This marker is owned only by the Desktop market state. Skin Center v2 owns
+// its active selection in skin-center-active.json and must never receive a
+// loader insert/name row through this compatibility service.
+export const SKIN_STATE_START = '# --- dsh-desktop skin state (auto-generated; do not edit) ---'
+export const SKIN_STATE_END = '# --- end dsh-desktop skin state ---'
 
 const LOADER_ID_RE = /^[A-Za-z0-9._/@-]+$/
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/
@@ -23,12 +26,20 @@ function readText(path: string): string {
   try { return readFileSync(path, 'utf8') } catch { return '' }
 }
 
-function sectionBounds(text: string): { start: number; end: number } | null {
-  const start = text.indexOf(SKIN_STATE_START)
+function sectionBounds(
+  text: string,
+  startMarker = SKIN_STATE_START,
+  endMarker = SKIN_STATE_END,
+): { start: number; end: number } | null {
+  const start = text.indexOf(startMarker)
   if (start === -1) return null
-  const markerEnd = text.indexOf(SKIN_STATE_END, start)
+  const markerEnd = text.indexOf(endMarker, start)
   if (markerEnd === -1) throw new Error('desktopSkinState: managed skin section is unterminated')
-  return { start, end: markerEnd + SKIN_STATE_END.length }
+  return { start, end: markerEnd + endMarker.length }
+}
+
+function isMarketStateId(id: string): boolean {
+  return LOADER_ID_RE.test(id) && !id.startsWith('ui-skin-')
 }
 
 function controlledRows(text: string): Map<string, boolean> {
@@ -38,7 +49,7 @@ function controlledRows(text: string): Map<string, boolean> {
   const lines = text.slice(bounds.start, bounds.end).split(/\r?\n/u)
   for (let index = 0; index < lines.length; index += 1) {
     const id = /^- id:\s*([A-Za-z0-9._/@-]+)\s*$/u.exec(lines[index] ?? '')?.[1]
-    if (id === undefined) continue
+    if (id === undefined || !isMarketStateId(id)) continue
     const disabled = /^\s{2}disabled:\s*(true|false)\s*$/u.exec(lines[index + 1] ?? '')?.[1]
     rows.set(id, disabled === 'true')
   }
@@ -51,14 +62,16 @@ function managedIds(text: string): Set<string> {
   const ids = new Set<string>()
   for (const line of text.slice(bounds.start, bounds.end).split(/\r?\n/u)) {
     const id = /^\s*- id:\s*([A-Za-z0-9._/@-]+)\s*$/u.exec(line)?.[1]
-    if (id !== undefined) ids.add(id)
+    if (id !== undefined && isMarketStateId(id)) ids.add(id)
   }
   return ids
 }
 
 function renderRows(rows: Map<string, boolean>): string {
   const lines = [SKIN_STATE_START]
-  for (const [id, disabled] of [...rows].sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [id, disabled] of [...rows]
+    .filter(([id]) => isMarketStateId(id))
+    .sort(([left], [right]) => left.localeCompare(right))) {
     lines.push(`- id: ${id}`, `  disabled: ${disabled ? 'true' : 'false'}`)
   }
   lines.push(SKIN_STATE_END)
@@ -68,7 +81,9 @@ function renderRows(rows: Map<string, boolean>): string {
 function appendDisabledRows(text: string, ids: Iterable<string>): string {
   const bounds = sectionBounds(text)
   const existing = controlledRows(text)
-  const additions = [...new Set(ids)].filter(id => !existing.has(id)).sort()
+  const additions = [...new Set(ids)]
+    .filter(id => isMarketStateId(id) && !existing.has(id))
+    .sort()
   if (additions.length === 0) return text
   const rows = additions.flatMap(id => [`- id: ${id}`, '  disabled: true']).join('\n')
   if (bounds === null) return replaceSection(text, `${SKIN_STATE_START}\n${rows}\n${SKIN_STATE_END}`)
@@ -171,7 +186,7 @@ export class DesktopSkinStateStore implements DesktopSkinStateFace {
     const ids: string[] = []
     for (const name of disabledNames) {
       const id = this.loaderId(name, entryList)
-      if (id === null) continue
+      if (id === null || !isMarketStateId(id)) continue
       ids.push(id)
       migrated.add(name)
     }
@@ -186,7 +201,7 @@ export class DesktopSkinStateStore implements DesktopSkinStateFace {
     const disabled = new Set<string>()
     for (const name of themeNames) {
       const id = this.loaderId(name, entryList)
-      if (id !== null && rows.get(id) === true) disabled.add(name)
+      if (id !== null && isMarketStateId(id) && rows.get(id) === true) disabled.add(name)
     }
     return disabled
   }
@@ -198,23 +213,29 @@ export class DesktopSkinStateStore implements DesktopSkinStateFace {
     }
     const entryList = [...entries]
     const targetId = this.loaderId(name, entryList)
-    if (targetId === null) throw new Error(`desktopSkinState: no loader id for ${name}`)
+    if (targetId === null || !isMarketStateId(targetId)) {
+      throw new Error(`desktopSkinState: no market loader id for ${name}`)
+    }
     const text = readText(this.patchPath)
     const rows = controlledRows(text)
     for (const id of rows.keys()) rows.set(id, true)
-    // An insert row represents the currently active Skin Center choice. Market
-    // activation intentionally normalizes it to a disabled id overlay so the
-    // profile authority section still has exactly one active theme.
+    // The pre-boot profile migration leaves this marker with market rows only.
+    // Filter once more here so a stale ui-skin-* entry can never be written
+    // back while a market theme is activated.
     for (const id of managedIds(text)) {
       if (!rows.has(id)) rows.set(id, true)
     }
     for (const themeName of themeNames) {
       if (!wiredPackages.has(themeName)) continue
       const id = this.loaderId(themeName, entryList)
-      if (id !== null) rows.set(id, themeName !== name)
+      if (id !== null && isMarketStateId(id)) rows.set(id, themeName !== name)
     }
     rows.set(targetId, false)
     writeAtomic(this.patchPath, replaceSection(text, renderRows(rows)))
+    // Skin Center v2 owns a separate active-selection file. A market theme
+    // is mutually exclusive with it, so restore the v2 center to stock when
+    // the user explicitly selects a market theme.
+    rmSync(join(this.home, 'skin-center-active.json'), { force: true })
   }
 }
 

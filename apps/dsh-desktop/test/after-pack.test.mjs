@@ -94,12 +94,15 @@ test('release recovery restores pnpm peer snapshots omitted by electron-builder'
   try {
     const restored = await restoreRequiredPackagedPeers(root)
     assert.deepEqual(restored, [
+      '@deepseek-ai/dsh-atomic-write',
       '@deepseek-ai/dsh-attachment',
       '@deepseek-ai/dsh-brand',
+      '@deepseek-ai/dsh-host-webserver',
       '@deepseek-ai/dsh-sandbox-policy',
       '@deepseek-ai/dsh-settings',
       '@deepseek-ai/dsh-timeout',
       '@deepseek-ai/dsh-typert-protocol',
+      '@deepseek-ai/dsh-workspace',
     ])
     for (const packageName of restored) {
       const manifest = JSON.parse(await readFile(join(root, ...packageName.split('/'), 'package.json'), 'utf8'))

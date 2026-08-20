@@ -8,8 +8,8 @@ import { InMemoryEvidenceStore } from '../src/core/evidence.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { EvidenceReviewService } from '../src/core/review.ts'
 import { createProject, type Evidence, type TaskRunReference } from '../src/core/runs.ts'
-import { InMemoryTaskStore } from '../src/core/store.ts'
-import { createTask, type TaskRecord } from '../src/core/tasks.ts'
+import { InMemoryTaskStore, type TaskStore } from '../src/core/store.ts'
+import { createTask, startExecution, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -222,6 +222,51 @@ describe('view state', () => {
 })
 
 describe('run loop', () => {
+  it('does not open a browser agent when a Host mutation wins execution admission', async () => {
+    const task = createTask({ title: 'race', description: '', prompt: 'run' }, NOW, 'task-race')
+    let current: TaskRecord[] = [task]
+    let markSaveStarted: () => void = () => {}
+    const saveStarted = new Promise<void>(resolve => { markSaveStarted = resolve })
+    let allowHostConflict: () => void = () => {}
+    const hostConflict = new Promise<void>(resolve => { allowHostConflict = resolve })
+    const store: TaskStore = {
+      load: async () => structuredClone(current),
+      save: async () => {
+        markSaveStarted()
+        await hostConflict
+        throw new Error('task-board v3 ledger revision conflict')
+      },
+      clear: async () => {},
+    }
+    const stub = new StubExec()
+    const controller = new BoardController({
+      store,
+      exec: stub as unknown as ExecutionService,
+      sessions: new FakeSessions(),
+      now: () => NOW,
+      uuid,
+    })
+    await controller.start()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const attempt = controller.runTask(task.id)
+      await saveStarted
+      // A concurrent Host mutation gets the durable running record first.
+      current = [startExecution(task, NOW + 1, 'host-run').task]
+      allowHostConflict()
+
+      expect(await attempt).toBe(false)
+      expect(stub.runCalls).toHaveLength(0)
+      expect(controller.getSnapshot().tasks[0]).toMatchObject({
+        id: task.id,
+        status: 'running',
+        executions: [{ id: 'host-run' }],
+      })
+    } finally {
+      error.mockRestore()
+    }
+  })
+
   it('moves to running, attaches the session id, and settles on completion', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
@@ -560,8 +605,82 @@ class ExternalAwareStore extends InMemoryTaskStore {
   }
 }
 
+function hostScheduledRunningTask(input: { id?: string; title?: string; runId?: string } = {}): TaskRecord {
+  const id = input.id ?? 'host-task'
+  const runId = input.runId ?? 'schedule-host-task-1'
+  const task = createTask({ title: input.title ?? 'Host scheduled task', description: '', prompt: 'run' }, NOW, id)
+  const providerEvidence = {
+    providerId: 'dsh-cli-provider-v1',
+    capabilities: [{ id: 'host-schedule', status: 'available' as const }],
+    createSession: 'available' as const,
+  }
+  return {
+    ...task,
+    status: 'running',
+    updatedAt: NOW + 1,
+    executions: [{
+      id: runId,
+      runId,
+      workspaceId: 'workspace-host',
+      sessionId: 'session-host',
+      startedAt: NOW + 1,
+      endedAt: undefined,
+      result: undefined,
+      error: undefined,
+    }],
+    runs: [{
+      runId,
+      workspaceId: 'workspace-host',
+      startedAt: NOW + 1,
+      resultStatus: 'running',
+      runtimeProviderEvidence: providerEvidence,
+    }],
+    schedule: {
+      enabled: true,
+      cron: '* * * * *',
+      nextRunAt: NOW + 60_000,
+      lastTriggeredAt: NOW,
+      lastRunId: runId,
+      lastScheduledAt: NOW,
+      lease: { ownerId: 'host-1', acquiredAt: NOW, renewedAt: NOW, expiresAt: NOW + 90_000 },
+      providerEvidence,
+    },
+  }
+}
+
+function settledHostScheduledTask(
+  running: TaskRecord,
+  outcome: 'succeeded' | 'failed' | 'cancelled',
+  error?: string,
+): TaskRecord {
+  const finishedAt = NOW + 2
+  const runId = running.schedule!.lastRunId!
+  return {
+    ...running,
+    status: outcome === 'succeeded' ? 'done' : outcome === 'failed' ? 'failed' : 'todo',
+    updatedAt: finishedAt,
+    executions: running.executions.map(execution => (execution.runId ?? execution.id) !== runId
+      ? execution
+      : {
+          ...execution,
+          finishedAt,
+          endedAt: finishedAt,
+          result: outcome,
+          ...(error === undefined ? {} : { error }),
+        }),
+    runs: (running.runs ?? []).map(run => run.runId !== runId
+      ? run
+      : {
+          ...run,
+          finishedAt,
+          resultStatus: outcome === 'succeeded' ? 'awaiting-review' : outcome,
+          ...(error === undefined ? {} : { fallbackReason: error }),
+        }),
+  }
+}
+
 describe('external (cross-tab) ledger changes', () => {
-  function makeWithExternalStore() {
+  function makeWithExternalStore(onExecutionSettled?: ControllerDeps['onExecutionSettled']) {
     const sessions = new FakeSessions()
     const store = new ExternalAwareStore()
     const controller = new BoardController({
@@ -570,6 +689,7 @@ describe('external (cross-tab) ledger changes', () => {
       sessions,
       now: () => NOW,
       uuid,
+      ...(onExecutionSettled === undefined ? {} : { onExecutionSettled }),
     })
     controller.start()
     return { controller, sessions, store }
@@ -592,6 +712,86 @@ describe('external (cross-tab) ledger changes', () => {
     const task = createTask({ title: '从别的标签页创建', description: '', prompt: '' }, NOW, 'other-tab')
     store.writeFromElsewhere([task])
     expect(controller.getSnapshot().tasks.map(t => t.id)).toEqual(['other-tab'])
+  })
+
+  it('emits the exact settled event for a Host-scheduled external terminal transition without writing it back', () => {
+    const events: unknown[] = []
+    const { controller, store } = makeWithExternalStore(event => { events.push(event) })
+    const running = hostScheduledRunningTask({ title: 'Host terminal notification', runId: 'schedule-host-terminal-1' })
+    store.writeFromElsewhere([running])
+    const save = vi.spyOn(store, 'save')
+
+    store.writeFromElsewhere([settledHostScheduledTask(running, 'failed', 'provider stopped')])
+
+    expect(events).toEqual([{
+      taskId: running.id,
+      title: 'Host terminal notification',
+      executionId: 'schedule-host-terminal-1',
+      outcome: 'failed',
+      error: 'provider stopped',
+    }])
+    // The one save is the simulated Host write. Client notification delivery
+    // must never write an externally authoritative terminal snapshot back.
+    expect(save).toHaveBeenCalledTimes(1)
+    controller.dispose()
+  })
+
+  it('does not notify for an initial Host terminal snapshot or duplicate/replayed SSE transitions', () => {
+    const initialStore = new ExternalAwareStore()
+    const initialTerminal = settledHostScheduledTask(hostScheduledRunningTask({ id: 'initial-host' }), 'succeeded')
+    initialStore.save([initialTerminal])
+    const initialEvents: unknown[] = []
+    const initial = new BoardController({
+      store: initialStore,
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions: new FakeSessions(),
+      now: () => NOW,
+      uuid,
+      onExecutionSettled: event => { initialEvents.push(event) },
+    })
+    initial.start()
+    expect(initialEvents).toEqual([])
+    initial.dispose()
+
+    const events: unknown[] = []
+    const { controller, store } = makeWithExternalStore(event => { events.push(event) })
+    const running = hostScheduledRunningTask({ id: 'replayed-host', runId: 'schedule-host-replayed-1' })
+    const terminal = settledHostScheduledTask(running, 'succeeded')
+    store.writeFromElsewhere([running])
+    store.writeFromElsewhere([terminal])
+    // A reconnect can replay an old running snapshot before sending the same
+    // terminal document again. State still reloads, but delivery is once/run.
+    store.writeFromElsewhere([running])
+    store.writeFromElsewhere([terminal])
+    expect(events).toEqual([{
+      taskId: 'replayed-host',
+      title: 'Host scheduled task',
+      executionId: 'schedule-host-replayed-1',
+      outcome: 'succeeded',
+    }])
+    controller.dispose()
+  })
+
+  it('does not infer a Host notification for a manually launched external run', () => {
+    const events: unknown[] = []
+    const { controller, store } = makeWithExternalStore(event => { events.push(event) })
+    const base = createTask({ title: 'Manual task', description: '', prompt: 'run' }, NOW, 'manual-task')
+    const running = startExecution(base, NOW + 1, 'manual-run').task
+    const terminal: TaskRecord = {
+      ...running,
+      status: 'failed',
+      executions: running.executions.map(execution => ({
+        ...execution,
+        finishedAt: NOW + 2,
+        endedAt: NOW + 2,
+        result: 'failed',
+        error: 'manual failure',
+      })),
+    }
+    store.writeFromElsewhere([running])
+    store.writeFromElsewhere([terminal])
+    expect(events).toEqual([])
+    controller.dispose()
   })
 
   it('keeps a sibling-tab edit made while reconcile is in flight', async () => {

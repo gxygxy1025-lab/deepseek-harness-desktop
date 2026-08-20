@@ -1,10 +1,8 @@
 /**
  * Web UI plugin group, browser half. Registers the `web-ui-plugins`
- * dictionaries and one group card into the plugin-configuration section. The
- * group card declares the `web-ui.plugin.item` child slot; the dsh-web-ui
- * family plugins register their per-plugin cards there, so the settings page
- * shows a single Web UI Plugins entry instead of one top-level card per
- * family plugin.
+ * dictionaries and one first-level settings section. The section declares the
+ * `web-ui.plugin.item` child slot; the dsh-web-ui family plugins register
+ * their per-plugin cards there.
  */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -15,33 +13,23 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { installParticleThemeClient } from '@linxin666/dsh-particle-theme/src/client/index.ts'
 import { WebUiSettingsBinder } from './compat-settings-scope.ts'
-import { WebUIPluginsCard } from './WebUIPluginsCard.tsx'
-import { CommunityPluginsCard } from './CommunityPluginsCard.tsx'
-import { communityPluginsEn, communityPluginsZh, en, zh, type CommunityPluginKey, type WebUIPluginsKey } from './locales.ts'
+import { WebUIPluginsSection } from './WebUIPluginsCard.tsx'
+import { en, zh, type WebUIPluginsKey } from './locales.ts'
 
-export type { WebUIPluginsCardProps } from './WebUIPluginsCard.tsx'
+export type { WebUIPluginsSectionProps } from './WebUIPluginsCard.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Web UI plugin group card copy. */
     'web-ui-plugins': WebUIPluginsKey
-    /** Community plugin index card copy. */
-    'community-plugins': CommunityPluginKey
   }
 
   interface SlotMap {
     /**
      * The child slot one family plugin card registers into, declared by the
-     * group card. Shape mirrors `settings.plugin.item` so the family plugins
-     * can reuse their existing card implementations.
+     * group section.
      */
     'web-ui.plugin.item': { kind: 'list'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
-    /**
-     * The plugin configuration section's card seat, declared by
-     * ui-plugin-config. Spelled here with the same shape so this package can
-     * register its group card without depending on the sibling UI package.
-     */
-    'settings.plugin.item': { kind: 'list'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
   }
 }
 
@@ -66,24 +54,14 @@ export function apply(ctx: ClientContext): void {
   // namespaces natively.
   const settingsBinder = new WebUiSettingsBinder(ctx)
 
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
     id: 'web-ui-plugins',
-    order: 90,
+    order: 110,
+    label: () => ctx.locale.bind('web-ui-plugins')('title'),
     locale: 'web-ui-plugins',
     children: { 'web-ui.plugin.item': { kind: 'list', scope: 'root' } },
-  }, WebUIPluginsCard))
-
-  // Community plugin index: one card inside the group that lists contributor
-  // plugins and links to their own repositories.
-  ctx.effect(() => ctx.locale.register('community-plugins', { zh: communityPluginsZh, en: communityPluginsEn }), 'web-ui-settings: community-plugins dictionaries')
-  ctx.slots.inject('web-ui.plugin.item', () => ctx.slots.register({
-    name: 'web-ui.plugin.item',
-    id: 'community-plugins',
-    order: 120,
-    locale: 'community-plugins',
-    inject: () => ({}),
-  }, CommunityPluginsCard))
+  }, WebUIPluginsSection))
 
   // Desktop's pinned aggregate predates the standalone particle loader row.
   // The particle installer is document-idempotent, so newer aggregates that

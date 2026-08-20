@@ -38,3 +38,20 @@ export function phaseIndexForProgress(progress) {
   if (value < 72) return 1
   return 2
 }
+
+/** Prevent an earlier IPC snapshot from overwriting a newer live status event. */
+export function createStartupStatusGate(renderStatus) {
+  if (typeof renderStatus !== 'function') throw new TypeError('startup status renderer must be a function')
+  let receivedLiveStatus = false
+  return Object.freeze({
+    initial(status) {
+      if (receivedLiveStatus) return false
+      renderStatus(status)
+      return true
+    },
+    live(status) {
+      receivedLiveStatus = true
+      renderStatus(status)
+    },
+  })
+}

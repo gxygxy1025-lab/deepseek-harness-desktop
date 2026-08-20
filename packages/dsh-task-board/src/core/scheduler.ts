@@ -18,7 +18,7 @@
  * Framework-free: all runtime access flows through the injected deps
  * (structural faces), so tests drive ticks directly without timers.
  */
-import { nextRunAtMs } from './schedule.ts'
+import { nextRunAtMsInTimeZone } from './schedule.ts'
 import type { TaskRecord } from './tasks.ts'
 
 /** Everything the scheduler needs from its host (the board controller). */
@@ -40,6 +40,19 @@ export interface SchedulerDeps {
    * arrived on page load, so executions would fail). Defaults to always ready.
    */
   ready?: () => boolean
+  /**
+   * Optional asynchronous admission gate. The Desktop client uses this to
+   * yield a live browser ticker if the fixed Host status route starts
+   * reporting durable scheduler ownership after page bootstrap.
+   */
+  canRun?: () => boolean | Promise<boolean>
+  /**
+   * Optional per-task admission gate. The Desktop Host scheduler uses this
+   * instead of disabling the entire browser ticker: false means the Host has
+   * published ownership of this one task, while every other task remains a
+   * normal browser schedule.
+   */
+  canRunTask?: (task: TaskRecord) => boolean | Promise<boolean>
   /** Environment listeners for tab-visibility recovery (browser only). */
   environment?: {
     addEventListener(type: 'visibilitychange', listener: () => void): void
@@ -55,6 +68,7 @@ export class SchedulerService {
   private environmentListener: (() => void) | undefined
   private disposed = false
   private started = false
+  private ticking = false
 
   /** @param deps - tasks/clock/trigger/apply faces (see {@link SchedulerDeps}). */
   constructor(private readonly deps: SchedulerDeps) {}
@@ -109,26 +123,39 @@ export class SchedulerService {
    * tick instead of being silently dropped.
    */
   async tick(): Promise<void> {
-    if (this.disposed) return
-    if (this.deps.ready !== undefined && !this.deps.ready()) return
-    const now = this.deps.now()
-    for (const task of this.deps.tasks()) {
-      const schedule = task.schedule
-      if (schedule === undefined || !schedule.enabled) continue
-      if (schedule.nextRunAt === undefined) {
-        // Missing next-run instant (repaired/legacy data): recompute from the
-        // cron expression and wait; an unparseable expression is skipped.
-        const repaired = nextRunAtMs(schedule.cron, now)
-        if (repaired === undefined) continue
-        this.deps.applySchedule(task.id, repaired, undefined)
-        continue
+    if (this.disposed || this.ticking) return
+    this.ticking = true
+    try {
+      if (this.deps.ready !== undefined && !this.deps.ready()) return
+      if (this.deps.canRun !== undefined && !await this.deps.canRun()) return
+      // A Host ownership probe can suspend briefly. Never dispatch after the
+      // board has been unloaded while that probe was in flight.
+      if (this.disposed) return
+      const now = this.deps.now()
+      for (const task of this.deps.tasks()) {
+        const schedule = task.schedule
+        if (schedule === undefined || !schedule.enabled) continue
+        if (this.deps.canRunTask !== undefined && !await this.deps.canRunTask(task)) continue
+        // A Host ownership probe can suspend briefly. Never dispatch or roll
+        // a browser-owned cursor after this board was unloaded in flight.
+        if (this.disposed) return
+        if (schedule.nextRunAt === undefined) {
+          // Missing next-run instant (repaired/legacy data): recompute from the
+          // cron expression and wait; an unparseable expression is skipped.
+          const repaired = nextRunAtMsInTimeZone(schedule.cron, now, schedule.timezone)
+          if (repaired === undefined) continue
+          this.deps.applySchedule(task.id, repaired, undefined)
+          continue
+        }
+        if (schedule.nextRunAt > now) continue
+        // Advance from the due instant (not this tick's wall-clock) and only
+        // after the run is accepted: a rejected run keeps its due slot.
+        const next = nextRunAtMsInTimeZone(schedule.cron, schedule.nextRunAt, schedule.timezone)
+        const accepted = await this.deps.runTask(task.id)
+        if (accepted) this.deps.applySchedule(task.id, next, now)
       }
-      if (schedule.nextRunAt > now) continue
-      // Advance from the due instant (not this tick's wall-clock) and only
-      // after the run is accepted: a rejected run keeps its due slot.
-      const next = nextRunAtMs(schedule.cron, schedule.nextRunAt)
-      const accepted = await this.deps.runTask(task.id)
-      if (accepted) this.deps.applySchedule(task.id, next, now)
+    } finally {
+      this.ticking = false
     }
   }
 }

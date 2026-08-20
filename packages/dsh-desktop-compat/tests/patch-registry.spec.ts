@@ -12,12 +12,13 @@ describe('Desktop compat patch registry', () => {
     expect(DESKTOP_COMPAT_PATCHES.map((entry) => entry.id)).toEqual([
       'queued-turn-continuation',
       'cancellation-presentation',
+      'tool-call-arguments-envelope',
       'desktop-skin-profile-isolation',
     ])
     for (const entry of DESKTOP_COMPAT_PATCHES) {
-      expect(entry.applicableVersions).toEqual(['0.1.0-rc.6'])
+      expect(entry.applicableVersions).toEqual(['0.1.0-rc.7'])
       expect(entry.test).toMatch(/^packages\/dsh-desktop-compat\/tests\/.+\.spec\.ts$/u)
-      expect(entry.lastVerified).toBe('2026-08-18')
+      expect(entry.lastVerified).toMatch(/^2026-08-(19|20)$/u)
     }
   })
 

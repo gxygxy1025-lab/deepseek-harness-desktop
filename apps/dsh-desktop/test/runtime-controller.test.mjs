@@ -8,6 +8,10 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV,
+  isDesktopWorkspaceFileOpenToken,
+} from '@linxin666/dsh-desktop-compat/workspace-file-open-policy'
+import {
   DEFAULT_STARTUP_TIMEOUT_MS,
   DESKTOP_PROFILE_NAME,
   DshRuntimeController,
@@ -86,7 +90,7 @@ test('default startup budget tolerates first-run Windows scanning', () => {
   assert.equal(controller.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS)
 })
 
-test('hidden Windows runtime wrapper gives terminal descendants an inherited hidden console', () => {
+test('Windows runtime wrapper avoids the PowerShell WindowStyle crash and preserves its console host', () => {
   const invocation = createRuntimeInvocation({
     platform: 'win32',
     systemRoot: 'C:\\Windows',
@@ -98,15 +102,15 @@ test('hidden Windows runtime wrapper gives terminal descendants an inherited hid
     invocation.executable,
     'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
   )
-  assert.deepEqual(invocation.args.slice(0, 6), [
+  assert.deepEqual(invocation.args.slice(0, 4), [
     '-NoLogo',
     '-NoProfile',
     '-NonInteractive',
-    '-WindowStyle',
-    'Hidden',
     '-EncodedCommand',
   ])
-  const script = Buffer.from(invocation.args[6], 'base64').toString('utf16le')
+  assert.equal(invocation.args.includes('-WindowStyle'), false)
+  assert.equal(invocation.args.includes('Hidden'), false)
+  const script = Buffer.from(invocation.args[4], 'base64').toString('utf16le')
   assert.match(script, /DeepSeek''s Harness/u)
   assert.match(script, /'--expose-internals'/u)
   assert.match(script, /'--require' '[^']*windows-console-preload\.cjs'/u)
@@ -234,11 +238,114 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   )
   assert.equal(childEnvironment.QQBOT_APPID, 'desktop-app')
   assert.equal(childEnvironment.QQBOT_SECRET, 'runtime-only')
+  assert.equal(isDesktopWorkspaceFileOpenToken(childEnvironment[DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV]), true)
+  assert.equal(controller.getWorkspaceFileOpenToken(), childEnvironment[DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV])
+  assert.equal(logLines.some((line) => line.includes(childEnvironment[DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV])), false)
   assert.ok(childEnvironment.PATH.startsWith(`C:\\desktop-runtime-bin${process.platform === 'win32' ? ';' : ':'}`))
 
   await controller.stop()
   assert.equal(controller.status.state, 'stopped')
+  assert.equal(controller.getWorkspaceFileOpenToken(), undefined)
   assert.equal(child.killed, true)
+})
+
+test('runtime capability is redacted from child logs, errors, status, and line observers', async () => {
+  const child = new FakeChild()
+  const token = 'r'.repeat(43)
+  const diagnostics = []
+  const observedLines = []
+  const observedStatuses = []
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    platform: 'linux',
+    spawnProcess: () => child,
+    logStore: { append: async (line) => diagnostics.push(line) },
+    workspaceFileOpenTokenFactory: () => token,
+    startupTimeoutMs: 2_000,
+  })
+  controller.on('line', (entry) => observedLines.push(entry))
+  controller.on('status', (status) => observedStatuses.push(status))
+
+  const ready = controller.start()
+  child.stdout.write(`runtime stdout token=${token}\n`)
+  child.stderr.write(`runtime stderr token=${token}\n`)
+  child.emit('error', new Error(`runtime child failure token=${token}`))
+  await assert.rejects(ready, /runtime child failure/u)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  // Stdio can still flush after the capability field is cleared during failed
+  // startup. The per-child redactor must cover that race too.
+  assert.equal(controller.getWorkspaceFileOpenToken(), undefined)
+  child.stderr.write(`late runtime stderr token=${token}\n`)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.ok(diagnostics.some((line) => line.includes('runtime stdout token=[redacted]')))
+  assert.ok(diagnostics.some((line) => line.includes('runtime stderr token=[redacted]')))
+  assert.ok(diagnostics.some((line) => line.includes('runtime child failure token=[redacted]')))
+  assert.ok(diagnostics.some((line) => line.includes('late runtime stderr token=[redacted]')))
+  assert.equal(diagnostics.some((line) => line.includes(token)), false)
+  assert.equal(observedLines.some((entry) => entry.line.includes(token)), false)
+  assert.equal(JSON.stringify(observedStatuses).includes(token), false)
+  assert.ok(observedStatuses.some((status) => status.error?.includes('[redacted]')))
+})
+
+test('runtime restarts mint a fresh workspace-file capability and expose only the current ready token', async () => {
+  const children = [new FakeChild(), new FakeChild()]
+  const environments = []
+  const tokens = ['a'.repeat(43), 'b'.repeat(43)]
+  let spawnIndex = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    platform: 'linux',
+    spawnProcess: (_executable, _arguments, options) => {
+      environments.push(options.env)
+      return children[spawnIndex++]
+    },
+    workspaceFileOpenTokenFactory: () => tokens.shift(),
+    logStore: { append: async () => {} },
+    probeReady: async () => {},
+  })
+
+  const firstReady = controller.start()
+  assert.equal(controller.getWorkspaceFileOpenToken(), undefined)
+  children[0].stdout.write('dsh web: http://127.0.0.1:43125\n')
+  await firstReady
+  assert.equal(controller.getWorkspaceFileOpenToken(), 'a'.repeat(43))
+
+  await controller.stop()
+  assert.equal(controller.getWorkspaceFileOpenToken(), undefined)
+  const secondReady = controller.start()
+  children[1].stdout.write('dsh web: http://127.0.0.1:43126\n')
+  await secondReady
+  assert.equal(controller.getWorkspaceFileOpenToken(), 'b'.repeat(43))
+  assert.notEqual(
+    environments[0][DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV],
+    environments[1][DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV],
+  )
+  await controller.stop()
+})
+
+test('runtime fails closed before spawn when a workspace-file capability is invalid', async () => {
+  let spawnCalls = 0
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    platform: 'linux',
+    spawnProcess: () => {
+      spawnCalls += 1
+      return new FakeChild()
+    },
+    workspaceFileOpenTokenFactory: () => 'not-a-runtime-secret',
+    logStore: { append: async () => {} },
+  })
+  await assert.rejects(controller.start(), /workspace file open token factory returned an invalid token/u)
+  assert.equal(spawnCalls, 0)
+  assert.equal(controller.getWorkspaceFileOpenToken(), undefined)
 })
 
 test('large Windows runtime exit codes are rendered as actionable diagnostics', () => {

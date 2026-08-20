@@ -48,7 +48,7 @@ function createProvider(overrides = {}) {
     }),
     dshHome: 'C:\\dsh-home',
     profileName: 'desktop',
-    upstreamVersion: '0.1.0-rc.6',
+    upstreamVersion: '0.1.0-rc.7',
     desktopVersion: '2.5.0',
     runtimeIdentity: {
       packageName: '@deepseek-ai/dsh',
@@ -68,7 +68,7 @@ test('current provider reports a stable capability snapshot without exposing hos
   const { provider } = createProvider()
   assert.deepEqual(provider.probe(), {
     providerId: 'dsh-cli-provider-v1',
-    upstreamVersion: '0.1.0-rc.6',
+    upstreamVersion: '0.1.0-rc.7',
     supportStatus: 'known-good',
     capabilities: [
       { id: 'runtime.lifecycle', status: 'available' },

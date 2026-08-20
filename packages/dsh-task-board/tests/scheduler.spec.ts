@@ -154,6 +154,56 @@ describe('SchedulerService.tick', () => {
     expect(h.runs).toEqual(['t-a'])
   })
 
+  it('yields a live browser fallback when Host ownership becomes active', async () => {
+    let clientMayRun = false
+    const h = makeHarness({ canRun: async () => clientMayRun })
+    h.setTasks([scheduledTask('a', '* * * * *', at(2026, 1, 1, 10, 0, 0))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    clientMayRun = true
+    await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-a'])
+  })
+
+  it('keeps the browser ticker for unowned tasks while skipping one Host-owned task', async () => {
+    const checked: string[] = []
+    const h = makeHarness({
+      canRunTask: async task => {
+        checked.push(task.id)
+        return task.id !== 't-host-owned'
+      },
+    })
+    h.setTasks([
+      scheduledTask('host-owned', '* * * * *', at(2026, 1, 1, 10, 0, 0)),
+      scheduledTask('browser-owned', '* * * * *', at(2026, 1, 1, 10, 0, 0)),
+    ])
+
+    await h.scheduler.tick()
+
+    expect(checked).toEqual(['t-host-owned', 't-browser-owned'])
+    expect(h.runs).toEqual(['t-browser-owned'])
+    expect(h.applied.map(entry => entry.id)).toEqual(['t-browser-owned'])
+  })
+
+  it('serializes overlapping async ticks so a due slot is not admitted twice', async () => {
+    let resolveRun: (() => void) | undefined
+    const h = makeHarness({
+      runTask: async id => {
+        h.runs.push(id)
+        await new Promise<void>(resolve => { resolveRun = resolve })
+        return true
+      },
+    })
+    h.setTasks([scheduledTask('a', '* * * * *', at(2026, 1, 1, 10, 0, 0))])
+    const first = h.scheduler.tick()
+    await Promise.resolve()
+    const second = h.scheduler.tick()
+    expect(h.runs).toEqual(['t-a'])
+    resolveRun!()
+    await Promise.all([first, second])
+    expect(h.applied).toHaveLength(1)
+  })
+
   it('stops triggering after dispose', async () => {
     const h = makeHarness()
     h.setTasks([scheduledTask('a', '* * * * *', at(2026, 1, 1, 10, 0, 0))])

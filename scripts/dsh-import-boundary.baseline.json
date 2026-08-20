@@ -19,6 +19,8 @@
     "packages/dsh-aionui-panel/src/index.ts\u0000static-import\u0000@deepseek-ai/dsh-subprocess": 1,
     "packages/dsh-aionui-panel/src/index.ts\u0000static-import\u0000@deepseek-ai/dsh-system-prompt": 1,
     "packages/dsh-aionui-panel/src/index.ts\u0000static-import\u0000@deepseek-ai/dsh-workspace": 1,
+    "packages/dsh-desktop-compat/tests/tool-call-normalization.spec.ts\u0000static-import\u0000@deepseek-ai/dsh-llm": 2,
+    "packages/dsh-desktop-compat/tests/tool-call-normalization.spec.ts\u0000static-import\u0000@deepseek-ai/dsh-tools": 1,
     "packages/dsh-git-graph/src/client/chips/BranchChip.tsx\u0000static-import\u0000@deepseek-ai/dsh-client-ui-primitives": 1,
     "packages/dsh-git-graph/src/client/chips/BranchChip.tsx\u0000static-import\u0000@deepseek-ai/dsh-client-ui-slots": 1,
     "packages/dsh-git-graph/src/client/chips/BranchPopover.tsx\u0000static-import\u0000@deepseek-ai/dsh-client-ui-primitives": 1,

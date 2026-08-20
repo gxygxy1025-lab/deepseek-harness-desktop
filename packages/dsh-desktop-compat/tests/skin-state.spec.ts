@@ -3,7 +3,11 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { mkdtempSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { DesktopSkinStateStore, SKIN_STATE_END, SKIN_STATE_START } from '../src/skin-state.ts'
+import {
+  DesktopSkinStateStore,
+  SKIN_STATE_END,
+  SKIN_STATE_START,
+} from '../src/skin-state.ts'
 
 function fixture({
   bundles = ['dsh-liquid-glass', 'dsh-solarized'],
@@ -33,9 +37,9 @@ function fixture({
 }
 
 describe('desktop skin state', () => {
-  it('persists a bundle theme as the only enabled managed skin', () => {
+  it('persists a bundle theme without carrying a retired Skin Center loader into market state', () => {
     const { globalPatch, patch, store } = fixture()
-    writeFileSync(patch, `- id: retained\n  disabled: false\n\n${SKIN_STATE_START}\n- insert:\n    - id: ui-skin-qq98\n      name: '@linxin666/dsh-ui-skin-qq98'\n${SKIN_STATE_END}\n`)
+    writeFileSync(patch, `- id: retained\n  disabled: false\n\n${SKIN_STATE_START}\n- insert:\n    - id: ui-skin-xp\n      name: '@linxin666/dsh-client-ui-skin-xp'\n${SKIN_STATE_END}\n`)
 
     store.activateBundleTheme('dsh-liquid-glass', ['dsh-liquid-glass', 'dsh-solarized'], [])
 
@@ -43,7 +47,9 @@ describe('desktop skin state', () => {
     expect(content).toContain('- id: retained\n  disabled: false')
     expect(content).toContain('- id: liquid-glass\n  disabled: false')
     expect(content).toContain('- id: solarized\n  disabled: true')
-    expect(content).toContain('- id: ui-skin-qq98\n  disabled: true')
+    expect(content).not.toContain('ui-skin-')
+    expect(content).not.toContain('name:')
+    expect(content).not.toContain('- insert:')
     expect(content.split(SKIN_STATE_START)).toHaveLength(2)
     expect(store.disabledNames(['dsh-liquid-glass', 'dsh-solarized'], [])).toEqual(new Set(['dsh-solarized']))
     expect(() => readFileSync(globalPatch, 'utf8')).toThrow()
@@ -66,15 +72,34 @@ describe('desktop skin state', () => {
     expect(readFileSync(patch, 'utf8')).toContain('- id: liquid-glass\n  disabled: false')
   })
 
-  it('migrates legacy market disables without rewriting a skin-center insert', () => {
+  it('does not copy a retired Skin Center marker after runtime startup has begun', () => {
+    const { home, patch } = fixture()
+    const legacyMarker = [
+      '# --- dsh-skin managed (auto-generated; do not edit) ---',
+      '- insert:',
+      '    - id: ui-skin-xp',
+      `      name: '@linxin666/dsh-client-ui-skin-xp'`,
+      '# --- end dsh-skin managed ---',
+      '',
+    ].join('\n')
+    writeFileSync(patch, legacyMarker)
+
+    new DesktopSkinStateStore(home, 'desktop')
+
+    const content = readFileSync(patch, 'utf8')
+    expect(content).toBe(legacyMarker)
+    expect(content).not.toContain(SKIN_STATE_START)
+  })
+
+  it('migrates legacy market disables without rewriting a Skin Center loader', () => {
     const { patch, store } = fixture()
-    const originalInsert = "- insert:\n    - id: ui-skin-qq98\n      name: '@linxin666/dsh-ui-skin-qq98'"
-    writeFileSync(patch, `${SKIN_STATE_START}\n${originalInsert}\n${SKIN_STATE_END}\n`)
+    const originalMarketState = '- id: solarized\n  disabled: false'
+    writeFileSync(patch, `${SKIN_STATE_START}\n${originalMarketState}\n${SKIN_STATE_END}\n`)
 
     expect(store.migrateLegacy(['dsh-liquid-glass'], [])).toEqual(new Set(['dsh-liquid-glass']))
 
     const content = readFileSync(patch, 'utf8')
-    expect(content).toContain(originalInsert)
+    expect(content).toContain(originalMarketState)
     expect(content).toContain('- id: liquid-glass\n  disabled: true')
   })
 
@@ -119,8 +144,18 @@ describe('desktop skin state', () => {
     expect(content).toContain('- id: liquid-glass\n  disabled: false')
   })
 
+  it('clears the Skin Center v2 selection when a market theme is activated', () => {
+    const { home, store } = fixture()
+    const activeSelection = join(home, 'skin-center-active.json')
+    writeFileSync(activeSelection, '{"active":"xp"}\\n')
+
+    store.activateBundleTheme('dsh-liquid-glass', ['dsh-liquid-glass', 'dsh-solarized'], [])
+
+    expect(() => readFileSync(activeSelection, 'utf8')).toThrow()
+  })
+
   it('refuses to persist a non-bundle skin through the market channel', () => {
     const { store } = fixture()
-    expect(() => store.activateBundleTheme('@linxin666/dsh-ui-skin-qq98', [], [])).toThrow('not wired through the active profile')
+    expect(() => store.activateBundleTheme('@linxin666/dsh-client-ui-skin-xp', [], [])).toThrow('not wired through the active profile')
   })
 })

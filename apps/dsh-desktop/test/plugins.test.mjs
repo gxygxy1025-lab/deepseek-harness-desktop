@@ -4,14 +4,22 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { BUILTIN_BUNDLES } from '../src/profile.mjs'
+import { BUILTIN_BUNDLES, DESKTOP_PLUGIN_COMPAT_PACKAGES } from '../src/profile.mjs'
 import { createHostCompatibility } from '../src/extensions/plugin-compatibility.mjs'
-import { PluginManager, createPluginInventory, validatePluginSpec } from '../src/extensions/plugins.mjs'
+import {
+  DESKTOP_PLUGINS_LOCK_SCHEMA_VERSION,
+  PLUGIN_PACKAGE_MANIFEST_READ_ERROR,
+  PluginManager,
+  createDesktopPluginsLock,
+  createProfileRecoveryCandidates,
+  createPluginInventory,
+  validatePluginSpec,
+} from '../src/extensions/plugins.mjs'
 
 const hostCompatibility = createHostCompatibility({
   desktopVersion: '0.1.9',
   nodeVersion: '24.11.1',
-  runtimeVersion: '0.1.0-rc.6',
+  runtimeVersion: '0.1.0-rc.7',
   packages: { '@deepseek-ai/cordis': '4.0.1' },
 })
 
@@ -31,6 +39,7 @@ test('plugin inventory distinguishes protected built-ins from community bundles'
     dependencies: {
       '@linxin666/dsh-web-ui-all': 'link:C:/runtime',
       '@community/example': '1.2.3',
+      schemastery: 'link:C:/runtime/schemastery',
     },
     dsh: { profile: { bundles: [...BUILTIN_BUNDLES, '@community/example'] } },
   }, {
@@ -47,12 +56,119 @@ test('plugin inventory distinguishes protected built-ins from community bundles'
   })
   const builtIn = inventory.find((item) => item.name === '@linxin666/dsh-web-ui-all')
   const community = inventory.find((item) => item.name === '@community/example')
+  const compatibilityDependency = inventory.find((item) => item.name === 'schemastery')
   assert.equal(builtIn.builtIn, true)
   assert.equal(builtIn.version, '0.1.15')
   assert.equal(builtIn.compatibility.status, 'compatible')
   assert.equal(community.enabled, true)
   assert.equal(community.version, '1.2.3')
   assert.equal(community.compatibility.status, 'compatible')
+  assert.equal(compatibilityDependency.builtIn, true)
+  assert.equal(compatibilityDependency.managedByDesktop, true)
+})
+
+test('profile recovery candidates do not inspect broken third-party package manifests', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-recovery-candidates-'))
+  const packageName = '@community/opaque'
+  try {
+    await writeFile(join(profileDir, 'package.json'), `${JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {
+        '@linxin666/dsh-web-ui-all': 'link:C:/runtime',
+        [packageName]: '1.0.0',
+      },
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES, packageName, '@community/bundle-only'] } },
+    }, null, 2)}\n`)
+    const brokenRoot = join(profileDir, 'node_modules', ...packageName.split('/'))
+    await mkdir(brokenRoot, { recursive: true })
+    await writeFile(join(brokenRoot, 'package.json'), '{ invalid json')
+
+    const manager = new PluginManager({ profileDir, pnpmCli: 'pnpm.mjs' })
+    assert.deepEqual(await manager.recoveryCandidates(), [
+      '@community/bundle-only',
+      packageName,
+    ])
+    assert.deepEqual(createProfileRecoveryCandidates({
+      dependencies: { [packageName]: '1.0.0' },
+      dsh: { profile: { bundles: [packageName] } },
+    }), [packageName])
+    await assert.rejects(
+      manager.reconcileCompatibility(),
+      (error) => error?.code === PLUGIN_PACKAGE_MANIFEST_READ_ERROR && error?.packageName === packageName,
+    )
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
+})
+
+test('desktop plugin diagnostic lock records deterministic compatibility requirements and evidence', () => {
+  const lock = createDesktopPluginsLock([{
+    name: '@community/example',
+    requested: '1.2.3',
+    version: '1.2.3',
+    managedByDesktop: false,
+    builtIn: false,
+    enabled: true,
+    compatibility: {
+      status: 'compatible',
+      reasons: [],
+      details: {
+        requirements: {
+          desktop: '>=2.7.0 <3.0.0',
+          runtime: '>=0.1.0-rc.7 <0.2.0',
+          desktopApi: '^1.2.0',
+          capabilities: ['workspace-files.open'],
+          surfaces: ['main'],
+        },
+        tested: { runtime: '0.1.0-rc.7', desktop: '2.7.0' },
+      },
+    },
+  }])
+  assert.deepEqual(lock, {
+    schemaVersion: DESKTOP_PLUGINS_LOCK_SCHEMA_VERSION,
+    plugins: [{
+      name: '@community/example',
+      requested: '1.2.3',
+      version: '1.2.3',
+      managedByDesktop: false,
+      bundled: false,
+      enabled: true,
+      compatibility: {
+        status: 'compatible',
+        reasons: [],
+        requirements: {
+          desktop: '>=2.7.0 <3.0.0',
+          runtime: '>=0.1.0-rc.7 <0.2.0',
+          desktopApi: '^1.2.0',
+          capabilities: ['workspace-files.open'],
+          surfaces: ['main'],
+        },
+        tested: { runtime: '0.1.0-rc.7', desktop: '2.7.0' },
+      },
+    }],
+  })
+})
+
+test('plugin manager writes the derived desktop plugin diagnostic inside the profile', async () => {
+  const profileDir = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-lock-'))
+  try {
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    }))
+    const manager = new PluginManager({ profileDir, pnpmCli: 'pnpm.mjs', hostCompatibility })
+    const lock = await manager.writeCompatibilityLock()
+    assert.equal(lock.schemaVersion, DESKTOP_PLUGINS_LOCK_SCHEMA_VERSION)
+    assert.deepEqual(
+      JSON.parse(await readFile(join(profileDir, 'desktop-plugins.lock.json'), 'utf8')),
+      lock,
+    )
+  } finally {
+    await rm(profileDir, { recursive: true, force: true })
+  }
 })
 
 test('plugin manager lazily checks only community updates and assesses candidates', async () => {
@@ -635,7 +751,11 @@ test('plugin manager disables community bundles without uninstalling and can ent
     await writeFile(join(profileDir, 'package.json'), `${JSON.stringify({
       name: 'dsh-profile-desktop',
       private: true,
-      dependencies: { [first]: '1.0.0', [second]: '1.0.0' },
+      dependencies: {
+        [first]: '1.0.0',
+        [second]: '1.0.0',
+        [DESKTOP_PLUGIN_COMPAT_PACKAGES[0]]: 'link:C:/runtime/schemastery',
+      },
       dsh: { profile: { bundles: [...BUILTIN_BUNDLES, first, second] } },
     }, null, 2)}\n`)
     const manager = new PluginManager({
@@ -659,6 +779,7 @@ test('plugin manager disables community bundles without uninstalling and can ent
     assert.deepEqual(manifest.dsh.profile.bundles, BUILTIN_BUNDLES)
     assert.equal(manifest.dependencies[first], undefined)
     assert.equal(manifest.dependencies[second], undefined)
+    assert.equal(manifest.dependencies[DESKTOP_PLUGIN_COMPAT_PACKAGES[0]], 'link:C:/runtime/schemastery')
     assert.deepEqual(safeMode.result.disabledDependencies, {
       [first]: '1.0.0',
       [second]: '1.0.0',

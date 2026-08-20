@@ -3,7 +3,7 @@
  * next-run computation across minute/day/month/weekday boundaries.
  */
 import { describe, expect, it } from 'vitest'
-import { isValidCron, nextRunAtMs, parseCron } from '../src/core/schedule.ts'
+import { isValidCron, isValidTimeZone, nextRunAtMs, nextRunAtMsInTimeZone, parseCron } from '../src/core/schedule.ts'
 
 /** Local-time ms epoch helper. */
 function at(year: number, month: number, day: number, hour: number, minute: number, second = 0): number {
@@ -127,5 +127,34 @@ describe('nextRunAtMs', () => {
 
   it('returns undefined for invalid expressions', () => {
     expect(nextRunAtMs('not a cron', at(2026, 1, 1, 0, 0))).toBeUndefined()
+  })
+})
+
+describe('nextRunAtMsInTimeZone', () => {
+  it('uses an explicit IANA zone instead of the browser or host local clock', () => {
+    const from = Date.UTC(2026, 0, 1, 0, 30, 0)
+    // 09:00 Asia/Shanghai is 01:00 UTC on this date.
+    expect(nextRunAtMsInTimeZone('0 9 * * *', from, 'Asia/Shanghai')).toBe(Date.UTC(2026, 0, 1, 1, 0, 0))
+  })
+
+  it('validates zones and rejects a malformed durable-zone rule safely', () => {
+    expect(isValidTimeZone('UTC')).toBe(true)
+    expect(isValidTimeZone('not/a-timezone')).toBe(false)
+    expect(nextRunAtMsInTimeZone('* * * * *', at(2026, 1, 1, 0, 0), 'not/a-timezone')).toBeUndefined()
+  })
+
+  it('skips a spring-forward wall-clock gap and keeps the two fall-back minutes distinct', () => {
+    // 02:30 never occurs in New York on 2026-03-08, so the next matching
+    // local occurrence is 2026-03-09 02:30 EDT (06:30 UTC).
+    expect(nextRunAtMsInTimeZone('30 2 * * *', Date.UTC(2026, 2, 8, 6, 50), 'America/New_York'))
+      .toBe(Date.UTC(2026, 2, 9, 6, 30))
+
+    // On the fall-back day 01:30 occurs twice. Absolute-minute scanning
+    // returns the first one, then the second one after the first has passed;
+    // their different epoch values yield different deterministic run keys.
+    expect(nextRunAtMsInTimeZone('30 1 * * *', Date.UTC(2026, 10, 1, 4, 0), 'America/New_York'))
+      .toBe(Date.UTC(2026, 10, 1, 5, 30))
+    expect(nextRunAtMsInTimeZone('30 1 * * *', Date.UTC(2026, 10, 1, 5, 30), 'America/New_York'))
+      .toBe(Date.UTC(2026, 10, 1, 6, 30))
   })
 })

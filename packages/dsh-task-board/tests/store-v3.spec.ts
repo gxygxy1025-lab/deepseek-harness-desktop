@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createLedgerDocumentV2 } from '../src/core/store.ts'
 import { parseLedgerDocumentV3, TASK_LEDGER_SCHEMA_VERSION_V3 } from '../src/core/store-v3.ts'
 import { createTask } from '../src/core/tasks.ts'
-import { HostTaskStoreV3 } from '../src/host/v3-file-store.ts'
+import { HostTaskStoreV3, TaskLedgerRevisionConflictError } from '../src/host/v3-file-store.ts'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -67,5 +67,21 @@ describe('HostTaskStoreV3 copy-first migration', () => {
     expect(await readFile(v2Path, 'utf8')).toBe(v2Raw)
     await expect(readFile(v3Path, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     expect((await readdir(root)).some(name => name.includes('v2-backup-40-rollback'))).toBe(true)
+  })
+
+  it('serializes initialization and rejects a stale full-ledger save after a Host mutation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-task-board-v3-conflict-'))
+    roots.push(root)
+    const store = new HostTaskStoreV3({ path: join(root, 'tasks-v3.json'), now: () => 50, randomId: () => 'conflict' })
+    const [first, second] = await Promise.all([store.load(), store.load()])
+    expect(first).toEqual(second)
+
+    await store.mutate(document => {
+      document.tasks = [createTask({ title: 'host admitted', description: '', prompt: 'p' }, 50, 'host-admitted')]
+      return { result: undefined }
+    })
+    await expect(store.save(first)).rejects.toBeInstanceOf(TaskLedgerRevisionConflictError)
+    await expect(store.clear(first.revision)).rejects.toBeInstanceOf(TaskLedgerRevisionConflictError)
+    expect((await store.load()).tasks.map(task => task.id)).toEqual(['host-admitted'])
   })
 })
