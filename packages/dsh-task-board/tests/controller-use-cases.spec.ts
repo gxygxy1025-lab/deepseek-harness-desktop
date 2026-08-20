@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { BoardController, selectedTaskOf, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
-import { createTask, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 import { applyCreateTask } from '../src/core/use-cases/task-create.ts'
 import { applyDeleteTask } from '../src/core/use-cases/task-delete.ts'
 import { applyScheduleNextRun, applySetSchedule } from '../src/core/use-cases/task-schedule.ts'
@@ -78,6 +78,39 @@ describe('use-case: schedule', () => {
     expect(schedule?.enabled).toBe(true)
     expect(schedule?.cron).toBe('* * * * *')
     expect(schedule?.nextRunAt).toBeDefined()
+    expect(schedule?.timezone).toBeTruthy()
+  })
+
+  it('accepts an explicit durable time zone and rejects an invalid one without mutation', () => {
+    const before = seed(1)
+    const applied = applySetSchedule(before, 'id-0', { enabled: true, cron: '0 9 * * *', timezone: 'UTC' }, NOW)
+    expect(applied.tasks[0].schedule?.timezone).toBe('UTC')
+    const invalid = applySetSchedule(before, 'id-0', { enabled: true, cron: '0 9 * * *', timezone: 'not/a-zone' }, NOW)
+    expect(invalid.applied).toBe(false)
+    expect(invalid.tasks).toBe(before)
+  })
+
+  it('clears obsolete Host admission state when the user edits a schedule', () => {
+    const before = seed(1).map(task => withSchedule(task, {
+      enabled: true,
+      cron: '* * * * *',
+      nextRunAt: NOW + 60_000,
+      lastTriggeredAt: NOW,
+      timezone: 'UTC',
+      lastRunId: 'schedule-old-1',
+      lastScheduledAt: NOW,
+      queuedAt: NOW,
+      lease: { ownerId: 'old-host', acquiredAt: NOW, renewedAt: NOW, expiresAt: NOW + 90_000 },
+      lastFailure: { at: NOW, executionKey: 'schedule-old-1', message: 'old failure' },
+    }, NOW))
+    const applied = applySetSchedule(before, 'id-0', { enabled: true, cron: '0 9 * * *', timezone: 'UTC' }, NOW)
+    expect(applied.applied).toBe(true)
+    expect(applied.tasks[0]?.schedule).toMatchObject({ enabled: true, cron: '0 9 * * *', timezone: 'UTC' })
+    expect(applied.tasks[0]?.schedule?.lastRunId).toBeUndefined()
+    expect(applied.tasks[0]?.schedule?.lastScheduledAt).toBeUndefined()
+    expect(applied.tasks[0]?.schedule?.queuedAt).toBeUndefined()
+    expect(applied.tasks[0]?.schedule?.lease).toBeUndefined()
+    expect(applied.tasks[0]?.schedule?.lastFailure).toBeUndefined()
   })
 
   it('rejects a blank or invalid cron without changing the ledger', () => {

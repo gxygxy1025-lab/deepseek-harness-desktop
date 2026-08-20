@@ -12,13 +12,9 @@ The coupling audit in `docs/archive/desktop-2.5-dsh-coupling-audit.md` lists dir
 
 `packages/dsh-desktop-compat/src/patch-registry.ts` is the patch authority. Every entry has an id, exact applicable versions, reason, upstream reference, test, removal condition, and last verification date. A patch is removed only when its removal condition is true for the candidate and all referenced regressions pass.
 
-## Candidate Lite
+## Candidate Matrix
 
-The manual `DSH Candidate Lite` workflow requires an exact candidate version. It creates a detached temporary worktree, resolves and installs the candidate plus each peer at an exact version, and runs typecheck, unit and script tests, provider start/stop/recover, profile creation, Desktop Contract, built-ins, Task Board, Directory Picker, package verification, and packaged smoke.
-
-The workflow uploads Markdown and JSON reports comparing package exports, peers, provider capabilities, compat patches, and slot evidence. Failed runs may comment on one explicitly supplied compatibility issue. A stable hash guard covers the root/Desktop manifests, lockfile, release notes, and updater metadata. Candidate work never edits `main`, Stable dependencies, releases, or updater metadata.
-
-Normal Desktop startup performs no Candidate or registry work. Registry access remains confined to explicit Extension Dock checks and manually dispatched Candidate jobs.
+The [upstream runtime support matrix](upstream-runtime-support.md) defines Candidate Matrix inputs, evidence, Stable status guards, temporary worktree isolation, and the local-only community quality report. Normal Desktop startup performs no Candidate or registry work; registry access remains confined to explicit Extension Dock checks and explicitly dispatched or explicitly queued Candidate jobs.
 
 ## Promotion
 

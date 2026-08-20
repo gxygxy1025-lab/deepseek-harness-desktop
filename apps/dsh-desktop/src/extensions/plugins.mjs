@@ -9,6 +9,7 @@ import {
   AGGREGATED_BUNDLES,
   BUILTIN_BUNDLES,
   BUILTIN_RUNTIME_PACKAGES,
+  DESKTOP_PLUGIN_COMPAT_PACKAGES,
   DESKTOP_SUPPORT_PACKAGES,
   materializeFilesystemPath,
   packagePathSegments,
@@ -19,6 +20,7 @@ import { PluginRegistry } from './plugin-registry.mjs'
 const PROTECTED_PACKAGES = new Set([
   ...BUILTIN_BUNDLES,
   ...BUILTIN_RUNTIME_PACKAGES,
+  ...DESKTOP_PLUGIN_COMPAT_PACKAGES,
   ...DESKTOP_SUPPORT_PACKAGES,
 ])
 const VERSION_PATTERN = /^[a-z0-9][a-z0-9._+~^*<>=|-]*$/i
@@ -28,6 +30,80 @@ const UNKNOWN_COMPATIBILITY = Object.freeze({
   reasons: Object.freeze([Object.freeze({ code: 'compatibility-undeclared' })]),
 })
 const MANAGED_COMPATIBILITY = Object.freeze({ status: 'compatible', reasons: Object.freeze([]) })
+export const DESKTOP_PLUGINS_LOCK_SCHEMA_VERSION = 1
+export const PLUGIN_PACKAGE_MANIFEST_READ_ERROR = 'plugin-package-manifest-read-failed'
+
+function publicDiagnosticString(value, limit = 256) {
+  return typeof value === 'string' ? value.slice(0, limit) : undefined
+}
+
+function publicDiagnosticObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const output = {}
+  for (const key of ['providerId', 'runtime', 'desktop', 'verifiedAt', 'matrixArtifact']) {
+    const item = publicDiagnosticString(value[key])
+    if (item !== undefined) output[key] = item
+  }
+  return Object.keys(output).length > 0 ? Object.freeze(output) : undefined
+}
+
+function compatibilityDiagnostic(value) {
+  const status = ['compatible', 'unknown', 'incompatible'].includes(value?.status)
+    ? value.status
+    : 'unknown'
+  const reasons = Array.isArray(value?.reasons)
+    ? value.reasons.map((reason) => Object.freeze({
+      ...(publicDiagnosticString(reason?.code, 96) === undefined ? {} : { code: publicDiagnosticString(reason.code, 96) }),
+      ...(publicDiagnosticString(reason?.subject) === undefined ? {} : { subject: publicDiagnosticString(reason.subject) }),
+      ...(publicDiagnosticString(reason?.required) === undefined ? {} : { required: publicDiagnosticString(reason.required) }),
+      ...(publicDiagnosticString(reason?.actual) === undefined ? {} : { actual: publicDiagnosticString(reason.actual) }),
+    }))
+    : []
+  const details = value?.details
+  const requirements = details?.requirements !== null && typeof details?.requirements === 'object' && !Array.isArray(details.requirements)
+    ? Object.fromEntries(Object.entries(details.requirements)
+      .filter(([, item]) => typeof item === 'string' || Array.isArray(item))
+      .map(([key, item]) => [
+        key,
+        Array.isArray(item)
+          ? item.filter((entry) => typeof entry === 'string').map((entry) => entry.slice(0, 256))
+          : item.slice(0, 256),
+      ]))
+    : undefined
+  const output = {
+    status,
+    reasons: Object.freeze(reasons),
+    ...(requirements === undefined || Object.keys(requirements).length === 0
+      ? {}
+      : { requirements: Object.freeze(requirements) }),
+    ...(publicDiagnosticObject(details?.tested) === undefined ? {} : { tested: publicDiagnosticObject(details.tested) }),
+    ...(publicDiagnosticObject(details?.host) === undefined ? {} : { host: publicDiagnosticObject(details.host) }),
+  }
+  return Object.freeze(output)
+}
+
+/** Return the deterministic, derived desktop compatibility diagnostic for a profile. */
+export function createDesktopPluginsLock(inventory) {
+  if (!Array.isArray(inventory)) throw new TypeError('plugin inventory must be an array')
+  const plugins = inventory.map((plugin) => {
+    if (typeof plugin?.name !== 'string' || plugin.name.length === 0) {
+      throw new TypeError('plugin inventory item name is invalid')
+    }
+    return Object.freeze({
+      name: plugin.name,
+      ...(publicDiagnosticString(plugin.requested) === undefined ? {} : { requested: publicDiagnosticString(plugin.requested) }),
+      ...(publicDiagnosticString(plugin.version) === undefined ? {} : { version: publicDiagnosticString(plugin.version) }),
+      managedByDesktop: plugin.managedByDesktop === true,
+      bundled: plugin.builtIn === true,
+      enabled: plugin.enabled === true,
+      compatibility: compatibilityDiagnostic(plugin.compatibility),
+    })
+  })
+  return Object.freeze({
+    schemaVersion: DESKTOP_PLUGINS_LOCK_SCHEMA_VERSION,
+    plugins: Object.freeze(plugins),
+  })
+}
 
 export function validatePluginSpec(value) {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
@@ -98,6 +174,26 @@ export function createPluginInventory(manifest, {
     .toSorted((left, right) => Number(right.builtIn) - Number(left.builtIn) || left.name.localeCompare(right.name))
 }
 
+/**
+ * Return the community-owned entries declared by the profile without opening
+ * any package below node_modules. This deliberately stays independent from
+ * `inventory()`: a partially-written or malformed third-party package.json is
+ * exactly the case in which startup recovery still needs to know what it can
+ * safely quarantine.
+ */
+export function createProfileRecoveryCandidates(manifest) {
+  const dependencies = manifest?.dependencies !== null
+    && typeof manifest?.dependencies === 'object'
+    && !Array.isArray(manifest.dependencies)
+    ? Object.keys(manifest.dependencies)
+    : []
+  const bundles = Array.isArray(manifest?.dsh?.profile?.bundles)
+    ? manifest.dsh.profile.bundles
+    : []
+  return Object.freeze([...new Set([...dependencies, ...bundles]
+    .filter((name) => typeof name === 'string' && name.length > 0 && !PROTECTED_PACKAGES.has(name)))].toSorted())
+}
+
 async function readManifest(profileDir) {
   return JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
 }
@@ -119,7 +215,10 @@ async function readInstalledManifest(profileDir, name) {
     ))
   } catch (error) {
     if (error?.code === 'ENOENT') return undefined
-    throw error
+    const wrapped = new Error(`failed to inspect installed package manifest for ${name}`, { cause: error })
+    wrapped.code = PLUGIN_PACKAGE_MANIFEST_READ_ERROR
+    wrapped.packageName = name
+    throw wrapped
   }
 }
 
@@ -230,8 +329,29 @@ export class PluginManager {
   }
 
   async inventory() {
-    await this.queue
-    return this.#inventoryNow()
+    return this.#enqueue(async () => {
+      const inventory = await this.#inventoryNow()
+      await this.#writeCompatibilityLock(inventory)
+      return inventory
+    })
+  }
+
+  /**
+   * Recovery must not depend on reading third-party package manifests. This
+   * method reads only the Desktop profile's own manifest, so it remains usable
+   * when normal inventory/compatibility inspection is what failed.
+   */
+  recoveryCandidates() {
+    return this.#enqueue(async () => createProfileRecoveryCandidates(await readManifest(this.profileDir)))
+  }
+
+  writeCompatibilityLock() {
+    return this.#enqueue(async () => {
+      const inventory = await this.#inventoryNow()
+      const lock = createDesktopPluginsLock(inventory)
+      await this.#writeCompatibilityLock(inventory, lock)
+      return lock
+    })
   }
 
   async portablePackages() {
@@ -288,6 +408,14 @@ export class PluginManager {
       compatibilityByName,
       updateStates: this.updateStates,
     })
+  }
+
+  async #writeCompatibilityLock(inventory, lock = createDesktopPluginsLock(inventory)) {
+    await writeTextFile(
+      join(this.profileDir, 'desktop-plugins.lock.json'),
+      `${JSON.stringify(lock, null, 2)}\n`,
+    )
+    return lock
   }
 
   async #assess(manifest) {

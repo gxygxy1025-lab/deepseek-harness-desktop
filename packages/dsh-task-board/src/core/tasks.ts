@@ -5,7 +5,7 @@
  * unit-testable in isolation.
  */
 
-import type { IsolationMode, TaskRunReference } from './runs.ts'
+import type { IsolationMode, RuntimeProviderEvidence, TaskRunReference } from './runs.ts'
 
 /** Task lifecycle status, one per kanban column. */
 export type TaskStatus = 'backlog' | 'todo' | 'running' | 'done' | 'failed'
@@ -37,9 +37,31 @@ export interface ExecutionRecord {
 }
 
 /**
- * A scheduled-run rule attached to a task. The browser-side scheduler ticks
- * every minute and triggers the task when `nextRunAt` is due; the rule is
- * persisted with the task (localStorage), so scheduling survives refreshes.
+ * A lease held by one Host scheduler instance for one durable rule. The lease
+ * is persisted alongside the rule so a fresh host can take over only after
+ * the prior owner expires.
+ */
+export interface ScheduleLease {
+  ownerId: string
+  acquiredAt: number
+  renewedAt: number
+  expiresAt: number
+}
+
+export type ScheduleMisfirePolicy = 'skip' | 'run-once'
+export type ScheduleRunningPolicy = 'skip' | 'queue-next'
+
+/** Last bounded Host dispatch error; never stores a transcript or stack. */
+export interface ScheduleFailure {
+  at: number
+  executionKey: string
+  message: string
+}
+
+/**
+ * A scheduled-run rule attached to a task. Legacy browser rules need only the
+ * first four fields. Desktop 2.7 adds optional durable-host state while
+ * retaining those legacy rows and their local-time semantics.
  */
 export interface ScheduleRule {
   /** Whether the schedule is armed. */
@@ -50,6 +72,24 @@ export interface ScheduleRule {
   nextRunAt: number | undefined
   /** Instant of the latest scheduled trigger (ms epoch). */
   lastTriggeredAt: number | undefined
+  /** IANA zone used by the Host; absent keeps a legacy rule in local time. */
+  timezone?: string
+  /** Sleep/restart policy. The safe default is skip. */
+  misfirePolicy?: ScheduleMisfirePolicy
+  /** A running task skips by default; queue-next records one pending slot. */
+  runningPolicy?: ScheduleRunningPolicy
+  /** Deterministic scheduled execution key most recently handed to a runner. */
+  lastRunId?: string
+  /** Cron slot that produced `lastRunId`; retained for crash-safe takeover. */
+  lastScheduledAt?: number
+  /** One queued scheduled slot while the task is still running. */
+  queuedAt?: number
+  /** Single-owner durable Host lease. */
+  lease?: ScheduleLease
+  /** Runtime-provider capability observation for the scheduler path. */
+  providerEvidence?: RuntimeProviderEvidence
+  /** Bounded failure state for status surfaces and crash diagnosis. */
+  lastFailure?: ScheduleFailure
 }
 
 /** One task on the board. */
@@ -157,11 +197,29 @@ export function withSchedule(
     cron: current?.cron ?? '',
     nextRunAt: current?.nextRunAt,
     lastTriggeredAt: current?.lastTriggeredAt,
+    ...(current?.timezone === undefined ? {} : { timezone: current.timezone }),
+    ...(current?.misfirePolicy === undefined ? {} : { misfirePolicy: current.misfirePolicy }),
+    ...(current?.runningPolicy === undefined ? {} : { runningPolicy: current.runningPolicy }),
+    ...(current?.lastRunId === undefined ? {} : { lastRunId: current.lastRunId }),
+    ...(current?.lastScheduledAt === undefined ? {} : { lastScheduledAt: current.lastScheduledAt }),
+    ...(current?.queuedAt === undefined ? {} : { queuedAt: current.queuedAt }),
+    ...(current?.lease === undefined ? {} : { lease: { ...current.lease } }),
+    ...(current?.providerEvidence === undefined ? {} : { providerEvidence: structuredClone(current.providerEvidence) }),
+    ...(current?.lastFailure === undefined ? {} : { lastFailure: { ...current.lastFailure } }),
   }
   if ('enabled' in patch) schedule.enabled = patch.enabled ?? false
   if ('cron' in patch) schedule.cron = patch.cron ?? ''
   if ('nextRunAt' in patch) schedule.nextRunAt = patch.nextRunAt
   if ('lastTriggeredAt' in patch) schedule.lastTriggeredAt = patch.lastTriggeredAt
+  if ('timezone' in patch) schedule.timezone = patch.timezone
+  if ('misfirePolicy' in patch) schedule.misfirePolicy = patch.misfirePolicy
+  if ('runningPolicy' in patch) schedule.runningPolicy = patch.runningPolicy
+  if ('lastRunId' in patch) schedule.lastRunId = patch.lastRunId
+  if ('lastScheduledAt' in patch) schedule.lastScheduledAt = patch.lastScheduledAt
+  if ('queuedAt' in patch) schedule.queuedAt = patch.queuedAt
+  if ('lease' in patch) schedule.lease = patch.lease === undefined ? undefined : { ...patch.lease }
+  if ('providerEvidence' in patch) schedule.providerEvidence = patch.providerEvidence === undefined ? undefined : structuredClone(patch.providerEvidence)
+  if ('lastFailure' in patch) schedule.lastFailure = patch.lastFailure === undefined ? undefined : { ...patch.lastFailure }
   return { ...task, updatedAt: now, schedule }
 }
 

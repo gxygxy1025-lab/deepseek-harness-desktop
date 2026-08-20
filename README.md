@@ -20,12 +20,13 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 
 如果这个项目对你有帮助，欢迎在 [GitHub 仓库](https://github.com/ningbainb/deepseek-harness-desktop) 点 Star，帮助更多桌面版用户发现它。
 
-### 最新版：2.6.0
+### 最新版：2.7.0
 
-`desktop-v2.6.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.6.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/SHA256SUMS.txt)
+`desktop-v2.7.0` 是当前稳定版：[查看完整发布说明](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.7.0) · [直接下载安装包](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.7.0/DeepSeek-Harness-Desktop-Setup-2.7.0-x64.exe) · [下载 SHA-256 校验文件](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.7.0/SHA256SUMS.txt)
 
 | 版本 | 主要更新 |
 | --- | --- |
+| **2.7.0** | 修复 Windows 8% Runtime 启动故障并升级到 DSH rc.7；新增托盘后台自动化、Host 持久任务调度、插件兼容声明/锁、browser-safe Desktop SDK、安全工作区外部打开和 Candidate Matrix。 |
 | **2.6.0** | Task Board v3 引入 Project、Task Run、Evidence 与 Git Worktree 审核流；Runtime Provider 缺少可选能力时显式回退 shared-workspace，并加入 Candidate 执行兼容夹具与有界匿名产品统计。 |
 | **2.5.0** | 新增 Runtime Adapter 与上游兼容防线、安全 `.dshpreset` 和 Web Profile 迁移、原子插件批量事务、严格 Deep Link/文件关联与结构化通知。 |
 | **2.4.0** | 新增可靠更新关停回执 v2、主界面/扩展坞权限拆分、Desktop Contract v1，以及 Task Board Host 文件存储 v2。 |
@@ -40,6 +41,15 @@ DeepSeek Harness Desktop 将原版 DSH Web 界面完整装进 Windows EXE：不�
 | **0.1.5** | 原生标题栏跟随亮色/暗色主题；全屏弹窗避开标题栏安全区；修复安装版皮肤发现与切换，并内置 `dshmarket` 和 `dsh-plugin-hub`。 |
 | **0.1.4** | 桌宠迁移到全局 Shell Overlay，首页和设置页均可见；恢复五张 Web UI 插件配置卡；皮肤中心完整展示安装版随附的九套皮肤。 |
 | **0.1.3** | 加入稳定版 GitHub Release 更新检查、双语更新说明、用户确认下载、任务栏进度和二次确认安装。 |
+
+### 2.7.0 功能亮点
+
+- **可靠 Windows 启动**：移除 PowerShell 5.1 `-WindowStyle Hidden` 与 Electron Node 模式的冲突，隐藏窗口仍由 `spawn` 的 `windowsHide` 处理；空旧补丁、状态订阅竞态和 IPC 错误不会再把启动页永久留在 8%。
+- **验证过的 Runtime 组合**：内置 `@deepseek-ai/dsh` `0.1.0-rc.7`、`dshmarket` `1.15.0`、Web UI 聚合 `0.2.3`、兼容 rc.7 的 Codex Connect 与 `dsh-live-stats` `0.1.20`，Stable 继续精确锁定而非追随 `latest`。
+- **托盘与后台自动化需显式选择**：默认关闭仍会退出。选择“最小化到托盘并启用后台自动化”后，关闭主窗口才保留 Runtime 和到期任务；显式退出、更新、安全模式和崩溃路径一律完整停止。
+- **Host 持久任务调度**：Task Board 保存时区、cron 槽位、租约、misfire/running 策略和确定性运行键；启用后台自动化时通过真实 DSH Session 执行并回写 Task Run，Host 不可用时仍回退浏览器调度。
+- **可审计的扩展边界**：扩展坞校验 `dsh.compatibility` 的版本、Desktop API、能力、Surface 与运行时证据，并在 profile 写入 `desktop-plugins.lock.json`。browser-safe SDK 不导入 Electron 或私有 DSH 模块；预览的外部打开仅传工作区根和相对路径，Host 验证后才交给系统。
+- **Candidate Matrix**：候选 DSH 在临时 worktree 中收集矩阵、Stable 支持和离线社区插件质量证据；候选永远不能自动改写 Stable 依赖、lockfile、更新元数据或发布。
 
 ### 2.6.0 功能亮点
 

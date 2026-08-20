@@ -282,6 +282,34 @@ h1 {
   line-height: 1.5;
 }
 
+.startup-support {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 13px;
+}
+
+.startup-support button {
+  min-height: 30px;
+  padding-inline: 12px;
+}
+
+.startup-support-hint,
+.diagnostic-export-status {
+  margin: 0;
+  color: #718b9b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.diagnostic-export-status {
+  margin-top: 7px;
+  color: #8cded0;
+}
+
+.diagnostic-export-status[data-state="error"] { color: #ffc08b; }
+
 .recovery-summary {
   margin-top: 14px;
   padding: 13px 15px;

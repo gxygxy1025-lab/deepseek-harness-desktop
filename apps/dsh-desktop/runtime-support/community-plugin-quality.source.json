@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-08-20",
+  "ci": {
+    "workflow": ".github/workflows/desktop-ci.yml",
+    "status": "not-recorded"
+  },
+  "smoke": {
+    "date": "2026-08-20",
+    "status": "not-recorded"
+  }
+}

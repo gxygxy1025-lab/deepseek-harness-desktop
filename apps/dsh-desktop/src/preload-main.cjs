@@ -17,6 +17,7 @@ const baseApi = {
   getStatus: () => ipcRenderer.invoke('desktop:status'),
   setWindowChromeTheme: (theme) => ipcRenderer.invoke('desktop:window-chrome-theme', theme),
   showNotification: (notification) => ipcRenderer.invoke('desktop:notification-show', notification),
+  openWorkspaceFile: (request) => ipcRenderer.invoke('desktop:workspace-file-open', request),
   onStatus: createSubscription('desktop:status', 'status'),
   onDeepLink: createSubscription('desktop:deep-link', 'deep link'),
 }

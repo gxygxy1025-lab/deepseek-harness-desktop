@@ -21,6 +21,9 @@ output/
 .tmp-user-data/
 apps/dsh-desktop/dist/
 
+# Temporary package-patch rebase workspaces (generated locally, never product source)
+/.tmp-dshmarket-restore-guard/
+
 # 本地调试探针脚本（不入库）
 .dsh/*.js
 .dsh/*.py

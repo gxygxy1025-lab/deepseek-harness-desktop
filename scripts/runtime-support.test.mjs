@@ -11,6 +11,7 @@ test('Known Good manifest derives exact runtime, integrity, capabilities, and pa
   const manifest = await createRuntimeSupportManifest()
   assert.equal(manifest.schemaVersion, 1)
   assert.equal(manifest.derived, true)
+  assert.equal(manifest.supportStatus, 'known-good')
   assert.equal(manifest.runtime.packageName, '@deepseek-ai/dsh')
   assert.match(manifest.runtime.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u)
   assert.match(manifest.runtime.integrity, /^sha512-[A-Za-z0-9+/]+=*$/u)
@@ -27,8 +28,17 @@ test('Known Good manifest derives exact runtime, integrity, capabilities, and pa
   assert.deepEqual(manifest.compatPatches.ids, [
     'queued-turn-continuation',
     'cancellation-presentation',
+    'tool-call-arguments-envelope',
     'desktop-skin-profile-isolation',
   ])
+  assert.equal(manifest.clientSlots.source, 'scripts/audit-dsh-coupling.mjs')
+  assert.equal(manifest.clientSlots.ids.includes('conversation.input.dock'), true)
+})
+
+test('candidate evidence may be rendered but cannot overwrite the Known Good artifact', async () => {
+  const candidate = await createRuntimeSupportManifest(undefined, { supportStatus: 'candidate' })
+  assert.equal(candidate.supportStatus, 'candidate')
+  assert.equal(candidate.provider.supportStatus, 'candidate')
 })
 
 test('lockfile evidence requires an exact matching package entry and integrity', () => {

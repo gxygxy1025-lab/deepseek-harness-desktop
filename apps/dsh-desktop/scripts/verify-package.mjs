@@ -1,14 +1,13 @@
-import { access, readFile, stat } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { access, readdir, readFile, stat } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import YAML from 'yaml'
 
 import {
-  BUILTIN_SKIN_PACKAGES,
+  BUILTIN_SKIN_IDS,
   DSH_BOOT_RUNTIME_PACKAGES,
   MANAGED_RUNTIME_PACKAGES,
-  WEB_UI_SETTINGS_NAMESPACES,
   packagePathSegments,
 } from '../src/profile.mjs'
 import { CRITICAL_RUNTIME_FILES } from '../src/runtime-integrity.mjs'
@@ -46,13 +45,80 @@ await access(join(unpackedModules, 'pnpm', 'bin', 'pnpm.mjs'))
 for (const relativePath of CRITICAL_RUNTIME_FILES) {
   await access(join(unpackedModules, ...relativePath.split('/')))
 }
-for (const packageName of BUILTIN_SKIN_PACKAGES) {
-  const skinId = packageName.slice(packageName.lastIndexOf('-skin-') + '-skin-'.length)
-  const packageRoot = join(unpackedModules, '@linxin666', 'dsh-skins', 'skins', skinId)
-  await access(join(packageRoot, 'lib', 'client.js'))
-  await access(join(packageRoot, 'skin.json'))
-  const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
-  if (manifest.name !== packageName) throw new Error(`bundled skin manifest mismatch for ${packageName}`)
+const skinCenterRoot = join(unpackedModules, '@linxin666', 'dsh-client-ui-skin-center')
+const skinCenterManifest = JSON.parse(await readFile(join(skinCenterRoot, 'package.json'), 'utf8'))
+if (skinCenterManifest.name !== '@linxin666/dsh-client-ui-skin-center') {
+  throw new Error('packaged Skin Center manifest has an unexpected package name')
+}
+await access(join(skinCenterRoot, 'lib', 'index.js'))
+await access(join(skinCenterRoot, 'lib', 'client.js'))
+const skinCenterBundle = await readFile(join(skinCenterRoot, 'cordis.patch.yml'), 'utf8')
+if (!/- id: ui-skin-center\s+name: '@linxin666\/dsh-client-ui-skin-center'/u.test(skinCenterBundle)) {
+  throw new Error('packaged Skin Center bundle patch is missing its host plugin row')
+}
+const skinCenterHost = await readFile(join(skinCenterRoot, 'lib', 'index.js'), 'utf8')
+if (
+  !skinCenterHost.includes('/api/skin-center/v2')
+  || !skinCenterHost.includes('/catalog')
+  || !skinCenterHost.includes('skin-center-active.json')
+) {
+  throw new Error('packaged Skin Center does not include the v2 catalog and active-selection host')
+}
+
+function skinAssetPath(skinRoot, asset, label) {
+  if (typeof asset !== 'string' || asset.length === 0) {
+    throw new Error(`Skin Center ${label} must be a non-empty relative path`)
+  }
+  const candidate = resolve(skinRoot, asset)
+  const pathFromRoot = relative(skinRoot, candidate)
+  if (pathFromRoot.length === 0 || pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) {
+    throw new Error(`Skin Center ${label} escapes its skin asset directory`)
+  }
+  return candidate
+}
+
+const packagedSkinIds = (await readdir(join(skinCenterRoot, 'skins'), { withFileTypes: true }))
+  .filter(entry => entry.isDirectory())
+  .map(entry => entry.name)
+  .toSorted()
+const expectedSkinIds = [...BUILTIN_SKIN_IDS].toSorted()
+if (new Set(expectedSkinIds).size !== expectedSkinIds.length) {
+  throw new Error('Desktop built-in Skin Center catalog contains duplicate ids')
+}
+if (JSON.stringify(packagedSkinIds) !== JSON.stringify(expectedSkinIds)) {
+  throw new Error(`packaged Skin Center catalog differs from Desktop profile: ${packagedSkinIds.join(', ')}`)
+}
+for (const skinId of BUILTIN_SKIN_IDS) {
+  const skinRoot = join(skinCenterRoot, 'skins', skinId)
+  const manifest = JSON.parse(await readFile(join(skinRoot, 'skin.json'), 'utf8'))
+  if (manifest.id !== skinId) throw new Error(`bundled Skin Center manifest mismatch for ${skinId}`)
+  if (manifest.skinManifestVersion !== 2) {
+    throw new Error(`bundled Skin Center manifest is not v2 for ${skinId}`)
+  }
+  const stylesheet = manifest.contributes?.stylesheet
+  await access(skinAssetPath(skinRoot, stylesheet, `${skinId} stylesheet`))
+  for (const [name, asset] of [
+    ['patches stylesheet', manifest.contributes?.patches],
+    ['client hook', manifest.facets?.client?.entry],
+    ['light preview', manifest.preview?.light],
+    ['dark preview', manifest.preview?.dark],
+  ]) {
+    if (asset !== undefined) await access(skinAssetPath(skinRoot, asset, `${skinId} ${name}`))
+  }
+}
+const retiredSkinCarrierRoot = join(unpackedModules, '@linxin666', 'dsh-skins')
+const retiredSkinCarrier = JSON.parse(await readFile(join(retiredSkinCarrierRoot, 'package.json'), 'utf8'))
+if (retiredSkinCarrier.name !== '@linxin666/dsh-skins') {
+  throw new Error('packaged retired skin carrier manifest has an unexpected package name')
+}
+if (typeof retiredSkinCarrier.dependencies?.['@linxin666/dsh-client-ui-skin-center'] !== 'string') {
+  throw new Error('packaged retired skin carrier no longer depends on Skin Center v2')
+}
+try {
+  await access(join(retiredSkinCarrierRoot, 'skins'))
+  throw new Error('packaged retired skin carrier still contains obsolete nested skin assets')
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error
 }
 const petRoot = join(unpackedModules, ...packagePathSegments('@linxin666/dsh-pet'))
 await access(join(petRoot, 'lib', 'client.js'))
@@ -71,17 +137,18 @@ const aggregatePatch = await readFile(
   join(unpackedModules, '@linxin666', 'dsh-web-ui-all', 'cordis.patch.yml'),
   'utf8',
 )
-if (!/- id: ui-mode-switcher\s+name: '@linxin666\/dsh-client-ui-mode-switcher'/u.test(aggregatePatch)) {
+if (!/- id: web-ui-mode-switcher\s+name: '@linxin666\/dsh-client-ui-mode-switcher'/u.test(aggregatePatch)) {
   throw new Error('packaged web UI aggregate is missing the Desktop mode switcher')
 }
 const apiProxyBundle = await readFile(
   join(unpackedModules, '@deepseek-ai', 'dsh-host-apiproxy', 'lib', 'index.js'),
   'utf8',
 )
-for (const namespace of WEB_UI_SETTINGS_NAMESPACES) {
-  if (!apiProxyBundle.includes(`"${namespace}"`)) {
-    throw new Error(`packaged Host API proxy is missing settings namespace ${namespace}`)
-  }
+if (
+  apiProxyBundle.includes('settings-not-exposed')
+  || apiProxyBundle.includes('WEB_SETTINGS_NAMESPACES')
+) {
+  throw new Error('packaged Host API proxy still contains the retired settings allowlist')
 }
 
 const packagedTaskBoard = await import(pathToFileURL(join(unpackedModules, '@linxin666', 'dsh-client-ui-task-board', 'lib', 'index.js')).href)
@@ -93,6 +160,29 @@ for (const [name, value] of [
   ['Git Graph WorktreeWorkspaceRegistry', packagedGitGraph.WorktreeWorkspaceRegistry],
 ]) {
   if (typeof value !== 'function') throw new Error(`packaged runtime is missing ${name}`)
+}
+const aionRoot = join(unpackedModules, '@linxin666', 'dsh-client-ui-aionui-panel')
+const aionManifest = JSON.parse(await readFile(join(aionRoot, 'package.json'), 'utf8'))
+const aionHost = await readFile(join(aionRoot, 'lib', 'index.js'), 'utf8')
+const aionClient = await readFile(join(aionRoot, 'lib', 'client.js'), 'utf8')
+const desktopCompatRoot = join(unpackedModules, '@linxin666', 'dsh-desktop-compat')
+const desktopCompatHost = await readFile(join(desktopCompatRoot, 'lib', 'index.js'), 'utf8')
+const desktopOpenPolicy = await import(pathToFileURL(join(desktopCompatRoot, 'lib', 'workspace-file-open-policy.js')).href)
+if (
+  aionManifest.dsh?.compatibility?.capabilities?.includes('workspace-files.open') !== true
+  || aionHost.includes('/aionui-panel/desktop-open-target')
+  || !aionClient.includes('openWorkspaceFile')
+  || !aionClient.includes('workspace-files.open')
+) {
+  throw new Error('packaged Aion panel is missing its public Desktop SDK external-open client flow')
+}
+if (
+  !desktopCompatHost.includes('/desktop/workspace-file-open-target')
+  || !desktopCompatHost.includes('resolveByPath')
+  || desktopOpenPolicy.isSafeDesktopWorkspaceFileOpenPath('README.md') !== true
+  || desktopOpenPolicy.isSafeDesktopWorkspaceFileOpenPath('payload.cmd') !== false
+) {
+  throw new Error('packaged Desktop compat bundle is missing the workspace native-open authority')
 }
 const particlePackageRoot = join(unpackedModules, '@linxin666', 'dsh-particle-theme')
 await access(join(particlePackageRoot, 'lib', 'index.js'))

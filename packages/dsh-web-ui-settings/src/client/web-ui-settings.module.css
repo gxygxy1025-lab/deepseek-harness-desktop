@@ -1,7 +1,27 @@
-/* Web UI plugin group card chrome + community plugin index.
+/* Web UI settings section + legacy community plugin index.
  * The disclosure card chrome mirrors the official ui-settings-plugins
  * PluginCard (same tokens, radius, typography and states) so the group reads
  * as a sibling of the built-in Shell / Agent loop / Web search cards. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  margin: 0 0 4px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.lede {
+  margin: 0 0 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 1.5;
+}
 
 .groupCard {
   list-style: none;

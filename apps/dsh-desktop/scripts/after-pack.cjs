@@ -5,12 +5,15 @@ const { dirname, join, relative } = require('node:path')
 // peer-dependency snapshots. These are required by the DSH boot graph, so copy
 // the app's explicitly pinned instance only when the collector omitted it.
 const REQUIRED_PACKAGED_PEERS = Object.freeze([
+  '@deepseek-ai/dsh-atomic-write',
   '@deepseek-ai/dsh-attachment',
   '@deepseek-ai/dsh-brand',
+  '@deepseek-ai/dsh-host-webserver',
   '@deepseek-ai/dsh-sandbox-policy',
   '@deepseek-ai/dsh-settings',
   '@deepseek-ai/dsh-timeout',
   '@deepseek-ai/dsh-typert-protocol',
+  '@deepseek-ai/dsh-workspace',
 ])
 
 const SOURCE_ROOTS = new Map([

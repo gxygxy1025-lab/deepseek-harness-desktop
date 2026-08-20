@@ -27,6 +27,20 @@ test('progress meter carries milestone ticks and a leading tip', async () => {
   assert.match(css, /@keyframes tip-swim/u)
 })
 
+test('startup surface keeps a diagnostics export path available before runtime readiness', async () => {
+  const [html, renderer, css] = await Promise.all([
+    readFile(new URL('startup.html', uiRoot), 'utf8'),
+    readFile(new URL('startup.mjs', uiRoot), 'utf8'),
+    readFile(new URL('startup.css', uiRoot), 'utf8'),
+  ])
+  assert.match(html, /data-action="export-diagnostics"/u)
+  assert.match(html, /id="diagnostic-export-status"/u)
+  assert.match(renderer, /STARTUP_STALL_NOTICE_MS = 30_000/u)
+  assert.match(renderer, /启动耗时较长；可导出诊断日志/u)
+  assert.match(renderer, /action === 'export-diagnostics'/u)
+  assert.match(css, /\.startup-support/u)
+})
+
 test('whale pose stays inside the right-side swim corridor', () => {
   const width = 1440
   const height = 900

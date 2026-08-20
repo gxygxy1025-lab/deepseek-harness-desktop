@@ -1,23 +1,28 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { validateCandidateVersion } from './prepare-dsh-candidate.mjs'
 
 const CHECK_STATUSES = new Set(['passed', 'failed', 'skipped'])
+const REPORT_STATUSES = new Set(['candidate', 'blocked'])
 
 function normalizedChecks(checks) {
   if (!Array.isArray(checks) || checks.length === 0) throw new TypeError('candidate checks are required')
+  const ids = new Set()
   return checks.map((check) => {
     if (
       check === null
       || typeof check !== 'object'
       || typeof check.id !== 'string'
       || check.id.length === 0
+      || check.id.length > 160
       || !CHECK_STATUSES.has(check.status)
+      || ids.has(check.id)
     ) {
       throw new TypeError('invalid candidate check result')
     }
+    ids.add(check.id)
     return {
       id: check.id,
       status: check.status,
@@ -39,14 +44,68 @@ function difference(left, right) {
     : { changed: true, stable: left ?? null, candidate: right ?? null }
 }
 
+function runtimePackage(evidence) {
+  const runtime = evidence?.runtime
+  return runtime === null || typeof runtime !== 'object'
+    ? null
+    : {
+      name: runtime.packageName ?? null,
+      version: runtime.version ?? null,
+      integrity: runtime.integrity ?? null,
+      exports: runtime.exports ?? null,
+    }
+}
+
+function runtimeEvidence(evidence) {
+  return {
+    package: runtimePackage(evidence),
+    peers: evidence?.runtime?.peerDependencies ?? null,
+    slots: evidence?.clientSlots?.ids ?? null,
+    capabilities: evidence?.provider?.capabilities ?? null,
+    patches: evidence?.compatPatches ?? null,
+    packagedRuntime: evidence?.packagedRuntimeIdentity ?? null,
+  }
+}
+
+function patchAssessment({ stableEvidence, candidateEvidence }) {
+  const stable = new Set(stableEvidence?.compatPatches?.ids ?? [])
+  const candidate = new Set(candidateEvidence?.compatPatches?.ids ?? [])
+  const stableVersion = stableEvidence?.runtime?.version
+  const candidateVersion = candidateEvidence?.runtime?.version
+  return [...new Set([...stable, ...candidate])].toSorted().map((id) => {
+    if (!candidate.has(id)) return { id, action: 'review-removal', reason: 'candidate evidence no longer lists this patch' }
+    if (!stable.has(id)) return { id, action: 'review-new-patch', reason: 'candidate evidence adds this patch' }
+    if (stableVersion !== candidateVersion) {
+      return { id, action: 'reverify-or-remove', reason: `runtime changed from ${stableVersion ?? 'unknown'} to ${candidateVersion ?? 'unknown'}` }
+    }
+    return { id, action: 'retain', reason: 'same runtime evidence retains this patch' }
+  })
+}
+
+function blockingReasons({ checks, checkoutUnchanged, executionEvidence }) {
+  const reasons = checks
+    .filter((check) => check.status !== 'passed')
+    .map((check) => `${check.id}: ${check.detail ?? check.status}`)
+  if (!checkoutUnchanged) reasons.push('stable checkout inputs changed during candidate execution')
+  if (executionEvidence?.status === 'blocked' || executionEvidence?.candidate?.status === 'blocked') {
+    const reported = executionEvidence?.blockingReasons ?? executionEvidence?.candidate?.blockingReasons
+    reasons.push(...(Array.isArray(reported) ? reported : [reported ?? 'candidate execution fixture is blocked']))
+  }
+  if (executionEvidence?.candidate?.eventSemantics === 'changed') {
+    reasons.push('candidate changed completion/cancel event semantics')
+  }
+  return [...new Set(reasons)].map((reason) => String(reason).slice(0, 2_000))
+}
+
 export function createCandidateReport({
   candidateVersion,
+  candidateSource = undefined,
   stableEvidence,
   candidateEvidence,
   checks,
   stableHashesBefore,
   stableHashesAfter,
-  slotEvidence = { stable: [], candidate: [] },
+  slotEvidence = undefined,
   executionEvidence = undefined,
 } = {}) {
   const version = validateCandidateVersion(candidateVersion)
@@ -56,22 +115,52 @@ export function createCandidateReport({
   const executionBlocking = executionEvidence?.status === 'blocked'
     || executionEvidence?.candidate?.status === 'blocked'
     || executionEvidence?.candidate?.eventSemantics === 'changed'
-  const status = allPassed && checkoutUnchanged && !executionBlocking ? 'compatible' : 'failed'
+  const reportStatus = allPassed && checkoutUnchanged && !executionBlocking ? 'candidate' : 'blocked'
+  const stableRuntimeEvidence = runtimeEvidence(stableEvidence)
+  const candidateRuntimeEvidence = runtimeEvidence(candidateEvidence)
+  const slots = slotEvidence ?? {
+    stable: stableRuntimeEvidence.slots ?? [],
+    candidate: candidateRuntimeEvidence.slots ?? [],
+  }
+  const reasons = blockingReasons({ checks: normalized, checkoutUnchanged, executionEvidence })
+  const patches = patchAssessment({ stableEvidence, candidateEvidence })
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    status: reportStatus,
+    outcome: reportStatus === 'candidate' ? 'compatible' : 'blocked',
     candidateVersion: version,
+    ...(typeof candidateSource === 'string' && candidateSource.trim().length > 0 ? { candidateSource: candidateSource.trim().slice(0, 128) } : {}),
     stableVersion: stableEvidence?.runtime?.version,
-    status,
+    stableDesktopVersion: stableEvidence?.desktop?.version ?? null,
+    candidateDesktopVersion: candidateEvidence?.desktop?.version ?? null,
     stableCheckoutUnchanged: checkoutUnchanged,
+    recommendation: reportStatus === 'candidate' ? 'open-independent-upgrade-pr' : 'hold-candidate',
     checks: normalized,
-    differences: {
-      packageExports: difference(stableEvidence?.runtime?.exports, candidateEvidence?.runtime?.exports),
-      peers: difference(stableEvidence?.runtime?.peerDependencies, candidateEvidence?.runtime?.peerDependencies),
-      providerCapabilities: difference(stableEvidence?.provider?.capabilities, candidateEvidence?.provider?.capabilities),
-      compatPatches: difference(stableEvidence?.compatPatches, candidateEvidence?.compatPatches),
-      slots: difference(slotEvidence.stable, slotEvidence.candidate),
+    blockingReasons: reasons,
+    patchAssessment: patches,
+    evidence: {
+      stable: stableRuntimeEvidence,
+      candidate: candidateRuntimeEvidence,
+      cwd: {
+        stable: executionEvidence?.stable?.sessionCwd ?? null,
+        candidate: executionEvidence?.candidate?.sessionCwd ?? null,
+        eventSemantics: executionEvidence?.candidate?.eventSemantics ?? 'not-run',
+      },
     },
-    execution: executionEvidence ?? { status: 'not-run', gate: 'CWD/event semantics required for 2.6 Worktree execution' },
+    differences: {
+      package: difference(stableRuntimeEvidence.package, candidateRuntimeEvidence.package),
+      packageExports: difference(stableEvidence?.runtime?.exports, candidateEvidence?.runtime?.exports),
+      apiExports: difference(stableEvidence?.runtime?.exports, candidateEvidence?.runtime?.exports),
+      peers: difference(stableRuntimeEvidence.peers, candidateRuntimeEvidence.peers),
+      slots: difference(slots.stable, slots.candidate),
+      capabilities: difference(stableRuntimeEvidence.capabilities, candidateRuntimeEvidence.capabilities),
+      patches: difference(stableRuntimeEvidence.patches, candidateRuntimeEvidence.patches),
+      packagedRuntime: difference(stableRuntimeEvidence.packagedRuntime, candidateRuntimeEvidence.packagedRuntime),
+    },
+    execution: executionEvidence ?? {
+      status: 'not-run',
+      gate: 'CWD/event semantics required for isolated Worktree execution',
+    },
   }
 }
 
@@ -79,19 +168,31 @@ function markdown(value) {
   return String(value ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ')
 }
 
+function evidenceSummary(value) {
+  if (value === null || value === undefined) return 'not-run'
+  const serialized = JSON.stringify(value)
+  return serialized.length > 1_800 ? `${serialized.slice(0, 1_797)}...` : serialized
+}
+
 export function renderCandidateReportMarkdown(report) {
+  if (!REPORT_STATUSES.has(report?.status)) throw new TypeError('candidate report status is invalid')
   const lines = [
-    `# DSH Candidate Lite: ${report.candidateVersion}`,
+    `# DSH Candidate Matrix: ${report.candidateVersion}`,
     '',
-    `Result: **${report.status}**.`,
+    `Result: **${report.status}** (${report.outcome}).`,
     '',
+    ...(report.candidateSource === undefined ? [] : [`Candidate source: ${markdown(report.candidateSource)}.`, '']),
     `Stable runtime: ${report.stableVersion ?? 'unavailable'}.`,
+    '',
+    `Desktop version: Stable ${report.stableDesktopVersion ?? 'unavailable'}; candidate build ${report.candidateDesktopVersion ?? 'unavailable'}.`,
     '',
     `Stable checkout unchanged: ${report.stableCheckoutUnchanged ? 'yes' : 'no'}.`,
     '',
-    'This report is diagnostic only. It does not update stable dependencies, the lockfile, releases, or updater metadata.',
+    `Recommendation: ${report.recommendation}.`,
     '',
-    'Desktop 2.6 Worktree compatibility is gated by Session CWD and completion/cancel event semantics. Missing capabilities may be safely degraded to shared-workspace; changed semantics block the isolated path.',
+    'This report is diagnostic only. It does not update stable dependencies, the lockfile, releases, updater metadata, or the tracked checkout.',
+    '',
+    'Candidate evidence compares package, peers, client slots, provider capabilities, CWD/event semantics, compatibility patches, and packaged runtime identity. Session CWD and completion/cancel event semantics remain gates for isolated Worktree execution. A candidate remains a candidate until a separate reviewed upgrade change promotes it.',
     '',
     '## Checks',
     '',
@@ -105,14 +206,57 @@ export function renderCandidateReportMarkdown(report) {
     '| --- | --- |',
     ...Object.entries(report.differences).map(([name, value]) => `| ${name} | ${value.changed ? 'yes' : 'no'} |`),
     '',
-    '## Execution semantics',
+    '## Runtime and execution evidence',
     '',
-    `| Status | ${markdown(report.execution?.status)} |`,
-    `| Candidate CWD | ${markdown(report.execution?.candidate?.sessionCwd ?? 'not-run')} |`,
-    `| Candidate events | ${markdown(report.execution?.candidate?.eventSemantics ?? 'not-run')} |`,
+    `| Stable package | ${markdown(report.evidence?.stable?.package?.name)}@${markdown(report.evidence?.stable?.package?.version)} |`,
+    `| Candidate package | ${markdown(report.evidence?.candidate?.package?.name)}@${markdown(report.evidence?.candidate?.package?.version)} |`,
+    `| Stable slots | ${markdown((report.evidence?.stable?.slots ?? []).join(', ') || 'not-run')} |`,
+    `| Candidate slots | ${markdown((report.evidence?.candidate?.slots ?? []).join(', ') || 'not-run')} |`,
+    `| Stable peers | ${markdown(evidenceSummary(report.evidence?.stable?.peers))} |`,
+    `| Candidate peers | ${markdown(evidenceSummary(report.evidence?.candidate?.peers))} |`,
+    `| Stable capabilities | ${markdown(evidenceSummary(report.evidence?.stable?.capabilities))} |`,
+    `| Candidate capabilities | ${markdown(evidenceSummary(report.evidence?.candidate?.capabilities))} |`,
+    `| Stable patches | ${markdown(evidenceSummary(report.evidence?.stable?.patches?.ids))} |`,
+    `| Candidate patches | ${markdown(evidenceSummary(report.evidence?.candidate?.patches?.ids))} |`,
+    `| Candidate CWD | ${markdown(report.evidence?.cwd?.candidate ?? 'not-run')} |`,
+    `| Candidate events | ${markdown(report.evidence?.cwd?.eventSemantics ?? 'not-run')} |`,
+    `| Candidate packaged CLI | ${markdown(report.evidence?.candidate?.packagedRuntime?.cli ?? 'not-run')} |`,
+    `| Packaged runtime changed | ${report.differences.packagedRuntime.changed ? 'yes' : 'no'} |`,
     '',
+    '## Compatibility patch assessment',
+    '',
+    '| Patch | Candidate action | Reason |',
+    '| --- | --- | --- |',
+    ...report.patchAssessment.map((patch) => `| ${markdown(patch.id)} | ${markdown(patch.action)} | ${markdown(patch.reason)} |`),
+    '',
+    ...(report.blockingReasons.length === 0 ? [] : ['## Blocking reasons', '', ...report.blockingReasons.map((reason) => `- ${markdown(reason)}`), '']),
   ]
   return `${lines.join('\n')}\n`
+}
+
+async function atomicWrite(path, content) {
+  const target = resolve(path)
+  const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
+  const backup = `${target}.bak-${process.pid}-${Date.now()}`
+  await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' })
+  let movedExisting = false
+  try {
+    await rename(target, backup)
+    movedExisting = true
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  try {
+    await rename(temporary, target)
+    if (movedExisting) await rm(backup, { force: true })
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => {})
+    if (movedExisting) {
+      await rm(target, { force: true }).catch(() => {})
+      await rename(backup, target)
+    }
+    throw error
+  }
 }
 
 async function main() {
@@ -124,11 +268,14 @@ async function main() {
   }
   const input = JSON.parse(await readFile(resolve(process.argv[inputIndex + 1]), 'utf8'))
   const report = createCandidateReport(input)
+  const json = `${JSON.stringify(report, null, 2)}\n`
+  const markdownOutput = renderCandidateReportMarkdown(report)
+  JSON.parse(json)
   await Promise.all([
-    writeFile(resolve(process.argv[jsonIndex + 1]), `${JSON.stringify(report, null, 2)}\n`),
-    writeFile(resolve(process.argv[markdownIndex + 1]), renderCandidateReportMarkdown(report)),
+    atomicWrite(resolve(process.argv[jsonIndex + 1]), json),
+    atomicWrite(resolve(process.argv[markdownIndex + 1]), markdownOutput),
   ])
-  if (report.status !== 'compatible') process.exitCode = 1
+  if (report.status !== 'candidate') process.exitCode = 1
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()

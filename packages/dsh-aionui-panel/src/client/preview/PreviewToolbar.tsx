@@ -10,7 +10,7 @@ import type { JSX } from 'react'
 import type { PreviewContentType } from '../../core/types.ts'
 import { isEditableType } from '../fileType.ts'
 import { t } from '../locales.ts'
-import { CodeIcon, DownloadIcon, EyeIcon, RefreshIcon, SaveIcon, SplitIcon } from '../components/icons.tsx'
+import { CodeIcon, DownloadIcon, ExternalIcon, EyeIcon, RefreshIcon, SaveIcon, SplitIcon } from '../components/icons.tsx'
 import previewCss from '../styles/preview.module.css'
 
 /** Refresh button states (AionUi's 4-state machine). */
@@ -67,6 +67,7 @@ export function PreviewToolbar({
   onRefresh,
   onSave,
   onDownload,
+  onOpenExternal,
 }: {
   contentType: PreviewContentType
   hasContent: boolean
@@ -82,6 +83,7 @@ export function PreviewToolbar({
   onRefresh: () => void
   onSave: () => void
   onDownload: () => void
+  onOpenExternal?: () => void
 }): JSX.Element {
   const refreshState = refreshStateFor(contentType, hasContent, loading, updated)
   const editable = isEditableType(contentType)
@@ -128,6 +130,16 @@ export function PreviewToolbar({
       >
         <DownloadIcon size={13} />
       </button>
+      {onOpenExternal !== undefined && (
+        <button
+          type="button"
+          className={previewCss.toolbarBtn}
+          title={t('preview.openExternal')}
+          onClick={onOpenExternal}
+        >
+          <ExternalIcon size={13} />
+        </button>
+      )}
       <span className={previewCss.toolbarSpacer} />
       {refreshState !== 'hidden' && (
         <button

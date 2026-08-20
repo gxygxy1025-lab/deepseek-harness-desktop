@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Deterministic Desktop 2.6 Candidate execution fixture.
+ * Deterministic Desktop Candidate Matrix execution fixture.
  *
  * It deliberately speaks the Runtime Provider boundary only. The same temp
  * repository/worktree path is exercised by Known Good and Candidate; a
@@ -135,7 +135,7 @@ async function runProviderFixture(provider, repository, label) {
       status: 'blocked',
       safeDegradation: 'shared-workspace',
       blockingReasons: [`missing Runtime Provider capability: ${missing.join(', ')}`],
-      checks: [check('provider-capabilities', 'failed', missing.join(', ')), check('shared-workspace-fallback', 'passed', '2.6 worktree path is not attempted')],
+      checks: [check('provider-capabilities', 'failed', missing.join(', ')), check('shared-workspace-fallback', 'passed', 'isolated Worktree path is not attempted')],
       sessionCwd: undefined,
       eventSemantics: 'not-run',
       createCount: provider.createCount,
@@ -238,7 +238,7 @@ export function renderCandidateExecutionMarkdown(report) {
     '',
     `Stable checkout unchanged: ${report.stableCheckoutUnchanged ? 'yes' : 'no'}.`,
     '',
-    'A real Git Worktree CWD and event semantics are compatibility gates for Desktop 2.6 Worktree execution.',
+    'A real Git Worktree CWD and event semantics are compatibility gates for isolated Desktop Worktree execution.',
     '',
     '| Provider | Status | CWD | Events |',
     '| --- | --- | --- | --- |',

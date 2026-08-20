@@ -11,21 +11,24 @@ const executablePath = process.env.DSH_DESKTOP_E2E_EXECUTABLE
 if (!executablePath) throw new Error('DSH_DESKTOP_E2E_EXECUTABLE is required')
 
 const temporary = await mkdtemp(resolve(tmpdir(), 'dsh-profile-migration-e2e-'))
-const dshHome = resolve(temporary, 'dsh-home')
-const userData = resolve(temporary, 'user-data')
-const profileDir = resolve(dshHome, 'profiles', 'desktop')
-const manifestPath = resolve(profileDir, 'package.json')
-const profilePatchPath = resolve(profileDir, 'cordis.patch.yml')
-const homePatchPath = resolve(dshHome, 'cordis.patch.yml')
-const recoveryStatePath = resolve(userData, 'plugin-recovery', 'state.json')
 const legacyCommunityPlugin = '@community/legacy-safe-mode-fixture'
-const legacySkinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- insert:\n    - id: ui-skin-qq98\n      name: \'@linxin666/dsh-client-ui-skin-qq98\'\n# --- end dsh-skin managed ---'
+const legacySkinStart = '# --- dsh-skin managed (auto-generated; do not edit) ---'
+const legacySkinEnd = '# --- end dsh-skin managed ---'
 
-async function launchOnce() {
+function legacySkinPackage(skinId) {
+  return `@linxin666/dsh-client-ui-skin-${skinId}`
+}
+
+function legacySkinSection(skinId) {
+  return `${legacySkinStart}\n- insert:\n    - id: ui-skin-${skinId}\n      name: '${legacySkinPackage(skinId)}'\n${legacySkinEnd}`
+}
+
+async function launchOnce({ dshHome, userData }) {
   const app = await electron.launch({
     executablePath,
     env: { ...process.env, DSH_HOME: dshHome, DSH_DESKTOP_USER_DATA: userData },
   })
+  let port
   try {
     const page = await app.firstWindow()
     try {
@@ -36,20 +39,34 @@ async function launchOnce() {
       throw error
     }
     await page.waitForSelector('style[data-plugin="@linxin666/dsh-client-ui-mode-switcher"]', { state: 'attached' })
-    return new URL(page.url()).port
+    port = new URL(page.url()).port
   } finally {
     await app.close()
   }
+  return {
+    port,
+    runtimeLog: await readFile(resolve(userData, 'logs', 'runtime.log'), 'utf8').catch(() => ''),
+  }
 }
 
-try {
+async function createLegacyFixture(root, skinId) {
+  const dshHome = resolve(root, 'dsh-home')
+  const userData = resolve(root, 'user-data')
+  const profileDir = resolve(dshHome, 'profiles', 'desktop')
+  const manifestPath = resolve(profileDir, 'package.json')
+  const profilePatchPath = resolve(profileDir, 'cordis.patch.yml')
+  const homePatchPath = resolve(dshHome, 'cordis.patch.yml')
+  const recoveryStatePath = resolve(userData, 'plugin-recovery', 'state.json')
+  const skinPackage = legacySkinPackage(skinId)
+  const skinSection = legacySkinSection(skinId)
+
   await mkdir(profileDir, { recursive: true })
   await writeFile(manifestPath, `${JSON.stringify({
     name: 'dsh-profile-desktop',
     private: true,
     dependencies: {
       'dsh-plugin-hub': '0.1.1',
-      '@linxin666/dsh-client-ui-skin-qq98': '0.1.2',
+      [skinPackage]: '0.1.2',
     },
     dsh: {
       profile: {
@@ -60,13 +77,14 @@ try {
           '@linxin666/dsh-client-ui-task-board',
           '@linxin666/dsh-client-ui-skin-center',
           'dsh-plugin-hub',
-          '@linxin666/dsh-client-ui-skin-qq98',
+          skinPackage,
         ],
       },
     },
   }, null, 2)}\n`)
-  await writeFile(profilePatchPath, `${legacySkinSection}\n\n- id: retained-community-row\n`)
-  await writeFile(homePatchPath, `- id: retained-home-row\n\n${legacySkinSection}\n`)
+  await writeFile(profilePatchPath, `${skinSection}\n\n- id: retained-community-row\n`)
+  await writeFile(homePatchPath, `- id: retained-home-row\n\n${skinSection}\n`)
+
   const legacySchemasteryRoot = resolve(profileDir, 'node_modules', 'schemastery')
   await mkdir(legacySchemasteryRoot, { recursive: true })
   await writeFile(
@@ -99,57 +117,130 @@ try {
     currentIncidentId: 'legacy-unknown-timeout',
   }, null, 2)}\n`)
 
-  const firstPort = await launchOnce()
-  const migrated = JSON.parse(await readFile(manifestPath, 'utf8'))
+  return {
+    dshHome,
+    userData,
+    profileDir,
+    manifestPath,
+    profilePatchPath,
+    homePatchPath,
+    recoveryStatePath,
+    skinPackage,
+  }
+}
+
+function assertRetiredPackagesAreGone(manifest, skinPackage) {
+  assert.equal(manifest.dependencies[skinPackage], undefined, `${skinPackage} remained as a retired dependency`)
+  assert.equal(manifest.dsh.profile.bundles.includes(skinPackage), false, `${skinPackage} remained as a retired bundle`)
+  for (const name of AGGREGATED_BUNDLES) {
+    assert.equal(manifest.dsh.profile.bundles.includes(name), false, `${name} remained duplicated`)
+  }
+  for (const name of RETIRED_MANAGED_PACKAGES) {
+    assert.equal(manifest.dependencies[name], undefined, `${name} remained as a retired dependency`)
+    assert.equal(manifest.dsh.profile.bundles.includes(name), false, `${name} remained as a retired bundle`)
+  }
+}
+
+async function verifyInvalidLegacySkinFallsBack() {
+  const fixture = await createLegacyFixture(resolve(temporary, 'invalid-qq98'), 'qq98')
+  const firstRun = await launchOnce(fixture)
+  assert.doesNotMatch(
+    firstRun.runtimeLog,
+    /ERR_MODULE_NOT_FOUND[\s\S]{0,500}@linxin666\/dsh-client-ui-skin-qq98/u,
+    'the retired qq98 package was still loaded during boot',
+  )
+
+  const migrated = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
   assert.deepEqual(migrated.dsh.profile.bundles, [...BUILTIN_BUNDLES, legacyCommunityPlugin])
   assert.equal(migrated.dependencies[legacyCommunityPlugin], '1.0.0')
-  const repairedRecovery = JSON.parse(await readFile(recoveryStatePath, 'utf8'))
+  assertRetiredPackagesAreGone(migrated, fixture.skinPackage)
+
+  const repairedRecovery = JSON.parse(await readFile(fixture.recoveryStatePath, 'utf8'))
   assert.equal(repairedRecovery.policyVersion, 2)
   assert.equal(repairedRecovery.safeMode, false)
   assert.deepEqual(repairedRecovery.disabledDependencies, {})
   assert.equal(repairedRecovery.incidents[0].resolution, 'legacy-false-positive-repaired')
-  for (const name of AGGREGATED_BUNDLES) {
-    assert.equal(migrated.dsh.profile.bundles.includes(name), false, `${name} remained duplicated`)
-  }
-  for (const name of RETIRED_MANAGED_PACKAGES) {
-    assert.equal(migrated.dependencies[name], undefined, `${name} remained as a retired dependency`)
-    assert.equal(migrated.dsh.profile.bundles.includes(name), false, `${name} remained as a retired bundle`)
-  }
-  const migratedProfilePatch = await readFile(profilePatchPath, 'utf8')
-  const migratedHomePatch = await readFile(homePatchPath, 'utf8')
-  assert.match(migratedProfilePatch, /dsh-skin managed/u)
-  assert.match(migratedProfilePatch, /@linxin666\/dsh-client-ui-skin-qq98/u)
+
+  const migratedProfilePatch = await readFile(fixture.profilePatchPath, 'utf8')
+  const migratedHomePatch = await readFile(fixture.homePatchPath, 'utf8')
+  assert.doesNotMatch(migratedProfilePatch, /dsh-skin managed/u)
+  assert.doesNotMatch(migratedProfilePatch, /@linxin666\/dsh-client-ui-skin-qq98/u)
   assert.match(migratedProfilePatch, /retained-community-row/u)
   assert.match(migratedHomePatch, /retained-home-row/u)
   assert.doesNotMatch(migratedHomePatch, /dsh-skin managed/u)
-  const managedLinks = JSON.parse(await readFile(resolve(profileDir, '.dsh-desktop-links.json'), 'utf8'))
+  await assert.rejects(
+    readFile(resolve(fixture.dshHome, 'skin-center-active.json'), 'utf8'),
+    error => error?.code === 'ENOENT',
+  )
+  const retiredSkin = JSON.parse(await readFile(resolve(fixture.profileDir, '.dsh-desktop-retired-skin.json'), 'utf8'))
+  assert.equal(retiredSkin.schemaVersion, 1)
+  assert.equal(retiredSkin.packageName, fixture.skinPackage)
+  assert.equal(retiredSkin.skinId, 'qq98')
+  assert.equal(retiredSkin.reason, 'not-bundled-by-skin-center-v2')
+
+  const managedLinks = JSON.parse(await readFile(resolve(fixture.profileDir, '.dsh-desktop-links.json'), 'utf8'))
   assert.equal(managedLinks.schemastery?.mode, 'link')
   assert.match(managedLinks.schemastery?.source ?? '', /node_modules[\\/]schemastery$/u)
-  const migratedSchemastery = JSON.parse(await readFile(resolve(legacySchemasteryRoot, 'package.json'), 'utf8'))
+  const migratedSchemastery = JSON.parse(await readFile(
+    resolve(fixture.profileDir, 'node_modules', 'schemastery', 'package.json'),
+    'utf8',
+  ))
   assert.deepEqual(
     { name: migratedSchemastery.name, version: migratedSchemastery.version },
     { name: 'schemastery', version: '3.18.0' },
   )
-  const migratedSkinAlias = JSON.parse(await readFile(
-    resolve(profileDir, 'node_modules', '@linxin666', 'dsh-client-ui-skin-qq98', 'package.json'),
-    'utf8',
-  ))
-  assert.equal(migratedSkinAlias.name, '@linxin666/dsh-client-ui-skin-qq98')
 
-  const secondPort = await launchOnce()
-  assert.equal(secondPort, firstPort, 'packaged Desktop changed ports across a normal restart')
-  const restarted = JSON.parse(await readFile(manifestPath, 'utf8'))
+  const secondRun = await launchOnce(fixture)
+  assert.equal(secondRun.port, firstRun.port, 'packaged Desktop changed ports across a normal restart')
+  const restarted = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
   assert.deepEqual(restarted.dsh.profile.bundles, [...BUILTIN_BUNDLES, legacyCommunityPlugin])
-  assert.equal(await readFile(homePatchPath, 'utf8'), migratedHomePatch)
+  assert.equal(await readFile(fixture.homePatchPath, 'utf8'), migratedHomePatch)
 
   // Desktop 0.1.8 could leave this file empty after the legacy skin section
   // was the only content. Verify the packaged app repairs that exact upgrade
   // state even when the earlier migration is no longer detectable.
-  await writeFile(homePatchPath, '')
-  const repairedPort = await launchOnce()
-  assert.equal(repairedPort, firstPort, 'packaged Desktop changed ports during profile repair')
-  assert.equal(await readFile(homePatchPath, 'utf8'), '[]\n')
-  console.log(`verified legacy false-positive repair, aggregate and schemastery migration, stable port ${firstPort}, selected-skin preservation, restart idempotency, and packaged blank-patch recovery`)
+  await writeFile(fixture.homePatchPath, '')
+  const repairedRun = await launchOnce(fixture)
+  assert.equal(repairedRun.port, firstRun.port, 'packaged Desktop changed ports during profile repair')
+  assert.equal(await readFile(fixture.homePatchPath, 'utf8'), '[]\n')
+}
+
+async function verifyKnownLegacySkinMigratesToV2Selection() {
+  const fixture = await createLegacyFixture(resolve(temporary, 'known-xp'), 'xp')
+  const firstRun = await launchOnce(fixture)
+  assert.doesNotMatch(
+    firstRun.runtimeLog,
+    /ERR_MODULE_NOT_FOUND[\s\S]{0,500}@linxin666\/dsh-client-ui-skin-xp/u,
+    'the retired xp package was still loaded during boot',
+  )
+
+  const migrated = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
+  assert.deepEqual(migrated.dsh.profile.bundles, [...BUILTIN_BUNDLES, legacyCommunityPlugin])
+  assertRetiredPackagesAreGone(migrated, fixture.skinPackage)
+  const activeSelection = JSON.parse(await readFile(resolve(fixture.dshHome, 'skin-center-active.json'), 'utf8'))
+  assert.deepEqual(activeSelection, { active: 'xp' })
+  const migratedProfilePatch = await readFile(fixture.profilePatchPath, 'utf8')
+  const migratedHomePatch = await readFile(fixture.homePatchPath, 'utf8')
+  assert.doesNotMatch(migratedProfilePatch, /dsh-skin managed/u)
+  assert.doesNotMatch(migratedProfilePatch, /@linxin666\/dsh-client-ui-skin-xp/u)
+  assert.doesNotMatch(migratedHomePatch, /dsh-skin managed/u)
+  await assert.rejects(
+    readFile(resolve(fixture.profileDir, '.dsh-desktop-retired-skin.json'), 'utf8'),
+    error => error?.code === 'ENOENT',
+  )
+
+  const secondRun = await launchOnce(fixture)
+  assert.equal(secondRun.port, firstRun.port, 'packaged Desktop changed ports after v2 active selection migration')
+  assert.deepEqual(
+    JSON.parse(await readFile(resolve(fixture.dshHome, 'skin-center-active.json'), 'utf8')),
+    { active: 'xp' },
+  )
+}
+
+try {
+  await verifyInvalidLegacySkinFallsBack()
+  await verifyKnownLegacySkinMigratesToV2Selection()
+  console.log('verified legacy false-positive repair, aggregate and schemastery migration, qq98 safe fallback, and xp Skin Center v2 selection migration')
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

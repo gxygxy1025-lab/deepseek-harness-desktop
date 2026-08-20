@@ -180,16 +180,44 @@ function compatibilityReason(reason) {
     'not-dsh-bundle': '该包不是可用的 DSH 插件',
     'invalid-manifest': '插件清单无法识别',
     'desktop-range': `不支持当前 Desktop 版本${range}`,
+    'desktop-api-range': `不支持当前 Desktop API${range}`,
     'runtime-range': `不支持当前 DSH 运行时${range}`,
     'node-range': `不支持当前 Node.js 版本${range}`,
+    'capability-missing': `缺少 Desktop 能力${subject}`,
+    'surface-unsupported': `当前窗口 Surface 不支持${subject}`,
     'peer-range': `依赖${subject} 版本不匹配${range}`,
     'peer-missing': `缺少必需依赖${subject}${range}`,
     'invalid-range': `插件声明了无效的${subject} 版本范围`,
     'compatibility-undeclared': '作者未声明 Desktop/DSH 适配范围',
     'invalid-compatibility': '插件的适配信息格式无效',
+    'invalid-capabilities': '插件声明了无效的 Desktop 能力需求',
+    'invalid-surfaces': '插件声明了无效的 Desktop Surface 需求',
+    'invalid-runtime-evidence': '插件声明了无效的运行时测试证据',
     'invalid-peer-dependencies': '插件的依赖信息格式无效',
   }
   return messages[reason.code] ?? '插件适配信息异常'
+}
+
+function compatibilityFacts(compatibility) {
+  const requirements = compatibility?.details?.requirements
+  const tested = compatibility?.details?.tested
+  if (!requirements && !tested) return []
+  const facts = []
+  if (typeof requirements?.desktop === 'string') facts.push(`Desktop ${requirements.desktop}`)
+  if (typeof requirements?.runtime === 'string') facts.push(`DSH ${requirements.runtime}`)
+  if (typeof requirements?.desktopApi === 'string') facts.push(`Desktop API ${requirements.desktopApi}`)
+  if (Array.isArray(requirements?.capabilities) && requirements.capabilities.length > 0) {
+    facts.push(`需要能力 ${requirements.capabilities.join(', ')}`)
+  }
+  if (Array.isArray(requirements?.surfaces) && requirements.surfaces.length > 0) {
+    facts.push(`需要 Surface ${requirements.surfaces.join(', ')}`)
+  }
+  if (typeof tested?.runtime === 'string') {
+    facts.push(`已测 DSH ${tested.runtime}${typeof tested.desktop === 'string' ? ` / Desktop ${tested.desktop}` : ''}`)
+  } else if (typeof tested?.matrixArtifact === 'string') {
+    facts.push(`测试矩阵 ${tested.matrixArtifact}`)
+  }
+  return facts
 }
 
 function pluginMarkup(plugin) {
@@ -208,7 +236,11 @@ function pluginMarkup(plugin) {
   const updateReason = plugin.updateAvailable && plugin.updateCompatibility?.status === 'incompatible'
     ? compatibilityReason(plugin.updateCompatibility?.reasons?.[0])
     : ''
-  const description = [summary, updateReason ? `更新已拦截：${updateReason}` : installedReason].filter(Boolean).join(' · ')
+  const description = [
+    summary,
+    updateReason ? `更新已拦截：${updateReason}` : installedReason,
+    ...compatibilityFacts(plugin.compatibility),
+  ].filter(Boolean).join(' · ')
   let updateAction = ''
   if (plugin.updateAvailable && plugin.updateCompatibility?.status === 'incompatible') {
     updateAction = '<span class="meta">已拦截更新</span>'
@@ -238,6 +270,9 @@ const recoveryResolutionLabels = Object.freeze({
   'disabled-by-user': '已手动停用',
   'safe-mode-auto': '已自动进入安全模式',
   'safe-mode': '已进入安全模式',
+  'baseline-quarantine-auto': '已切换桌面基线',
+  'baseline-quarantine-bootstrap': '已在启动前切换桌面基线',
+  'baseline-quarantine-active': '桌面基线仍在使用',
   'legacy-false-positive-repaired': '2.2 已自动修复误判',
   'restored-by-user': '已由用户恢复',
 })
@@ -262,9 +297,16 @@ async function refreshRecovery() {
   const state = await window.dshDesktop.getPluginRecoveryState()
   recoveryCount.textContent = state.incidents.length
   recoveryMode.dataset.safe = String(state.safeMode)
-  recoveryModeLabel.textContent = state.safeMode ? '安全模式，只加载内置插件' : '正常模式'
+  const baselineQuarantineAvailable = state.baselineQuarantineAvailable === true
+  recoveryModeLabel.textContent = !state.safeMode
+    ? '正常模式'
+    : baselineQuarantineAvailable
+      ? '桌面基线模式，已隔离无法识别的用户加载配置'
+      : '安全模式，只加载内置插件'
   restoreSafeMode.hidden = !state.safeMode
-  restoreSafeMode.textContent = state.disabledPlugins.length > 0
+  restoreSafeMode.textContent = baselineQuarantineAvailable
+    ? '恢复原始加载配置并重启'
+    : state.disabledPlugins.length > 0
     ? `恢复全部（${state.disabledPlugins.length}）并重启`
     : '退出安全模式并重启'
   recoveryIncidents.innerHTML = state.incidents.length

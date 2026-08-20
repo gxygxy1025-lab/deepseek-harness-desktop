@@ -17,7 +17,9 @@ import { ConfirmDialog, ContextMenu, type MenuState } from '../components/overla
 import { PreviewTabs } from './PreviewTabs.tsx'
 import { PreviewToolbar, downloadTab } from './PreviewToolbar.tsx'
 import { TabContent } from './content.tsx'
+import { openPreviewWorkspaceFile } from './open-external.ts'
 import previewCss from '../styles/preview.module.css'
+import { hasCapability } from '@linxin666/dsh-desktop-client'
 
 /** The preview panel (mounted in the preview grid column). */
 export function PreviewPanel({ stores }: { stores: PanelStores }): JSX.Element {
@@ -27,6 +29,7 @@ export function PreviewPanel({ stores }: { stores: PanelStores }): JSX.Element {
   const [closingIds, setClosingIds] = useState<string[] | null>(null)
   const [viewMode, setViewMode] = useState<'source' | 'preview'>('preview')
   const [split, setSplit] = useState(false)
+  const [canOpenExternal, setCanOpenExternal] = useState(false)
   const lastDirtyCheck = useRef<Set<string>>(new Set())
 
   const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId) ?? null
@@ -37,6 +40,14 @@ export function PreviewPanel({ stores }: { stores: PanelStores }): JSX.Element {
     setViewMode('preview')
     setSplit(false)
   }, [identity])
+
+  useEffect(() => {
+    let active = true
+    void hasCapability('workspace-files.open').then((available) => {
+      if (active) setCanOpenExternal(available)
+    })
+    return () => { active = false }
+  }, [])
 
   /** Close a batch; dirty tabs route through the confirmation first. */
   const requestClose = (ids: string[]): void => {
@@ -133,6 +144,9 @@ export function PreviewPanel({ stores }: { stores: PanelStores }): JSX.Element {
             onRefresh={() => void preview.reloadTab(activeTab.id)}
             onSave={() => void preview.saveTab(activeTab.id)}
             onDownload={() => downloadTab(activeTab)}
+            onOpenExternal={canOpenExternal && activeTab.contentType !== 'url' && activeTab.contentType !== 'diff'
+              ? () => { void openPreviewWorkspaceFile({ root: activeTab.root, path: activeTab.path }) }
+              : undefined}
           />
           <TabContent
             tab={activeTab}

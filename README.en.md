@@ -20,12 +20,13 @@ DeepSeek Harness Desktop brings the complete DSH Web surface to a Windows EXE. I
 
 If this project helps you, Star the [GitHub repository](https://github.com/ningbainb/deepseek-harness-desktop) so more desktop users can discover it.
 
-### Latest release: 2.6.0
+### Latest release: 2.7.0
 
-`desktop-v2.6.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.6.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/DeepSeek-Harness-Desktop-Setup-2.6.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.6.0/SHA256SUMS.txt)
+`desktop-v2.7.0` is the current stable release: [read the full release notes](https://github.com/ningbainb/deepseek-harness-desktop/releases/tag/desktop-v2.7.0) · [download the installer directly](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.7.0/DeepSeek-Harness-Desktop-Setup-2.7.0-x64.exe) · [download the SHA-256 checksum file](https://github.com/ningbainb/deepseek-harness-desktop/releases/download/desktop-v2.7.0/SHA256SUMS.txt)
 
 | Version | Highlights |
 | --- | --- |
+| **2.7.0** | Fixes the Windows 8% Runtime startup failure and moves to DSH rc.7; adds tray background automation, Host durable task scheduling, plugin compatibility declarations/lock state, the browser-safe Desktop SDK, safe workspace external opening, and Candidate Matrix. |
 | **2.6.0** | Adds Task Board v3 Projects, Task Runs, derived Evidence, explicit Git Worktree review, capability-based shared-workspace fallback, Candidate execution fixtures, and bounded anonymous product metrics. |
 | **2.5.0** | Adds the Runtime Adapter and upstream compatibility defenses, secure `.dshpreset` and Web Profile migration, atomic plugin batches, strict deep-link/file ingress, and structured notifications. |
 | **2.4.0** | Added reliable update-shutdown receipt v2, split Main/Extension Dock permissions, Desktop Contract v1, and Task Board Host-file storage v2. |
@@ -40,6 +41,15 @@ If this project helps you, Star the [GitHub repository](https://github.com/ningb
 | **0.1.5** | Synchronizes native title-bar colors with light/dark mode, keeps full-screen dialogs inside the safe viewport, fixes packaged skin discovery and switching, and bundles `dshmarket` plus `dsh-plugin-hub`. |
 | **0.1.4** | Moves the pet to the global Shell Overlay so it appears on home and settings screens, restores all five Web UI plugin settings cards, and lists all nine packaged skins in Skin Center. |
 | **0.1.3** | Adds stable GitHub Release checks, bilingual update notes, user-confirmed downloads, taskbar progress, and a second confirmation before installation. |
+
+### 2.7.0 Highlights
+
+- **Reliable Windows startup**: removes the PowerShell 5.1 `-WindowStyle Hidden` conflict with Electron Node mode while retaining spawn-level `windowsHide`; legacy empty patches, status-subscription races, and IPC errors cannot strand the startup surface at 8%.
+- **Verified Runtime composition**: bundles `@deepseek-ai/dsh` `0.1.0-rc.7`, `dshmarket` `1.15.0`, the `0.2.3` Web UI aggregate, rc.7-compatible Codex Connect, and `dsh-live-stats` `0.1.20`; Stable remains exactly pinned rather than following `latest`.
+- **Tray and background automation are opt-in**: closing still quits by default. Choosing **minimize to tray and enable background automation** keeps the Runtime and due tasks after the main window closes; explicit quit, update, safe mode, and crash paths always stop completely.
+- **Host durable task scheduling**: Task Board persists time zones, cron slots, leases, misfire/running policies, and deterministic run keys. With background automation enabled it uses real DSH Sessions and writes back Task Runs, while unavailable Host scheduling still falls back to the browser.
+- **Auditable extension boundary**: Extension Dock evaluates `dsh.compatibility` versions, Desktop API, capabilities, Surfaces, and runtime evidence, then writes `desktop-plugins.lock.json` in the profile. The browser-safe SDK imports neither Electron nor private DSH modules; preview external opening sends only a workspace root and relative path for Host validation before the OS receives it.
+- **Candidate Matrix**: candidate DSH work runs in a temporary worktree and produces matrix, Stable-support, and offline community-plugin-quality evidence; it can never automatically rewrite Stable dependencies, lockfile, updater metadata, or a release.
 
 ### 2.6.0 Highlights
 

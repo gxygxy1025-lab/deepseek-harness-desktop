@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,16 +12,19 @@ import {
   beginDesktopStartup,
   createDesktopShutdownLifecycle,
   prepareDesktopRuntimeInputs,
+  prepareDesktopRuntimeInputsWithBaselineRecovery,
   requestsUpdateShutdown,
   secondaryWindowWebPreferences,
   desktopDeepLinkFrom,
 } from '../src/electron-app.mjs'
 import {
-  BUILTIN_SKIN_PACKAGES,
+  BUILTIN_SKIN_IDS,
+  DESKTOP_PROFILE_BOOTSTRAP_ERROR,
   WEB_UI_SETTINGS_NAMESPACES,
   ensureDesktopProfile,
   resolveDshCliPath,
 } from '../src/profile.mjs'
+import { DesktopProfileBaselineQuarantine } from '../src/profile-baseline-quarantine.mjs'
 import { DshRuntimeController } from '../src/runtime-controller.mjs'
 import { parseUpdateShutdownRequest } from '../src/update-shutdown-receipt.mjs'
 
@@ -37,6 +40,24 @@ async function availableLoopbackPort(excludedPort) {
     })
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
     if (port !== 0 && port !== excludedPort) return port
+  }
+}
+
+function legacySkinPatch(skinId) {
+  return `# --- dsh-skin managed (auto-generated; do not edit) ---
+- insert:
+    - id: ui-skin-${skinId}
+      name: '@linxin666/dsh-client-ui-skin-${skinId}'
+# --- end dsh-skin managed ---
+`
+}
+
+async function readJsonIfPresent(path) {
+  try {
+    return JSON.parse(await readFile(path, 'utf8'))
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
   }
 }
 
@@ -237,6 +258,339 @@ test('recovery does not start a replacement runtime when the old runtime cannot 
   assert.equal(starts, 0)
 })
 
+test('initial unreadable profile inputs retry once from a private Desktop baseline', async () => {
+  for (const fixture of [
+    { name: 'manifest', file: 'package.json', content: '{ invalid profile manifest\n' },
+    { name: 'manifest-null', file: 'package.json', content: 'null\n' },
+    { name: 'links', file: '.dsh-desktop-links.json', content: '{ invalid desktop links\n' },
+    {
+      name: 'patch',
+      file: 'cordis.patch.yml',
+      content: '# --- dsh-desktop managed (auto-generated; do not edit) ---\n- id: broken\n',
+    },
+  ]) {
+    const root = await mkdtemp(join(tmpdir(), `dsh-desktop-bootstrap-${fixture.name}-`))
+    const profileDir = join(root, 'profiles', 'desktop')
+    try {
+      await mkdir(profileDir, { recursive: true })
+      if (!['manifest', 'manifest-null'].includes(fixture.name)) {
+        await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+          name: 'dsh-profile-desktop',
+          private: true,
+          dependencies: {},
+          dsh: { profile: { bundles: [] } },
+        }))
+      }
+      await writeFile(join(profileDir, fixture.file), fixture.content)
+      const quarantine = new DesktopProfileBaselineQuarantine({
+        dshHome: root,
+        profileDir,
+        stateDir: join(root, 'recovery'),
+      })
+      let notifications = 0
+      const prepared = await prepareDesktopRuntimeInputsWithBaselineRecovery({
+        baselineQuarantine: quarantine,
+        prepareProfile: () => ensureDesktopProfile({ dshHome: root, packageRoots: new Map() }),
+        migrateSettings: async () => {},
+        loadCredentials: async () => undefined,
+        onBaselineRecovery: async () => { notifications += 1 },
+      })
+      assert.equal(prepared.baselineRecovered, true)
+      assert.equal(prepared.profile.profileDir, profileDir)
+      assert.equal(notifications, 1)
+      assert.deepEqual(await quarantine.getState(), { available: true })
+      const repaired = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
+      assert.equal(repaired.name, 'dsh-profile-desktop')
+      assert.equal(await quarantine.restore(), true)
+      assert.equal(await readFile(join(profileDir, fixture.file), 'utf8'), fixture.content)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+})
+
+test('an already-active baseline is reconciled before the first profile preparation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-bootstrap-active-marker-'))
+  const profileDir = join(root, 'profiles', 'desktop')
+  const opaquePatch = '- id: opaque-user-loader\n  name: @user/unregistered\n'
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [] } },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), opaquePatch)
+    const quarantine = new DesktopProfileBaselineQuarantine({
+      dshHome: root,
+      profileDir,
+      stateDir: join(root, 'recovery'),
+    })
+    await quarantine.quarantine()
+    // Simulate the crash window after active.json but before all loader bytes
+    // were replaced.  This patch is valid YAML, so the old ordering would
+    // merge it during ensureDesktopProfile instead of quarantining it first.
+    await writeFile(join(profileDir, 'cordis.patch.yml'), opaquePatch)
+    let firstProfilePatch
+    let recoveryNotifications = 0
+    const prepared = await prepareDesktopRuntimeInputsWithBaselineRecovery({
+      baselineQuarantine: quarantine,
+      prepareProfile: async () => {
+        firstProfilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
+        return { profileDir }
+      },
+      migrateSettings: async () => {},
+      loadCredentials: async () => undefined,
+      onBaselineRecovery: async () => { recoveryNotifications += 1 },
+    })
+
+    assert.equal(firstProfilePatch, '')
+    assert.equal(prepared.baselineRecovered, true)
+    assert.equal(recoveryNotifications, 1)
+    assert.equal(await quarantine.hasUntrustedActivation(), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('baseline bootstrap helper leaves normal failures alone and restores after a failed retry', async () => {
+  let inactiveActivationChecks = 0
+  let inactiveQuarantines = 0
+  const normal = await prepareDesktopRuntimeInputsWithBaselineRecovery({
+    baselineQuarantine: {
+      getState: async () => ({ available: false }),
+      hasUntrustedActivation: async () => { inactiveActivationChecks += 1; return true },
+      quarantine: async () => { inactiveQuarantines += 1; return { available: true } },
+      restore: async () => true,
+    },
+    prepareProfile: async () => ({ profileDir: 'normal-profile' }),
+    migrateSettings: async () => {},
+    loadCredentials: async () => undefined,
+  })
+  assert.deepEqual(normal, {
+    profile: { profileDir: 'normal-profile' },
+    credentials: undefined,
+    baselineRecovered: false,
+  })
+  assert.equal(inactiveActivationChecks, 0)
+  assert.equal(inactiveQuarantines, 0)
+
+  let quarantines = 0
+  let restores = 0
+  const quarantine = {
+    quarantine: async () => {
+      quarantines += 1
+      return { changed: true, available: true }
+    },
+    restore: async () => { restores += 1; return true },
+  }
+  await assert.rejects(
+    prepareDesktopRuntimeInputsWithBaselineRecovery({
+      baselineQuarantine: quarantine,
+      prepareProfile: async () => { throw new Error('permission denied') },
+      migrateSettings: async () => {},
+      loadCredentials: async () => undefined,
+    }),
+    /permission denied/u,
+  )
+  assert.equal(quarantines, 0)
+  assert.equal(restores, 0)
+
+  let attempts = 0
+  await assert.rejects(
+    prepareDesktopRuntimeInputsWithBaselineRecovery({
+      baselineQuarantine: quarantine,
+      prepareProfile: async () => {
+        attempts += 1
+        if (attempts === 1) {
+          const error = new Error('invalid desktop profile')
+          error.code = DESKTOP_PROFILE_BOOTSTRAP_ERROR
+          throw error
+        }
+        throw new Error('baseline retry failed')
+      },
+      migrateSettings: async () => {},
+      loadCredentials: async () => undefined,
+    }),
+    /baseline retry failed/u,
+  )
+  assert.equal(quarantines, 1)
+  assert.equal(restores, 1)
+})
+
+test('a broken unmanaged profile node_modules tree is isolated, rebuilt, and restored by the bootstrap baseline', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-bootstrap-node-modules-'))
+  const profileDir = join(root, 'profiles', 'desktop')
+  const packageName = '@deepseek-ai/dsh-base'
+  const sourceDir = join(root, 'runtime-source', '@deepseek-ai', 'dsh-base')
+  const targetDir = join(profileDir, 'node_modules', '@deepseek-ai', 'dsh-base')
+  const originalPackage = Buffer.from(`${JSON.stringify({
+    name: packageName,
+    version: '0.0.0-user-tree',
+    opaque: 'preserve this exact user dependency tree',
+  }, null, 2)}\n`)
+  try {
+    await mkdir(sourceDir, { recursive: true })
+    await mkdir(targetDir, { recursive: true })
+    await writeFile(join(sourceDir, 'package.json'), JSON.stringify({ name: packageName, version: '1.0.0' }))
+    await writeFile(join(targetDir, 'package.json'), originalPackage)
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [] } },
+    }))
+    const quarantine = new DesktopProfileBaselineQuarantine({
+      dshHome: root,
+      profileDir,
+      stateDir: join(root, 'recovery'),
+    })
+    let attempts = 0
+    const prepared = await prepareDesktopRuntimeInputsWithBaselineRecovery({
+      baselineQuarantine: quarantine,
+      prepareProfile: async () => {
+        attempts += 1
+        return ensureDesktopProfile({
+          dshHome: root,
+          packageRoots: new Map([[packageName, sourceDir]]),
+        })
+      },
+      migrateSettings: async () => {},
+      loadCredentials: async () => undefined,
+    })
+
+    assert.equal(attempts, 2)
+    assert.equal(prepared.baselineRecovered, true)
+    assert.equal((await quarantine.getState()).available, true)
+    assert.deepEqual(
+      JSON.parse(await readFile(join(targetDir, 'package.json'), 'utf8')),
+      { name: packageName, version: '1.0.0' },
+    )
+
+    assert.equal(await quarantine.restore(), true)
+    assert.deepEqual(await readFile(join(targetDir, 'package.json')), originalPackage)
+    assert.deepEqual(await quarantine.getState(), { available: false })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a malformed managed profile package manifest uses the same reversible bootstrap baseline', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-bootstrap-broken-node-manifest-'))
+  const profileDir = join(root, 'profiles', 'desktop')
+  const packageName = '@deepseek-ai/dsh-base'
+  const sourceDir = join(root, 'runtime-source', '@deepseek-ai', 'dsh-base')
+  const targetDir = join(profileDir, 'node_modules', '@deepseek-ai', 'dsh-base')
+  const originalPackage = Buffer.from('{ malformed user package metadata\n')
+  try {
+    await mkdir(sourceDir, { recursive: true })
+    await mkdir(targetDir, { recursive: true })
+    await writeFile(join(sourceDir, 'package.json'), JSON.stringify({ name: packageName, version: '1.0.0' }))
+    await writeFile(join(targetDir, 'package.json'), originalPackage)
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: {},
+      dsh: { profile: { bundles: [] } },
+    }))
+    const quarantine = new DesktopProfileBaselineQuarantine({
+      dshHome: root,
+      profileDir,
+      stateDir: join(root, 'recovery'),
+    })
+    let attempts = 0
+    const prepared = await prepareDesktopRuntimeInputsWithBaselineRecovery({
+      baselineQuarantine: quarantine,
+      prepareProfile: async () => {
+        attempts += 1
+        return ensureDesktopProfile({
+          dshHome: root,
+          packageRoots: new Map([[packageName, sourceDir]]),
+        })
+      },
+      migrateSettings: async () => {},
+      loadCredentials: async () => undefined,
+    })
+
+    assert.equal(attempts, 2)
+    assert.equal(prepared.baselineRecovered, true)
+    assert.deepEqual(
+      JSON.parse(await readFile(join(targetDir, 'package.json'), 'utf8')),
+      { name: packageName, version: '1.0.0' },
+    )
+    assert.equal(await quarantine.restore(), true)
+    assert.deepEqual(await readFile(join(targetDir, 'package.json')), originalPackage)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('legacy v1 skin selections migrate before the official runtime resolves its boot graph', { timeout: 150_000 }, async () => {
+  for (const { skinId, expectedActive } of [
+    { skinId: 'xp', expectedActive: 'xp' },
+    { skinId: 'qq98', expectedActive: null },
+  ]) {
+    const root = await mkdtemp(join(tmpdir(), `dsh-desktop-legacy-skin-${skinId}-`))
+    const logs = new BoundedLogStore({ directory: join(root, 'logs') })
+    let controller
+    try {
+      const profileDir = join(root, 'profiles', 'desktop')
+      await mkdir(profileDir, { recursive: true })
+      await writeFile(join(profileDir, 'cordis.patch.yml'), legacySkinPatch(skinId), 'utf8')
+
+      await ensureDesktopProfile({ dshHome: root })
+
+      const migratedPatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
+      assert.doesNotMatch(migratedPatch, /dsh-skin managed/u)
+      assert.doesNotMatch(migratedPatch, new RegExp(`dsh-client-ui-skin-${skinId}`, 'u'))
+
+      const activeState = await readJsonIfPresent(join(root, 'skin-center-active.json'))
+      if (expectedActive === null) {
+        assert.notEqual(activeState?.active, skinId)
+        const retired = await readJsonIfPresent(join(profileDir, '.dsh-desktop-retired-skin.json'))
+        assert.equal(retired?.skinId, skinId)
+      } else {
+        assert.deepEqual(activeState, { active: expectedActive })
+        assert.equal(
+          await readJsonIfPresent(join(profileDir, '.dsh-desktop-retired-skin.json')),
+          undefined,
+        )
+      }
+
+      controller = new DshRuntimeController({
+        cliPath: resolveDshCliPath(),
+        cwd: process.cwd(),
+        dshHome: root,
+        logStore: logs,
+        startupTimeoutMs: 45_000,
+      })
+      const url = await controller.start()
+      const response = await fetch(url, { signal: AbortSignal.timeout(5_000) })
+      assert.equal(response.ok, true)
+      assert.match(await response.text(), /__DSH_BOOT__/)
+
+      const activeResponse = await fetch(new URL('/api/skin-center/v2/active', url), {
+        signal: AbortSignal.timeout(5_000),
+      })
+      assert.equal(activeResponse.ok, true)
+      const activePayload = await activeResponse.json()
+      assert.equal(activePayload.ok, true)
+      assert.equal(activePayload.active, expectedActive)
+      assert.equal(controller.status.state, 'ready')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `${skinId} legacy skin migration failed: ${message}\nRecent runtime log:\n${await logs.tail(80)}`,
+        { cause: error },
+      )
+    } finally {
+      await controller?.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+})
+
 test('official DSH host serves the complete desktop profile', { timeout: 150_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-runtime-'))
   const logs = new BoundedLogStore({ directory: join(root, 'logs') })
@@ -405,17 +759,34 @@ test('official DSH host serves the complete desktop profile', { timeout: 150_000
     assert.equal(petsResponse.ok, true, 'pet registry was not served')
     const pets = await petsResponse.json()
     const whaleGirl = pets.find((pet) => pet.id === 'whale-girl')
-    assert.equal(whaleGirl?.displayName, '鲸鱼娘')
+    assert.equal(whaleGirl?.displayName, '鲸鱼娘（原版）')
     for (const path of [whaleGirl.manifestUrl, whaleGirl.atlasUrl]) {
       const asset = await fetch(new URL(path, url), { signal: AbortSignal.timeout(5_000) })
       assert.equal(asset.ok, true, `${path} was not served`)
     }
-    for (const packageName of BUILTIN_SKIN_PACKAGES) {
-      const skinId = packageName.slice(packageName.lastIndexOf('-skin-') + '-skin-'.length)
-      const bundle = await fetch(new URL(`/api/skin-center/bundle/${skinId}`, url), {
+    const skinCatalogResponse = await fetch(new URL('/api/skin-center/v2/catalog', url), {
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(skinCatalogResponse.ok, true, 'Skin Center v2 catalog was not served')
+    const skinCatalog = await skinCatalogResponse.json()
+    assert.equal(skinCatalog.ok, true)
+    const catalogSkinIds = skinCatalog.skins.map((entry) => entry.manifest.id).toSorted()
+    assert.deepEqual(catalogSkinIds, BUILTIN_SKIN_IDS)
+    for (const entry of skinCatalog.skins) {
+      assert.equal(entry.origin, 'builtin')
+      assert.equal(entry.manifest.skinManifestVersion, 2)
+      assert.equal(typeof entry.manifest.contributes?.stylesheet, 'string')
+    }
+    const initialSkinStateResponse = await fetch(new URL('/api/skin-center/v2/active', url), {
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.equal(initialSkinStateResponse.ok, true)
+    assert.deepEqual(await initialSkinStateResponse.json(), { ok: true, active: null })
+    for (const skinId of BUILTIN_SKIN_IDS) {
+      const stylesheet = await fetch(new URL(`/api/skin-center/v2/skins/${skinId}/stylesheet`, url), {
         signal: AbortSignal.timeout(5_000),
       })
-      assert.equal(bundle.ok, true, `${skinId} skin bundle was not served`)
+      assert.equal(stylesheet.ok, true, `${skinId} Skin Center stylesheet was not served`)
     }
     const marketInstalled = await fetch(new URL('/dsh-market/installed', url), {
       signal: AbortSignal.timeout(5_000),
@@ -446,26 +817,39 @@ test('official DSH host serves the complete desktop profile', { timeout: 150_000
     }
     await page.locator('[data-pet-dock]').waitFor({ state: 'attached', timeout: 10_000 })
     await page.locator('style[data-plugin-css="reasoning-slider"]').waitFor({ state: 'attached', timeout: 10_000 })
-    await page.getByRole('button', { name: /^(?:鲸鱼娘|whale girl)$/u }).waitFor({ state: 'visible', timeout: 10_000 })
+    await page.getByRole('button', { name: /^(?:鲸鱼娘（原版）|whale girl)$/u }).waitFor({ state: 'visible', timeout: 10_000 })
     await page.locator('button').filter({ hasText: /^(?:设置|Settings)$/u }).first().evaluate((button) => button.click())
     await page.getByRole('button', { name: /^(?:插件市场|Plugin Market)$/u }).click()
     await page.getByRole('heading', { name: /^(?:插件市场|Plugin Market)$/u }).waitFor({ state: 'visible', timeout: 10_000 })
     await page.getByPlaceholder(/^(?:搜索插件，比如：通知、终端、记忆…|Search plugins: notify, terminal, memory…)$/u).waitFor({ state: 'visible', timeout: 10_000 })
 
-    const applySkin = await fetch(new URL('/api/skin-center/apply', url), {
+    const applySkin = await fetch(new URL('/api/skin-center/v2/active', url), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ skin: 'qq98' }),
+      body: JSON.stringify({ active: 'xp' }),
       signal: AbortSignal.timeout(5_000),
     })
     assert.equal(applySkin.ok, true)
-    assert.equal((await applySkin.json()).active, 'qq98')
-    const profilePatch = await readFile(join(root, 'profiles', 'desktop', 'cordis.patch.yml'), 'utf8')
-    assert.match(profilePatch, /- id: ui-skin-qq98/u)
-    await assert.rejects(
-      readFile(join(root, 'cordis.patch.yml'), 'utf8'),
-      (error) => error?.code === 'ENOENT',
+    assert.deepEqual(await applySkin.json(), { ok: true, active: 'xp' })
+    assert.deepEqual(
+      JSON.parse(await readFile(join(root, 'skin-center-active.json'), 'utf8')),
+      { active: 'xp' },
     )
+    const selectedSkinStateResponse = await fetch(new URL('/api/skin-center/v2/active', url), {
+      signal: AbortSignal.timeout(5_000),
+    })
+    assert.deepEqual(await selectedSkinStateResponse.json(), { ok: true, active: 'xp' })
+    const selectedSkinPage = await fetch(url, { signal: AbortSignal.timeout(5_000) })
+    assert.equal(selectedSkinPage.ok, true)
+    const selectedSkinHtml = await selectedSkinPage.text()
+    assert.match(selectedSkinHtml, /<html[^>]*\sdata-dsh-skin="xp"/u)
+    assert.match(
+      selectedSkinHtml,
+      /\/api\/skin-center\/v2\/skins\/xp\/stylesheet/u,
+    )
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.locator('html[data-dsh-skin="xp"]').waitFor({ state: 'attached', timeout: 10_000 })
+    assert.equal(await page.locator('html').getAttribute('data-dsh-skin'), 'xp')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`${message}\nRecent runtime log:\n${await logs.tail(80)}`, { cause: error })

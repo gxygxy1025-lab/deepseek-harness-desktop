@@ -19,11 +19,45 @@ function exactVersion(value, label) {
   return normalized
 }
 
+function stringList(value, label) {
+  if (!Array.isArray(value) || value.length === 0 || value.some(item => typeof item !== 'string' || item.trim().length === 0 || item.length > MAX_PUBLIC_VALUE_LENGTH)) {
+    throw new TypeError(`${label} must be a non-empty string array`)
+  }
+  return Object.freeze([...new Set(value.map(item => item.trim()))].toSorted())
+}
+
+function optionalStringList(value, label) {
+  if (value === undefined) return Object.freeze([])
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || item.trim().length === 0 || item.length > MAX_PUBLIC_VALUE_LENGTH)) {
+    throw new TypeError(`${label} must be a string array`)
+  }
+  return Object.freeze([...new Set(value.map(item => item.trim()))].toSorted())
+}
+
+function publicEvidence(value) {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('runtime evidence must be an object')
+  const evidence = {}
+  for (const key of ['providerId', 'runtime', 'desktop', 'verifiedAt', 'matrixArtifact']) {
+    const item = value[key]
+    if (item === undefined) continue
+    if (typeof item !== 'string' || item.trim().length === 0 || item.length > MAX_PUBLIC_VALUE_LENGTH) {
+      throw new TypeError(`runtime evidence ${key} is invalid`)
+    }
+    evidence[key] = item.trim()
+  }
+  return Object.freeze(evidence)
+}
+
 export function createHostCompatibility({
   desktopVersion,
   nodeVersion,
   runtimeVersion,
   packages = {},
+  desktopApiVersion = '1.0.0',
+  capabilities = [],
+  surfaces = [],
+  runtimeEvidence,
 }) {
   if (packages === null || typeof packages !== 'object' || Array.isArray(packages)) {
     throw new TypeError('host packages must be an object')
@@ -36,6 +70,10 @@ export function createHostCompatibility({
     desktopVersion: exactVersion(desktopVersion, 'desktop'),
     nodeVersion: exactVersion(nodeVersion, 'Node'),
     runtimeVersion: exactVersion(runtimeVersion, 'runtime'),
+    desktopApiVersion: exactVersion(desktopApiVersion, 'desktop API'),
+    capabilities: optionalStringList(capabilities, 'host capabilities'),
+    surfaces: optionalStringList(surfaces, 'host surfaces'),
+    ...(runtimeEvidence === undefined ? {} : { runtimeEvidence: publicEvidence(runtimeEvidence) }),
     packages: Object.freeze(normalizedPackages),
   })
 }
@@ -89,9 +127,22 @@ export function createHostCompatibilityProvider({
   desktopVersion,
   nodeVersion,
   runtimeVersion,
+  desktopApiVersion,
+  capabilities,
+  surfaces,
+  runtimeEvidence,
   resolvePackageVersion: resolveVersion,
 }) {
-  const base = createHostCompatibility({ desktopVersion, nodeVersion, runtimeVersion, packages: {} })
+  const base = createHostCompatibility({
+    desktopVersion,
+    nodeVersion,
+    runtimeVersion,
+    desktopApiVersion,
+    capabilities,
+    surfaces,
+    runtimeEvidence,
+    packages: {},
+  })
   if (typeof resolveVersion !== 'function') throw new TypeError('host package version resolver is required')
   const cache = new Map()
   return (manifest) => {
@@ -108,6 +159,10 @@ export function createHostCompatibilityProvider({
       desktopVersion: base.desktopVersion,
       nodeVersion: base.nodeVersion,
       runtimeVersion: base.runtimeVersion,
+      desktopApiVersion: base.desktopApiVersion,
+      capabilities: base.capabilities,
+      surfaces: base.surfaces,
+      runtimeEvidence: base.runtimeEvidence,
       packages,
     })
   }
@@ -137,6 +192,68 @@ function addRangeAssessment({ reasons, subject, required, actual, mismatchCode }
 
 function isDshPeer(name) {
   return name.startsWith('@deepseek-ai/')
+}
+
+function compatibilityDetail(explicit, host) {
+  const rawDesktop = explicit?.desktop
+  const rawRuntime = explicit?.runtime
+  const desktop = rawDesktop !== null && typeof rawDesktop === 'object' && !Array.isArray(rawDesktop)
+    ? rawDesktop
+    : undefined
+  const runtime = rawRuntime !== null && typeof rawRuntime === 'object' && !Array.isArray(rawRuntime)
+    ? rawRuntime
+    : undefined
+  const requirements = {}
+  const desktopRange = typeof rawDesktop === 'string' ? rawDesktop : desktop?.range
+  const runtimeRange = typeof rawRuntime === 'string' ? rawRuntime : runtime?.range
+  const apiRange = desktop?.api ?? explicit?.desktopApi
+  if (typeof desktopRange === 'string') requirements.desktop = publicValue(desktopRange)
+  if (typeof runtimeRange === 'string') requirements.runtime = publicValue(runtimeRange)
+  if (typeof apiRange === 'string') requirements.desktopApi = publicValue(apiRange)
+  if (Array.isArray(explicit?.capabilities)) requirements.capabilities = Object.freeze(explicit.capabilities.map(publicValue))
+  if (Array.isArray(explicit?.surfaces)) requirements.surfaces = Object.freeze(explicit.surfaces.map(publicValue))
+  let tested
+  try {
+    tested = publicEvidence(runtime?.evidence ?? explicit?.runtimeEvidence)
+  } catch {
+    tested = undefined
+  }
+  return Object.freeze({
+    requirements: Object.freeze(requirements),
+    ...(tested === undefined ? {} : { tested }),
+    host: Object.freeze({
+      desktop: host.desktopVersion,
+      runtime: host.runtimeVersion,
+      desktopApi: host.desktopApiVersion,
+      ...(host.runtimeEvidence === undefined ? {} : { runtimeEvidence: host.runtimeEvidence }),
+    }),
+  })
+}
+
+function requiredRange(raw, nested, field) {
+  if (typeof raw === 'string') return raw
+  if (nested !== undefined && (nested === null || typeof nested !== 'object' || Array.isArray(nested))) return undefined
+  if (nested?.range === undefined) return undefined
+  if (typeof nested.range !== 'string') return undefined
+  return nested.range
+}
+
+function assessRequiredStrings({ reasons, explicit, host, field, hostValues, mismatchCode, invalidCode }) {
+  const required = explicit?.[field]
+  if (required === undefined) return false
+  let values
+  try {
+    values = stringList(required, `dsh.compatibility.${field}`)
+  } catch {
+    reasons.push(Object.freeze({ code: invalidCode, subject: `dsh.compatibility.${field}` }))
+    return true
+  }
+  for (const item of values) {
+    if (!hostValues.includes(item)) {
+      reasons.push(Object.freeze({ code: mismatchCode, subject: item }))
+    }
+  }
+  return true
 }
 
 export function assessPluginCompatibility(manifest, host) {
@@ -171,23 +288,81 @@ export function assessPluginCompatibility(manifest, host) {
       subject: 'dsh.compatibility',
     }))
   } else if (explicit) {
-    if (explicit.desktop !== undefined) {
+    const desktopObject = explicit.desktop !== null && typeof explicit.desktop === 'object' && !Array.isArray(explicit.desktop)
+      ? explicit.desktop
+      : undefined
+    const runtimeObject = explicit.runtime !== null && typeof explicit.runtime === 'object' && !Array.isArray(explicit.runtime)
+      ? explicit.runtime
+      : undefined
+    if (explicit.desktop !== undefined && desktopObject === undefined && typeof explicit.desktop !== 'string') {
+      reasons.push(Object.freeze({ code: 'invalid-compatibility', subject: 'dsh.compatibility.desktop' }))
+    }
+    if (explicit.runtime !== undefined && runtimeObject === undefined && typeof explicit.runtime !== 'string') {
+      reasons.push(Object.freeze({ code: 'invalid-compatibility', subject: 'dsh.compatibility.runtime' }))
+    }
+    const desktopRange = requiredRange(explicit.desktop, desktopObject, 'desktop')
+    const runtimeRange = requiredRange(explicit.runtime, runtimeObject, 'runtime')
+    if (explicit.desktop !== undefined && desktopRange === undefined && desktopObject?.range !== undefined) {
+      reasons.push(Object.freeze({ code: 'invalid-range', subject: 'desktop', required: publicValue(desktopObject.range) }))
+    }
+    if (explicit.runtime !== undefined && runtimeRange === undefined && runtimeObject?.range !== undefined) {
+      reasons.push(Object.freeze({ code: 'invalid-range', subject: 'runtime', required: publicValue(runtimeObject.range) }))
+    }
+    if (desktopRange !== undefined) {
       compatibilityEvidence = addRangeAssessment({
         reasons,
         subject: 'desktop',
-        required: explicit.desktop,
+        required: desktopRange,
         actual: host.desktopVersion,
         mismatchCode: 'desktop-range',
       }) || compatibilityEvidence
     }
-    if (explicit.runtime !== undefined) {
+    if (runtimeRange !== undefined) {
       compatibilityEvidence = addRangeAssessment({
         reasons,
         subject: 'runtime',
-        required: explicit.runtime,
+        required: runtimeRange,
         actual: host.runtimeVersion,
         mismatchCode: 'runtime-range',
       }) || compatibilityEvidence
+    }
+    const apiRange = desktopObject?.api ?? explicit.desktopApi
+    if (apiRange !== undefined) {
+      compatibilityEvidence = addRangeAssessment({
+        reasons,
+        subject: 'desktop.api',
+        required: apiRange,
+        actual: host.desktopApiVersion,
+        mismatchCode: 'desktop-api-range',
+      }) || compatibilityEvidence
+    }
+    const capabilityDeclared = assessRequiredStrings({
+      reasons,
+      explicit,
+      host,
+      field: 'capabilities',
+      hostValues: host.capabilities,
+      mismatchCode: 'capability-missing',
+      invalidCode: 'invalid-capabilities',
+    })
+    const surfaceDeclared = assessRequiredStrings({
+      reasons,
+      explicit,
+      host,
+      field: 'surfaces',
+      hostValues: host.surfaces,
+      mismatchCode: 'surface-unsupported',
+      invalidCode: 'invalid-surfaces',
+    })
+    compatibilityEvidence = compatibilityEvidence || capabilityDeclared || surfaceDeclared
+    const evidence = runtimeObject?.evidence ?? explicit.runtimeEvidence
+    if (evidence !== undefined) {
+      try {
+        publicEvidence(evidence)
+        compatibilityEvidence = true
+      } catch {
+        reasons.push(Object.freeze({ code: 'invalid-runtime-evidence', subject: 'dsh.compatibility.runtimeEvidence' }))
+      }
     }
   }
 
@@ -219,10 +394,18 @@ export function assessPluginCompatibility(manifest, host) {
   }
 
   if (reasons.length > 0) {
-    return Object.freeze({ status: 'incompatible', reasons: Object.freeze(reasons) })
+    return Object.freeze({
+      status: 'incompatible',
+      reasons: Object.freeze(reasons),
+      ...(explicit ? { details: compatibilityDetail(explicit, host) } : {}),
+    })
   }
   if (compatibilityEvidence) {
-    return Object.freeze({ status: 'compatible', reasons: Object.freeze([]) })
+    return Object.freeze({
+      status: 'compatible',
+      reasons: Object.freeze([]),
+      ...(explicit ? { details: compatibilityDetail(explicit, host) } : {}),
+    })
   }
   return Object.freeze({
     status: 'unknown',

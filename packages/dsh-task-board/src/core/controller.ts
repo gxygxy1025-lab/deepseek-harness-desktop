@@ -21,7 +21,7 @@ import type { TaskStore } from './store.ts'
 import type { WorktreeExecutionResult } from './worktree-execution.ts'
 import {
   settleExecution, startExecution, withStatus,
-  type ExecutionRecord, type NewTaskInput, type TaskRecord, type TaskStatus,
+  type ExecutionRecord, type NewTaskInput, type ScheduleMisfirePolicy, type ScheduleRunningPolicy, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 import { applyCreateTask } from './use-cases/task-create.ts'
 import { applyDeleteTask } from './use-cases/task-delete.ts'
@@ -109,6 +109,75 @@ function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as { then?: unknown })?.then === 'function'
 }
 
+type SettledExecutionEvent = Extract<ExecutionEvent, { kind: 'settled' }>
+
+interface ExternalHostScheduledSettlement {
+  task: TaskRecord
+  event: SettledExecutionEvent
+}
+
+function executionForRun(task: TaskRecord, runId: string): ExecutionRecord | undefined {
+  return task.executions.find(execution => (execution.runId ?? execution.id) === runId)
+}
+
+function isRunningExecution(execution: ExecutionRecord | undefined): execution is ExecutionRecord {
+  return execution !== undefined
+    && execution.result === undefined
+    && execution.finishedAt === undefined
+    && execution.endedAt === undefined
+}
+
+function isSettledOutcome(value: ExecutionRecord['result']): value is SettledExecutionEvent['outcome'] {
+  return value === 'succeeded' || value === 'failed' || value === 'cancelled'
+}
+
+function isTerminalHostRun(task: TaskRecord, runId: string): boolean {
+  const run = task.runs?.find(candidate => candidate.runId === runId)
+  return run !== undefined && run.resultStatus !== 'running'
+}
+
+/**
+ * Convert a Host-owned ledger transition into the same neutral controller
+ * event used by live browser executions. The Host communicates only through
+ * the v3 ledger/SSE boundary; the client deliberately owns notification UX.
+ */
+function externalHostScheduledSettlements(
+  previousTasks: readonly TaskRecord[],
+  nextTasks: readonly TaskRecord[],
+): ExternalHostScheduledSettlement[] {
+  const previousById = new Map(previousTasks.map(task => [task.id, task]))
+  const settlements: ExternalHostScheduledSettlement[] = []
+  for (const task of nextTasks) {
+    const previous = previousById.get(task.id)
+    const runId = previous?.schedule?.lastRunId
+    if (previous === undefined || runId === undefined
+      || previous.status !== 'running'
+      || previous.schedule?.providerEvidence === undefined
+      // The new snapshot retains the Host scheduler attribution. Requiring it
+      // on both sides avoids inferring a notification from a concurrent
+      // schedule edit or a legacy/browser-only run.
+      || task.schedule?.lastRunId !== runId
+      || task.schedule.providerEvidence === undefined
+      || !isRunningExecution(executionForRun(previous, runId))
+      || !isTerminalHostRun(task, runId)) continue
+
+    const execution = executionForRun(task, runId)
+    if (execution === undefined || !isSettledOutcome(execution.result)
+      || (execution.finishedAt === undefined && execution.endedAt === undefined)) continue
+    settlements.push({
+      task,
+      event: {
+        kind: 'settled',
+        taskId: task.id,
+        executionId: runId,
+        outcome: execution.result,
+        ...(execution.error === undefined ? {} : { error: execution.error }),
+      },
+    })
+  }
+  return settlements
+}
+
 /**
  * Board controller (see module doc). All mutations bump the snapshot and
  * persist through the store; UI and DOM mounts subscribe and re-render.
@@ -122,6 +191,11 @@ export class BoardController {
   private readonly now: () => number
   private readonly uuid: () => string
   private evidences: Evidence[] = []
+  /**
+   * SSE may replay an old running/terminal pair after reconnecting. This is
+   * intentionally process-local: notification delivery is never ledger state.
+   */
+  private readonly externallyNotifiedHostSettlements = new Set<string>()
 
   /** @param deps - store, execution service, and the sessions navigation face. */
   constructor(private readonly deps: ControllerDeps) {
@@ -152,13 +226,11 @@ export class BoardController {
     const unsubscribeExternal = this.deps.store.subscribeExternal?.(() => {
       const loaded = this.deps.store.load()
       if (!isPromise(loaded)) {
-        this.tasks = loaded
-        this.notify()
+        this.applyExternalSnapshot(loaded)
         return
       }
       void loaded.then((next) => {
-        this.tasks = next
-        this.notify()
+        this.applyExternalSnapshot(next)
       }).catch((error) => {
         console.error('[dsh-task-board] external task reload failed', error)
       })
@@ -323,7 +395,13 @@ export class BoardController {
    * @param patch - fields to change (absent fields keep their current value).
    * @returns true when applied, false when rejected (invalid cron / unknown task).
    */
-  setSchedule(id: string, patch: { enabled?: boolean; cron?: string }): boolean {
+  setSchedule(id: string, patch: {
+    enabled?: boolean
+    cron?: string
+    timezone?: string
+    misfirePolicy?: ScheduleMisfirePolicy
+    runningPolicy?: ScheduleRunningPolicy
+  }): boolean {
     const { tasks, applied } = applySetSchedule(this.tasks, id, patch, this.now())
     if (!applied) return false
     this.tasks = [...tasks]
@@ -361,6 +439,7 @@ export class BoardController {
   async runTask(id: string): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined || task.status === 'running') return false
+    const beforeStart = this.tasks
     const { task: started, execution } = startExecution(task, this.now(), this.uuid())
     const next = addTaskRunReference(started, createTaskRunReference({
       runId: execution.runId ?? execution.id,
@@ -370,7 +449,12 @@ export class BoardController {
       runtimeProviderEvidence: { note: 'shared-workspace execution' },
     }))
     this.tasks = this.tasks.map(candidate => candidate.id === id ? next : candidate)
-    this.persistAndNotify()
+    // A scheduled browser launch is an admission boundary, not a best-effort
+    // UI write. Wait until the authoritative store accepts this running
+    // record before opening an agent session. If the Host claimed the same
+    // task between a stale ownership read and this save, RemoteTaskStoreV3
+    // returns a revision conflict and no second agent is started.
+    if (!await this.persistExecutionStart(beforeStart)) return false
     // This page owns the settlement of its own launches: the live watch
     // (ExecutionService.run) settles on the turn boundary, and list
     // reconciliation must not pre-empt it with a session that has not
@@ -542,6 +626,44 @@ export class BoardController {
       console.error('[dsh-task-board] task ledger write failed', error)
     })
     this.notify()
+  }
+
+  /** Apply a Host/SSE reload without writing it back to the authoritative store. */
+  private applyExternalSnapshot(next: TaskRecord[]): void {
+    const previous = this.tasks
+    this.tasks = next
+    for (const settlement of externalHostScheduledSettlements(previous, next)) {
+      const key = `${settlement.task.id}\u0000${settlement.event.executionId}`
+      if (this.externallyNotifiedHostSettlements.has(key)) continue
+      this.externallyNotifiedHostSettlements.add(key)
+      this.notifyExecutionSettled(settlement.task, settlement.event)
+    }
+    this.notify()
+  }
+
+  /**
+   * Commit an execution start before any provider side effect. On conflict or
+   * I/O failure, reload the authoritative task list and leave the task
+   * unlaunched so the caller can retry through the current scheduler owner.
+   */
+  private async persistExecutionStart(previousTasks: TaskRecord[]): Promise<boolean> {
+    const candidate = this.tasks
+    try {
+      await this.deps.store.save(candidate)
+      this.notify()
+      return true
+    } catch (error) {
+      console.error('[dsh-task-board] execution admission write failed', error)
+      try {
+        const loaded = this.deps.store.load()
+        this.tasks = isPromise(loaded) ? await loaded : loaded
+      } catch (reloadError) {
+        console.error('[dsh-task-board] execution admission reload failed', reloadError)
+        this.tasks = previousTasks
+      }
+      this.notify()
+      return false
+    }
   }
 
   private notifyExecutionSettled(

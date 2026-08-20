@@ -2,12 +2,12 @@
 
 [English](README.md) | 中文
 
-面向 DSH 设置页的 dsh web UI 设置插件组：在 DSH 设置页加入一张卡片，归组 dsh web UI 全家桶设置，承载全家桶插件的启用开关与配置表单。
+面向 DSH 设置页的 dsh web UI 设置插件组：在 DSH 设置页加入一个一级设置分区，承载全家桶插件的启用开关与配置表单。
 
 ## 是什么
 
-- **全家桶设置卡片**：在 DSH 设置页注册一张卡片，归组 dsh web UI 全家桶插件的启用开关与配置表单。
-- **社区插件索引**：组内一张卡片列出社区贡献的插件，链接到作者自己的仓库（注册表在 `community.json`，由 `scripts/community-index` 重新生成）。
+- **全家桶设置分区**：在 DSH 设置页注册一个一级分区，以静态标题和卡片归组 dsh web UI 全家桶插件。
+- **桌面插件市场独立**：DeepSeek Harness Desktop 通过扩展坞的插件市场（`dshmarket`）完成发现、安装、恢复与回滚；本包明确不恢复旧的组内社区插件卡片。
 
 ## 安装
 
@@ -26,8 +26,23 @@ pnpm install && pnpm -r build
 dsh plugin --profile web add link:$(pwd)/packages/dsh-web-ui-settings
 ```
 
-安装后重启 `dsh web`，设置页出现该卡片。
+安装后重启 `dsh web`，设置页出现该分区。
+
+## 代理配置
+
+`trustedProxyHosts` 为空时，桥接仍仅限 loopback。与 DSH 运行在同一主机上的认证反向代理可以显式加入准确的 authority，并指定保存共享令牌的环境变量名：
+
+```yaml
+- id: ui-web-ui-settings
+  config:
+    trustedProxyHosts:
+      - dsh.example.com
+    proxyTokenEnv: DSH_WEB_UI_SETTINGS_PROXY_TOKEN
+```
+
+不要把令牌写入 profile 配置。代理必须在转发前完成认证、替换内部令牌请求头，并且只能转发到 DSH 的 loopback 监听器。
 
 ## 已知限制
 
-- 仅当依赖的 `@deepseek-ai/dsh-client-ui-settings` 存在时，该卡片才会出现在 dsh 设置页。
+- 仅当依赖的 `@deepseek-ai/dsh-client-ui-settings` 存在时，该分区才会出现在 dsh 设置页。
+- 认证代理模式本身不提供认证；没有正确配置并排序代理的部署必须让 `trustedProxyHosts` 保持为空。

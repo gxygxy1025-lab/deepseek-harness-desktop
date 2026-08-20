@@ -1,0 +1,184 @@
+/**
+ * Public, browser-safe client for the versioned DeepSeek Harness Desktop
+ * Contract. This module deliberately knows only a narrow typed bridge; it
+ * never exports the preload object, Electron, filesystems, or DSH internals.
+ */
+export const DESKTOP_CLIENT_API_VERSION = '1.0.0';
+export class DesktopClientError extends Error {
+    code;
+    constructor(code, message) {
+        super(message);
+        this.name = 'DesktopClientError';
+        this.code = code;
+    }
+}
+function unavailable() {
+    return Object.freeze({ available: false, reason: 'unavailable' });
+}
+function asRecord(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : undefined;
+}
+function bridgeFrom(globalObject) {
+    const candidate = asRecord(globalObject)?.dshDesktop;
+    return asRecord(candidate);
+}
+function normalizeInfo(value) {
+    const record = asRecord(value);
+    if (!record)
+        return undefined;
+    const { appId, productName, version, platform } = record;
+    if ([appId, productName, version, platform].some(item => typeof item !== 'string' || item.length === 0))
+        return undefined;
+    return Object.freeze({ appId: String(appId), productName: String(productName), version: String(version), platform: String(platform) });
+}
+function normalizeContract(value) {
+    const record = asRecord(value);
+    if (!record || typeof record.apiVersion !== 'string' || typeof record.surface !== 'string' || !Array.isArray(record.capabilities)
+        || !record.capabilities.every(item => typeof item === 'string'))
+        return undefined;
+    return Object.freeze({
+        apiVersion: record.apiVersion,
+        surface: record.surface,
+        capabilities: Object.freeze([...record.capabilities]),
+        ...(asRecord(record.runtime) === undefined ? {} : { runtime: record.runtime }),
+    });
+}
+function normalizeStatus(value) {
+    const record = asRecord(value);
+    if (!record || typeof record.state !== 'string' || typeof record.restartAttempt !== 'number' || !Number.isInteger(record.restartAttempt))
+        return undefined;
+    const output = { state: record.state, restartAttempt: record.restartAttempt };
+    if (typeof record.error === 'string')
+        output.error = record.error;
+    if (typeof record.url === 'string')
+        output.url = record.url;
+    if (record.restartBlocked === 'repeated-crash')
+        output.restartBlocked = record.restartBlocked;
+    const recovery = asRecord(record.recovery);
+    if (recovery && typeof recovery.safeMode === 'boolean' && typeof recovery.busy === 'boolean' && typeof recovery.recoveryStage === 'number' && Number.isInteger(recovery.recoveryStage)) {
+        output.recovery = { safeMode: recovery.safeMode, busy: recovery.busy, recoveryStage: recovery.recoveryStage };
+    }
+    const background = asRecord(record.background);
+    if (background && typeof background.enabled === 'boolean' && typeof background.trayAvailable === 'boolean') {
+        const closeBehavior = background.closeBehavior;
+        output.background = {
+            enabled: background.enabled,
+            trayAvailable: background.trayAvailable,
+            ...(closeBehavior === 'quit' || closeBehavior === 'minimize-to-tray' || closeBehavior === 'ask'
+                ? { closeBehavior }
+                : {}),
+        };
+    }
+    return Object.freeze(output);
+}
+function requireNonEmptyString(value, label) {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new DesktopClientError('desktop-invalid-argument', `${label} must be a non-empty string`);
+    }
+    return value.trim();
+}
+function normalizeWorkspaceFileRequest(value) {
+    const root = requireNonEmptyString(value?.root, 'workspace root');
+    const path = requireNonEmptyString(value?.path, 'workspace file path').replaceAll('\\', '/');
+    if (path.length > 4_096 || path.startsWith('/') || /^[a-z]:/iu.test(path) || path.split('/').some(segment => segment === '..' || segment === '')) {
+        throw new DesktopClientError('desktop-invalid-argument', 'workspace file path must be a non-empty relative path');
+    }
+    return Object.freeze({ root, path });
+}
+function normalizeNotificationResult(value) {
+    const record = asRecord(value);
+    if (!record || typeof record.shown !== 'boolean')
+        return Object.freeze({ shown: false, reason: 'unavailable' });
+    return Object.freeze({ shown: record.shown, ...(typeof record.reason === 'string' ? { reason: record.reason } : {}) });
+}
+/** Create a public client around an optional typed Desktop bridge. */
+export function createDesktopClient({ globalObject = globalThis } = {}) {
+    const bridge = bridgeFrom(globalObject);
+    const getDesktopInfo = async () => {
+        if (typeof bridge?.getInfo !== 'function')
+            return unavailable();
+        return normalizeInfo(await bridge.getInfo()) ?? unavailable();
+    };
+    const getContract = async () => {
+        if (typeof bridge?.getContract !== 'function')
+            return unavailable();
+        return normalizeContract(await bridge.getContract()) ?? unavailable();
+    };
+    return Object.freeze({
+        getDesktopInfo,
+        getContract,
+        async hasCapability(name, version = 1) {
+            if (typeof name !== 'string' || name.trim().length === 0 || !Number.isInteger(version) || version < 1)
+                return false;
+            const contract = await getContract();
+            if ('available' in contract || Number.parseInt(contract.apiVersion.split('.')[0] ?? '', 10) !== version)
+                return false;
+            return contract.capabilities.includes(name);
+        },
+        async getRuntimeStatus() {
+            if (typeof bridge?.getStatus !== 'function')
+                return unavailable();
+            return normalizeStatus(await bridge.getStatus()) ?? unavailable();
+        },
+        subscribeRuntimeStatus(handler) {
+            if (typeof handler !== 'function' || typeof bridge?.onStatus !== 'function')
+                return () => { };
+            return bridge.onStatus((value) => {
+                const status = normalizeStatus(value);
+                if (status !== undefined)
+                    handler(status);
+            });
+        },
+        async showNotification(request) {
+            if (typeof bridge?.showNotification !== 'function')
+                return unavailable();
+            return normalizeNotificationResult(await bridge.showNotification(request));
+        },
+        subscribeDeepLinks(handler) {
+            if (typeof handler !== 'function' || typeof bridge?.onDeepLink !== 'function')
+                return () => { };
+            return bridge.onDeepLink((value) => {
+                const record = asRecord(value);
+                if (typeof record?.href === 'string')
+                    handler(record.href);
+            });
+        },
+        async openDesktopSurface(surface) {
+            if (surface === 'extensions' && typeof bridge?.toolAction === 'function') {
+                await bridge.toolAction('extensions');
+                return true;
+            }
+            if (surface === 'updates' && typeof bridge?.helpAction === 'function') {
+                await bridge.helpAction('updates');
+                return true;
+            }
+            return false;
+        },
+        async openWorkspaceFile(request) {
+            if (typeof bridge?.openWorkspaceFile !== 'function')
+                return unavailable();
+            const result = asRecord(await bridge.openWorkspaceFile(normalizeWorkspaceFileRequest(request)));
+            if (!result || typeof result.opened !== 'boolean')
+                return Object.freeze({ opened: false, reason: 'unavailable' });
+            return Object.freeze({ opened: result.opened, ...(typeof result.reason === 'string' ? { reason: result.reason } : {}) });
+        },
+    });
+}
+const defaultClient = createDesktopClient();
+export const getDesktopInfo = defaultClient.getDesktopInfo;
+export const getContract = defaultClient.getContract;
+export const hasCapability = defaultClient.hasCapability;
+export const getRuntimeStatus = defaultClient.getRuntimeStatus;
+export const subscribeRuntimeStatus = defaultClient.subscribeRuntimeStatus;
+export const showNotification = defaultClient.showNotification;
+export const subscribeDeepLinks = defaultClient.subscribeDeepLinks;
+export const openDesktopSurface = defaultClient.openDesktopSurface;
+export const openWorkspaceFile = defaultClient.openWorkspaceFile;
+export function taskDeepLink(taskId) {
+    return `dsh://task/${requireNonEmptyString(taskId, 'task id')}`;
+}
+export function runDeepLink(runId) {
+    return `dsh://run/${requireNonEmptyString(runId, 'run id')}`;
+}

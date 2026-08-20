@@ -27,6 +27,8 @@ import { mountBoard } from './board-mount.tsx'
 import { selectPreferredTaskStore } from './host-store.ts'
 import { RemoteTaskStoreV3 } from './v3-host-store.ts'
 import { RemoteWorktreeReviewClient } from './worktree-client.ts'
+import { shouldRunTaskInClientScheduler } from './host-scheduler.ts'
+import { notifyDesktopExecutionSettled, type DesktopNotificationBridge } from './desktop-notifications.ts'
 import { EvidenceReviewService } from '../core/review.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
@@ -168,23 +170,10 @@ export function apply(ctx: ClientContext): void {
           open: id => sessions.open(id as SessionId),
         },
         onExecutionSettled: event => {
-          if (event.outcome === 'cancelled') return
           const desktop = (window as typeof window & {
-            dshDesktop?: {
-              showNotification?: (value: unknown) => Promise<unknown>
-            }
+            dshDesktop?: DesktopNotificationBridge
           }).dshDesktop
-          if (typeof desktop?.showNotification !== 'function') return
-          const failed = event.outcome === 'failed'
-          return desktop.showNotification({
-            category: 'run',
-            id: `run:${event.executionId}:${event.outcome}`,
-            title: failed ? 'Task failed' : 'Task completed',
-            body: failed
-              ? `${event.title}: ${event.error ?? 'The agent turn failed.'}`
-              : event.title,
-            deepLink: `dsh://run/${event.executionId}`,
-          }).then(() => undefined)
+          return notifyDesktopExecutionSettled(desktop, event)
         },
       })
       await controller.start()
@@ -193,8 +182,10 @@ export function apply(ctx: ClientContext): void {
         return
       }
 
-      // Scheduling remains browser-side by design; persistence moving to Host
-      // does not create a background scheduler or catch-up service.
+      // The Host publishes an explicit ownership set for the subset its
+      // Desktop runner can actually execute. Keep the browser ticker alive so
+      // legacy/no-project, worktree, and transiently unsupported tasks still
+      // run here; it yields only an individually Host-owned task.
       const scheduler = new SchedulerService({
         tasks: () => controller.getSnapshot().tasks,
         now: () => Date.now(),
@@ -202,6 +193,10 @@ export function apply(ctx: ClientContext): void {
         applySchedule: (id, nextRunAt, lastTriggeredAt) =>
           controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt),
         ready: () => sessions.list.getSnapshot().phase === 'ready',
+        // Re-probe each task at admission. An unavailable, old, or malformed
+        // status route deliberately yields browser ownership rather than
+        // globally pausing scheduled work.
+        canRunTask: task => shouldRunTaskInClientScheduler(task),
         environment: {
           addEventListener: (type, listener) => document.addEventListener(type, listener),
           removeEventListener: (type, listener) => document.removeEventListener(type, listener),

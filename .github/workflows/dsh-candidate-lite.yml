@@ -1,4 +1,4 @@
-name: DSH Candidate Lite
+name: DSH Candidate Matrix
 
 on:
   workflow_dispatch:
@@ -8,22 +8,51 @@ on:
         required: true
         type: string
       compatibility_issue:
-        description: Optional existing compatibility issue number to update on failure
+        description: Optional existing compatibility issue number to update on a blocked candidate
         required: false
         type: string
+  schedule:
+    # A scheduled run only uses an exact version committed to candidate-queue.json.
+    # It never follows latest and never publishes or promotes a runtime.
+    - cron: '17 3 * * 1'
 
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: dsh-candidate-lite-${{ inputs.dsh_version }}
+  group: dsh-candidate-matrix-${{ github.event.inputs.dsh_version || 'queued' }}
   cancel-in-progress: false
 
 jobs:
+  resolve-candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.input.outputs.should_run }}
+      candidate_version: ${{ steps.input.outputs.candidate_version }}
+      candidate_source: ${{ steps.input.outputs.candidate_source }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Resolve an explicit candidate only
+        id: input
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.dsh_version || '' }}
+        run: >-
+          node scripts/resolve-dsh-candidate-input.mjs
+          --queue apps/dsh-desktop/runtime-support/candidate-queue.json
+          --github-output "$GITHUB_OUTPUT"
+          --input "$DISPATCH_VERSION"
+
   candidate:
+    needs: resolve-candidate
+    if: needs.resolve-candidate.outputs.should_run == 'true'
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
+    env:
+      DSH_CANDIDATE_VERSION: ${{ needs.resolve-candidate.outputs.candidate_version }}
+      CANDIDATE_SOURCE: ${{ needs.resolve-candidate.outputs.candidate_source }}
     steps:
       - name: Preserve repository line endings
         run: git config --global core.autocrlf false
@@ -36,24 +65,40 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Validate exact candidate input
-        env:
-          DSH_CANDIDATE_VERSION: ${{ inputs.dsh_version }}
-        run: node -e "import('./scripts/prepare-dsh-candidate.mjs').then((m) => console.log(m.validateCandidateVersion(process.env.DSH_CANDIDATE_VERSION)))"
+      - name: Validate exact candidate input and Stable support guard
+        shell: pwsh
+        run: |
+          node -e "import('./scripts/prepare-dsh-candidate.mjs').then((m) => console.log(m.validateCandidateVersion(process.env.DSH_CANDIDATE_VERSION)))"
+          node scripts/generate-runtime-support.mjs --check
+          node scripts/generate-runtime-support-matrix.mjs --check
+          node scripts/generate-community-plugin-quality-report.mjs --check
+          $stable = Get-Content -LiteralPath 'apps/dsh-desktop/runtime-support/known-good.json' -Raw | ConvertFrom-Json
+          $matrix = Get-Content -LiteralPath 'apps/dsh-desktop/runtime-support/supported-runtimes.json' -Raw | ConvertFrom-Json
+          $entry = @($matrix.entries | Where-Object { $_.upstreamVersion -eq $stable.runtime.version }) | Select-Object -First 1
+          if ($null -eq $entry -or @('known-good', 'supported') -notcontains $entry.status) {
+            throw 'Stable updater guard requires a known-good or supported runtime matrix entry'
+          }
 
-      - name: Snapshot stable inputs and create detached worktree
+      - name: Snapshot Stable checkout and create isolated candidate Desktop worktree
         id: isolate
         shell: pwsh
         run: |
           $candidateRoot = Join-Path $env:RUNNER_TEMP 'dsh-candidate-worktree'
+          $stableStatus = git status --porcelain --untracked-files=no
+          if ($stableStatus) { throw "Stable checkout is dirty before Candidate Matrix: $stableStatus" }
           $trackedInputs = @(
             'package.json',
             'apps/dsh-desktop/package.json',
             'pnpm-lock.yaml',
             'docs/launch/release-notes.md',
-            'apps/dsh-desktop/electron-builder.yml'
+            'apps/dsh-desktop/electron-builder.yml',
+            'apps/dsh-desktop/runtime-support/known-good.json',
+            'apps/dsh-desktop/runtime-support/supported-runtimes.json'
           )
-          $hashes = [ordered]@{}
+          $hashes = [ordered]@{
+            head = (git rev-parse HEAD).Trim()
+            tree = (git rev-parse HEAD^{tree}).Trim()
+          }
           foreach ($path in $trackedInputs) {
             $hashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
           }
@@ -62,17 +107,15 @@ jobs:
           git worktree add --detach $candidateRoot HEAD
           "candidate_root=$candidateRoot" >> $env:GITHUB_OUTPUT
 
-      - name: Install exact candidate and exact peers
+      - name: Install exact candidate and exact peers only in temporary Desktop
         id: prepare
         continue-on-error: true
         working-directory: ${{ steps.isolate.outputs.candidate_root }}
-        env:
-          DSH_CANDIDATE_VERSION: ${{ inputs.dsh_version }}
         run: |
           pnpm install --frozen-lockfile
           node scripts/prepare-dsh-candidate.mjs --version $env:DSH_CANDIDATE_VERSION
 
-      - name: Typecheck and unit suites
+      - name: Run dependency exports Contract built-ins Task Board Git Graph Worktree Evidence Preset Deep Link rollback and scheduler tests
         id: unit
         if: steps.prepare.outcome == 'success'
         continue-on-error: true
@@ -82,52 +125,64 @@ jobs:
           pnpm test
           pnpm test:scripts
           pnpm runtime-deps:check
+          pnpm dsh-imports:check
+          pnpm dsh-audit:check
           pnpm sync-shared:check
           pnpm aggregate:check
           pnpm docs:check
 
-      - name: Verify provider startup stop recover and profile creation
-        id: runtime
-        if: steps.prepare.outcome == 'success'
+      - name: Verify provider lifecycle profile Contract Directory Picker Task Board Worktree Preset and Deep Link in temporary Desktop
+        id: desktop_e2e
+        if: steps.unit.outcome == 'success'
         continue-on-error: true
         working-directory: ${{ steps.isolate.outputs.candidate_root }}
         env:
-          DSH_CANDIDATE_VERSION: ${{ inputs.dsh_version }}
-        run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
-
-      - name: Verify Desktop Contract built-ins Task Board and directory picker
-        id: desktop_e2e
-        if: steps.unit.outcome == 'success' && steps.runtime.outcome == 'success'
-        continue-on-error: true
-        working-directory: ${{ steps.isolate.outputs.candidate_root }}
+          DSH_CANDIDATE_VERSION: ${{ needs.resolve-candidate.outputs.candidate_version }}
         run: |
           pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
+          pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
           pnpm --filter @deepseek-ai/dsh-desktop test:directory-picker:e2e
+          pnpm --filter @deepseek-ai/dsh-desktop test:task-board-worktree:e2e
+          pnpm --filter @deepseek-ai/dsh-desktop test:preset-deep-link:e2e
 
-      - name: Package verify and smoke candidate
+      - name: Package candidate then smoke upgrade and shutdown checks without touching Stable
         id: package
         if: steps.desktop_e2e.outcome == 'success'
         continue-on-error: true
         working-directory: ${{ steps.isolate.outputs.candidate_root }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        shell: pwsh
         run: |
           pnpm desktop:pack
           pnpm --filter @deepseek-ai/dsh-desktop pack:verify
           pnpm --filter @deepseek-ai/dsh-desktop pack:smoke
+          $env:DSH_DESKTOP_E2E_EXECUTABLE = (Resolve-Path 'apps/dsh-desktop/dist/win-unpacked/DeepSeek Harness Desktop.exe').Path
+          pnpm --filter @deepseek-ai/dsh-desktop test:profile-migration:e2e
+          pnpm --filter @deepseek-ai/dsh-desktop test:update-shutdown:e2e
 
-      - name: Collect candidate evidence and stable hash guard
+      - name: Exercise deterministic candidate CWD and event fixture
+        id: execution
+        if: always()
+        continue-on-error: true
+        working-directory: ${{ steps.isolate.outputs.candidate_root }}
+        shell: pwsh
+        run: >-
+          node scripts/dsh-candidate-execution.mjs
+          --json "$env:RUNNER_TEMP/dsh-candidate-execution.json"
+          --markdown "$env:RUNNER_TEMP/dsh-candidate-execution.md"
+
+      - name: Collect evidence and prove Stable was not mutated
         id: evidence
         if: always()
         shell: pwsh
         env:
           CANDIDATE_ROOT: ${{ steps.isolate.outputs.candidate_root }}
-          CANDIDATE_VERSION: ${{ inputs.dsh_version }}
           PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
           UNIT_OUTCOME: ${{ steps.unit.outcome }}
-          RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
           DESKTOP_E2E_OUTCOME: ${{ steps.desktop_e2e.outcome }}
           PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          EXECUTION_OUTCOME: ${{ steps.execution.outcome }}
         run: |
           function Convert-Outcome([string]$outcome) {
             if ($outcome -eq 'success') { return 'passed' }
@@ -139,59 +194,98 @@ jobs:
             'apps/dsh-desktop/package.json',
             'pnpm-lock.yaml',
             'docs/launch/release-notes.md',
-            'apps/dsh-desktop/electron-builder.yml'
+            'apps/dsh-desktop/electron-builder.yml',
+            'apps/dsh-desktop/runtime-support/known-good.json',
+            'apps/dsh-desktop/runtime-support/supported-runtimes.json'
           )
-          $after = [ordered]@{}
+          $after = [ordered]@{
+            head = (git rev-parse HEAD).Trim()
+            tree = (git rev-parse HEAD^{tree}).Trim()
+          }
           foreach ($path in $trackedInputs) {
             $after[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
           }
+          if (git status --porcelain --untracked-files=no) { throw 'Candidate Matrix mutated the Stable checkout' }
           $after | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'stable-after.json') -Encoding utf8
           $candidateEvidencePath = Join-Path $env:RUNNER_TEMP 'candidate-evidence.json'
           if (Test-Path -LiteralPath (Join-Path $env:CANDIDATE_ROOT 'apps/dsh-desktop/node_modules/@deepseek-ai/dsh/package.json')) {
             Push-Location $env:CANDIDATE_ROOT
-            node scripts/generate-runtime-support.mjs --stdout | Set-Content -LiteralPath $candidateEvidencePath -Encoding utf8
+            node scripts/generate-runtime-support.mjs --support-status candidate --stdout | Set-Content -LiteralPath $candidateEvidencePath -Encoding utf8
             Pop-Location
           } else {
             '{}' | Set-Content -LiteralPath $candidateEvidencePath -Encoding utf8
           }
+          $executionPath = Join-Path $env:RUNNER_TEMP 'dsh-candidate-execution.json'
+          $executionEvidence = if (Test-Path -LiteralPath $executionPath) {
+            Get-Content -LiteralPath $executionPath -Raw | ConvertFrom-Json
+          } else {
+            @{ status = 'blocked'; blockingReasons = @('candidate execution fixture did not produce evidence') }
+          }
           $input = [ordered]@{
-            candidateVersion = $env:CANDIDATE_VERSION
+            candidateVersion = $env:DSH_CANDIDATE_VERSION
+            candidateSource = $env:CANDIDATE_SOURCE
             stableEvidence = Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'stable-evidence.json') -Raw | ConvertFrom-Json
             candidateEvidence = Get-Content -LiteralPath $candidateEvidencePath -Raw | ConvertFrom-Json
             stableHashesBefore = Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'stable-before.json') -Raw | ConvertFrom-Json
             stableHashesAfter = Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'stable-after.json') -Raw | ConvertFrom-Json
+            executionEvidence = $executionEvidence
             checks = @(
               @{ id = 'candidate-install-exact-peers'; status = Convert-Outcome $env:PREPARE_OUTCOME },
-              @{ id = 'typecheck-unit-contract-builtins-task-board'; status = Convert-Outcome $env:UNIT_OUTCOME },
-              @{ id = 'runtime-start-stop-recover-profile'; status = Convert-Outcome $env:RUNTIME_OUTCOME },
-              @{ id = 'directory-picker-e2e'; status = Convert-Outcome $env:DESKTOP_E2E_OUTCOME },
-              @{ id = 'pack-verify-smoke'; status = Convert-Outcome $env:PACKAGE_OUTCOME },
+              @{ id = 'dependency-exports-contract-builtins-task-board-git-graph-worktree-evidence-preset-deep-link-plugin-rollback-scheduler'; status = Convert-Outcome $env:UNIT_OUTCOME },
+              @{ id = 'provider-lifecycle-profile-directory-picker-task-board-worktree-preset-deep-link'; status = Convert-Outcome $env:DESKTOP_E2E_OUTCOME },
+              @{ id = 'packaged-smoke-upgrade-shutdown'; status = Convert-Outcome $env:PACKAGE_OUTCOME },
+              @{ id = 'candidate-worktree-cwd-and-events'; status = Convert-Outcome $env:EXECUTION_OUTCOME },
+              @{ id = 'stable-checkout-guard'; status = 'passed' },
               @{ id = 'report-generated'; status = 'passed' }
             )
           }
-          $input | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'candidate-report-input.json') -Encoding utf8
+          $input | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'candidate-report-input.json') -Encoding utf8
 
-      - name: Generate Markdown and JSON compatibility reports
+      - name: Generate candidate Markdown and JSON evidence reports
         id: report
         if: always()
         continue-on-error: true
-        run: node scripts/dsh-candidate-report.mjs --input "$env:RUNNER_TEMP/candidate-report-input.json" --json "$env:RUNNER_TEMP/dsh-candidate-report.json" --markdown "$env:RUNNER_TEMP/dsh-candidate-report.md"
+        shell: pwsh
+        run: >-
+          node scripts/dsh-candidate-report.mjs
+          --input "$env:RUNNER_TEMP/candidate-report-input.json"
+          --json "$env:RUNNER_TEMP/dsh-candidate-report.json"
+          --markdown "$env:RUNNER_TEMP/dsh-candidate-report.md"
 
-      - name: Upload Candidate Lite reports
+      - name: Generate candidate runtime matrix artifact
+        id: matrix
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $report = Get-Content -LiteralPath "$env:RUNNER_TEMP/dsh-candidate-report.json" -Raw | ConvertFrom-Json
+          $verifiedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+          node scripts/generate-runtime-support-matrix.mjs `
+            --candidate-evidence "$env:RUNNER_TEMP/candidate-evidence.json" `
+            --candidate-version $env:DSH_CANDIDATE_VERSION `
+            --candidate-status $report.status `
+            --candidate-verified-at $verifiedAt `
+            --candidate-report "$env:RUNNER_TEMP/dsh-candidate-report.json" `
+            --output "$env:RUNNER_TEMP/supported-runtimes.candidate.json"
+
+      - name: Upload Candidate Matrix reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dsh-candidate-${{ inputs.dsh_version }}
+          name: dsh-candidate-${{ needs.resolve-candidate.outputs.candidate_version }}
           path: |
             ${{ runner.temp }}/dsh-candidate-report.json
             ${{ runner.temp }}/dsh-candidate-report.md
+            ${{ runner.temp }}/dsh-candidate-execution.json
+            ${{ runner.temp }}/dsh-candidate-execution.md
+            ${{ runner.temp }}/supported-runtimes.candidate.json
 
-      - name: Update compatibility issue on failure
-        if: always() && steps.report.outcome == 'failure' && inputs.compatibility_issue != ''
+      - name: Update compatibility issue on blocked candidate
+        if: always() && github.event_name == 'workflow_dispatch' && steps.report.outcome == 'failure' && github.event.inputs.compatibility_issue != ''
         uses: actions/github-script@v7
         env:
-          ISSUE_NUMBER: ${{ inputs.compatibility_issue }}
-          CANDIDATE_VERSION: ${{ inputs.dsh_version }}
+          ISSUE_NUMBER: ${{ github.event.inputs.compatibility_issue }}
+          CANDIDATE_VERSION: ${{ needs.resolve-candidate.outputs.candidate_version }}
         with:
           script: |
             const issueNumber = Number.parseInt(process.env.ISSUE_NUMBER, 10)
@@ -200,11 +294,23 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
-              body: `Candidate Lite failed for exact DSH ${process.env.CANDIDATE_VERSION}. See workflow artifact ${context.runId}.`,
+              body: `Candidate Matrix blocked exact DSH ${process.env.CANDIDATE_VERSION}. See workflow artifact ${context.runId}; no Stable dependency, lockfile, release, or updater metadata was changed.`,
             })
 
-      - name: Enforce candidate result without mutating Stable
+      - name: Enforce report and matrix while preserving Stable
         if: always()
         shell: pwsh
         run: |
-          if ('${{ steps.report.outcome }}' -ne 'success') { throw 'Candidate Lite compatibility report failed' }
+          if ('${{ steps.report.outcome }}' -ne 'success') { throw 'Candidate Matrix report is blocked or could not be generated' }
+          if ('${{ steps.matrix.outcome }}' -ne 'success') { throw 'Candidate runtime matrix could not be generated' }
+          if (git status --porcelain --untracked-files=no) { throw 'Candidate Matrix mutated Stable checkout' }
+
+      - name: Remove temporary candidate worktree
+        if: always()
+        shell: pwsh
+        env:
+          CANDIDATE_ROOT: ${{ steps.isolate.outputs.candidate_root }}
+        run: |
+          if ($env:CANDIDATE_ROOT -and (Test-Path -LiteralPath $env:CANDIDATE_ROOT)) {
+            git worktree remove --force $env:CANDIDATE_ROOT
+          }

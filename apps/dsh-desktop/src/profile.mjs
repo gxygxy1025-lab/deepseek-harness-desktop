@@ -14,6 +14,7 @@ import {
 } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse } from 'yaml'
 
 import { mergeQqBotPatch, readQqBotPatchEnabled } from './extensions/qqbot.mjs'
 
@@ -37,7 +38,9 @@ export const AGGREGATED_BUNDLES = Object.freeze([
   '@linxin666/dsh-client-ui-aionui-panel',
   '@linxin666/dsh-client-ui-community-plugins',
   '@linxin666/dsh-client-ui-git-graph',
+  '@linxin666/dsh-client-ui-plugin-manager',
   '@linxin666/dsh-client-ui-skin-center',
+  '@linxin666/dsh-client-ui-skill-explorer',
   '@linxin666/dsh-client-ui-task-board',
   '@linxin666/dsh-client-ui-web-ui-settings',
   '@linxin666/dsh-liangshen',
@@ -47,9 +50,13 @@ export const AGGREGATED_BUNDLES = Object.freeze([
   '@linxin666/dsh-skins',
   '@linxin666/dsh-ssh',
   '@linxin666/dsh-tool-describe-image',
+  'dsh-better-sidebar',
 ].toSorted())
 
-export const BUILTIN_SKIN_PACKAGES = Object.freeze([
+// Skin Center v1 exposed every shipped theme as a separate Cordis package.
+// Version 2 ships all of them as static directories in the one Skin Center
+// package, so these names exist only to retire/migrate old Desktop profiles.
+export const LEGACY_SKIN_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-blue-fantasy',
   '@linxin666/dsh-client-ui-skin-dragon-heir',
   '@linxin666/dsh-client-ui-skin-harbor',
@@ -62,6 +69,24 @@ export const BUILTIN_SKIN_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-xp',
 ].toSorted())
 
+// Built-in Skin Center v2 catalog ids. These are deliberately ids, not
+// package names: Skin Center v2 serves their assets from its own skins/ tree.
+export const BUILTIN_SKIN_IDS = Object.freeze([
+  'blue-fantasy',
+  'dragon-heir',
+  'harbor',
+  'maid-atelier',
+  'matrix',
+  'miku',
+  'minecraft',
+  'mint',
+  'summer-liquid-glass',
+  'trading',
+  'whale-mom',
+  'whale-song',
+  'xp',
+].toSorted())
+
 // These packages were linked directly by older desktop releases. They are
 // either supplied by the aggregate now or replaced by the single supported
 // marketplace. Leaving them in dependencies lets DSH's bundle reconciler (or
@@ -70,7 +95,7 @@ export const RETIRED_MANAGED_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-skin-qq2006',
   '@linxin666/dsh-web-ui-compat',
   '@vectorize-io/hindsight-coding-agents',
-  ...BUILTIN_SKIN_PACKAGES,
+  ...LEGACY_SKIN_PACKAGES,
   'dsh-plugin-hub',
 ].toSorted())
 
@@ -93,11 +118,14 @@ export const WEB_UI_SETTINGS_NAMESPACES = Object.freeze([
 
 export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-desktop-compat',
+  '@linxin666/dsh-desktop-client',
   '@linxin666/dsh-client-ui-aionui-panel',
   '@linxin666/dsh-client-ui-community-plugins',
   '@linxin666/dsh-client-ui-git-graph',
   '@linxin666/dsh-client-ui-mode-switcher',
+  '@linxin666/dsh-client-ui-plugin-manager',
   '@linxin666/dsh-client-ui-skin-center',
+  '@linxin666/dsh-client-ui-skill-explorer',
   '@linxin666/dsh-client-ui-task-board',
   '@linxin666/dsh-client-ui-web-ui-settings',
   '@linxin666/dsh-liangshen',
@@ -110,17 +138,38 @@ export const BUILTIN_RUNTIME_PACKAGES = Object.freeze([
   '@linxin666/dsh-tool-describe-image',
   '@linxin666/dsh-web-ui-all',
   '@tencent-connect/dsh-qqbot',
+  'dsh-better-sidebar',
   'dsh-codex-connect',
   'dshmarket',
   'reasoning-slider',
 ].toSorted())
 
 export const DESKTOP_SUPPORT_PACKAGES = Object.freeze([
+  '@deepseek-ai/dsh-agent',
+  '@deepseek-ai/dsh-agent-default-model',
   '@deepseek-ai/dsh-client-ui-directory-picker-browse',
   '@deepseek-ai/dsh-host-directory-picker-browse',
+  '@deepseek-ai/dsh-host-webserver',
+  '@deepseek-ai/dsh-llm',
+  '@deepseek-ai/dsh-session',
+  '@deepseek-ai/dsh-session-persistence',
+  '@deepseek-ai/dsh-workspace',
 ].toSorted())
 
-const BUNDLED_SKIN_PACKAGE_PREFIX = '@linxin666/dsh-client-ui-skin-'
+const LEGACY_SKIN_PACKAGE_PREFIXES = Object.freeze([
+  '@deepseek-ai/dsh-client-ui-skin-',
+  '@linxin666/dsh-client-ui-skin-',
+])
+
+function isRetiredLegacySkinPackage(packageName) {
+  if (typeof packageName !== 'string') return false
+  return LEGACY_SKIN_PACKAGE_PREFIXES.some(prefix =>
+    packageName.startsWith(prefix) && packageName !== prefix + 'center')
+}
+
+function isRetiredManagedPackage(packageName) {
+  return RETIRED_MANAGED_PACKAGES.includes(packageName) || isRetiredLegacySkinPackage(packageName)
+}
 
 // Desktop-owned packages supplied to another bundle's composition instead of
 // mounted as top-level bundles. Old top-level rows must still be migrated away.
@@ -137,10 +186,23 @@ export const DESKTOP_PLUGIN_COMPAT_PACKAGES = Object.freeze([
 ].toSorted())
 
 // Desktop carries a newer compatibility bridge than the released aggregate.
+// It also restores Live Stats, which the 0.2.3 aggregate no longer declares.
 // Resolve these direct application dependencies before consulting the pinned
-// aggregate's dependency tree so fresh and packaged profiles use that bridge.
+// aggregate's dependency tree so fresh and packaged profiles use them.
 export const DESKTOP_RUNTIME_OVERRIDE_PACKAGES = Object.freeze([
   '@linxin666/dsh-client-ui-web-ui-settings',
+  '@linxin666/dsh-live-stats',
+].toSorted())
+
+// These bundles deliberately resolve through the workspace overrides in
+// pnpm-workspace.yaml. They carry Desktop-owned workspace-open, Worktree,
+// and Evidence fixes, so their package version is not used as evidence of the
+// aggregate release.
+export const DESKTOP_AGGREGATE_WORKSPACE_OVERRIDE_PACKAGES = Object.freeze([
+  '@linxin666/dsh-client-ui-aionui-panel',
+  '@linxin666/dsh-client-ui-git-graph',
+  '@linxin666/dsh-client-ui-task-board',
+  '@linxin666/dsh-ssh',
 ].toSorted())
 
 // Desktop 2.1 first claimed this package as a managed compatibility link, but
@@ -152,7 +214,7 @@ export const MANAGED_RUNTIME_PACKAGES = Object.freeze([
   ...DESKTOP_PLUGIN_COMPAT_PACKAGES,
 ].toSorted())
 
-// DSH rc.6 exposes these runtime modules as peers. Keep them explicit so the
+// DSH rc.7 exposes these runtime modules as peers. Keep them explicit so the
 // packaged host is hermetic instead of resolving through a developer machine.
 export const DSH_BOOT_RUNTIME_PACKAGES = Object.freeze([
   '@deepseek-ai/cordis-plugin-group',
@@ -179,10 +241,12 @@ export const DSH_BOOT_RUNTIME_PACKAGES = Object.freeze([
   '@deepseek-ai/dsh-timeout',
   '@deepseek-ai/dsh-typert-protocol',
   '@deepseek-ai/dsh-workflow',
+  '@deepseek-ai/dsh-web',
 ].toSorted())
 
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/
 const ROOT_CONFIG = '[]\n'
+export const DESKTOP_PROFILE_BOOTSTRAP_ERROR = 'desktop-profile-bootstrap-invalid'
 export const DESKTOP_PATCH_START = '# --- dsh-desktop managed (auto-generated; do not edit) ---'
 export const DESKTOP_PATCH_END = '# --- end dsh-desktop managed ---'
 export const SKIN_PATCH_START = '# --- dsh-skin managed (auto-generated; do not edit) ---'
@@ -222,6 +286,22 @@ ${DESKTOP_PATCH_END}
 `
 const WORKSPACE_CONFIG = `packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n`
 
+/** Identify patch files that carry no loader entries, including legacy `{}` placeholders. */
+export function isSemanticallyEmptyPatch(source) {
+  if (typeof source !== 'string') return false
+  let parsed
+  try {
+    parsed = parse(source)
+  } catch {
+    return false
+  }
+  if (parsed === null || parsed === undefined) return true
+  if (Array.isArray(parsed)) return parsed.length === 0
+  return typeof parsed === 'object'
+    && Object.getPrototypeOf(parsed) === Object.prototype
+    && Object.keys(parsed).length === 0
+}
+
 export function packagePathSegments(packageName) {
   if (typeof packageName !== 'string' || !PACKAGE_NAME_PATTERN.test(packageName)) {
     throw new TypeError(`invalid package name: ${JSON.stringify(packageName)}`)
@@ -247,12 +327,12 @@ export function createDesktopProfileManifest(existing = {}) {
          !BUILTIN_BUNDLES.includes(name)
          && !DEPENDENCY_ONLY_BUNDLES.includes(name)
          && !AGGREGATED_BUNDLES.includes(name)
-        && !RETIRED_MANAGED_PACKAGES.includes(name))
+         && !isRetiredManagedPackage(name))
     : []
   const dependencies = Object.fromEntries(
     Object.entries(existingDependencies)
       .filter(([name]) =>
-        !RETIRED_MANAGED_PACKAGES.includes(name)
+        !isRetiredManagedPackage(name)
         && !(hasExistingCodexProvider && name === 'dsh-codex-connect')),
   )
 
@@ -268,24 +348,347 @@ export function createDesktopProfileManifest(existing = {}) {
   }
 }
 
-function managedSection(text, startMarker, endMarker) {
+function managedSectionBounds(text, startMarker, endMarker) {
   const source = String(text)
   const start = source.indexOf(startMarker)
   if (start === -1) return undefined
-  const end = source.indexOf(endMarker, start)
-  if (end === -1) throw new Error(`${startMarker} section is unterminated`)
-  return source.slice(start, end + endMarker.length)
+  const markerEnd = source.indexOf(endMarker, start)
+  return {
+    start,
+    end: markerEnd === -1 ? source.length : markerEnd + endMarker.length,
+    complete: markerEnd !== -1,
+  }
+}
+
+function legacySkinSectionBounds(existing = '') {
+  return managedSectionBounds(existing, SKIN_PATCH_START, SKIN_PATCH_END)
 }
 
 export function extractManagedSkinSection(existing = '') {
-  return managedSection(existing, SKIN_PATCH_START, SKIN_PATCH_END)
+  const source = String(existing)
+  const bounds = legacySkinSectionBounds(source)
+  return bounds === undefined ? undefined : source.slice(bounds.start, bounds.end)
 }
 
 export function stripManagedSkinSection(existing = '') {
   const source = String(existing)
-  const section = extractManagedSkinSection(source)
-  if (section === undefined) return source
-  return `${source.slice(0, source.indexOf(section))}${source.slice(source.indexOf(section) + section.length)}`
+  const bounds = legacySkinSectionBounds(source)
+  if (bounds === undefined) return source
+  if (bounds.complete) return source.slice(0, bounds.start) + source.slice(bounds.end)
+
+  // The marker is a Desktop-owned comment, not YAML syntax. If a previous
+  // version left it unterminated, retain the rest of the file and let the
+  // loader-row cleanup remove only unsafe legacy skin entries.
+  const markerLineEnd = source.indexOf('\n', bounds.start)
+  return source.slice(0, bounds.start) + source.slice(markerLineEnd === -1 ? source.length : markerLineEnd + 1)
+}
+
+const LEGACY_SKIN_SELECTION_ARCHIVE = '.dsh-desktop-retired-skin.json'
+export const DESKTOP_SKIN_STATE_START = '# --- dsh-desktop skin state (auto-generated; do not edit) ---'
+export const DESKTOP_SKIN_STATE_END = '# --- end dsh-desktop skin state ---'
+const LEGACY_SKIN_PACKAGE_NAME = /^\s*name:\s*['"]?(@(?:deepseek-ai|linxin666)\/dsh-client-ui-skin-([a-z0-9-]+))['"]?\s*$/u
+const LOADER_ROW_ID = /^\s*-\s+id:\s*['"]?([A-Za-z0-9._/@-]+)['"]?\s*$/u
+const LOADER_DISABLED = /^\s+disabled:\s*(true|false)\s*$/u
+
+function legacySkinPackageMatch(line) {
+  const match = LEGACY_SKIN_PACKAGE_NAME.exec(line)
+  return match === null || match[2] === 'center' ? undefined : match
+}
+
+function lineIndentation(line) {
+  return /^\s*/u.exec(line)?.[0].length ?? 0
+}
+
+function dropEmptyInsertBlocks(text) {
+  const lines = text.split(/\r?\n/u)
+  const output = []
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index]
+    const trimmed = line.trim()
+    if (!/^-\s*insert:\s*$/u.test(trimmed)) {
+      output.push(line)
+      index += 1
+      continue
+    }
+    const indentation = lineIndentation(line)
+    let end = index + 1
+    let hasRow = false
+    while (end < lines.length) {
+      const candidate = lines[end]
+      const candidateTrimmed = candidate.trim()
+      if (candidateTrimmed === '') {
+        end += 1
+        continue
+      }
+      if (lineIndentation(candidate) <= indentation) break
+      if (!candidateTrimmed.startsWith('#') && /^-\s+id:/u.test(candidateTrimmed)) hasRow = true
+      end += 1
+    }
+    if (hasRow) output.push(...lines.slice(index, end))
+    index = end
+  }
+  return output.join('\n').replace(/\n{3,}/gu, '\n\n')
+}
+
+function loaderRows(text) {
+  const lines = String(text).split(/\r?\n/u)
+  const rows = []
+  let index = 0
+  while (index < lines.length) {
+    const id = LOADER_ROW_ID.exec(lines[index])
+    if (id === null) {
+      index += 1
+      continue
+    }
+    const indentation = lineIndentation(lines[index])
+    let end = index + 1
+    while (end < lines.length) {
+      const candidate = lines[end]
+      if (candidate.trim() !== '' && lineIndentation(candidate) <= indentation) break
+      end += 1
+    }
+    const rowLines = lines.slice(index, end)
+    const packageMatch = rowLines
+      .map(legacySkinPackageMatch)
+      .find(match => match !== undefined)
+    const disabled = rowLines
+      .map(line => LOADER_DISABLED.exec(line)?.[1])
+      .find(value => value !== undefined)
+    rows.push({
+      id: id[1],
+      indentation,
+      packageName: packageMatch?.[1],
+      skinId: packageMatch?.[2],
+      hasName: rowLines.some(line => /^\s*name:\s*/u.test(line)),
+      disabled: disabled === undefined ? undefined : disabled === 'true',
+    })
+    index = end
+  }
+  return rows
+}
+
+function isLegacySkinLoaderId(id) {
+  const match = /^ui-skin-([a-z0-9-]+)$/u.exec(id)
+  return match !== null && match[1] !== 'center'
+}
+
+function skinIdFromLegacyLoaderId(id) {
+  return /^ui-skin-([a-z0-9-]+)$/u.exec(id)?.[1]
+}
+
+function legacySkinPackageName(skinId) {
+  return LEGACY_SKIN_PACKAGE_PREFIXES[1] + skinId
+}
+
+function legacySkinSelection(section) {
+  if (section === undefined) return undefined
+  const named = [...String(section).matchAll(new RegExp(LEGACY_SKIN_PACKAGE_NAME.source, 'gmu'))]
+    .map(match => ({ packageName: match[1], skinId: match[2] }))
+    .filter(selection => selection.skinId !== 'center')
+    .at(-1)
+  if (named !== undefined) return named
+
+  const enabledIds = new Set(
+    loaderRows(section)
+      .filter(row => isLegacySkinLoaderId(row.id) && row.disabled !== true)
+      .map(row => skinIdFromLegacyLoaderId(row.id))
+      .filter(skinId => skinId !== undefined),
+  )
+  if (enabledIds.size !== 1) return undefined
+  const skinId = [...enabledIds][0]
+  return { packageName: legacySkinPackageName(skinId), skinId }
+}
+
+function safeDesktopMarketRows(section) {
+  const rows = new Map()
+  if (section === undefined) return rows
+  for (const row of loaderRows(section)) {
+    if (row.indentation !== 0
+      || row.hasName
+      || row.disabled === undefined
+      || /^ui-skin-/u.test(row.id)) continue
+    rows.set(row.id, row.disabled)
+  }
+  return rows
+}
+
+function mergeDesktopMarketRows(...rowSets) {
+  const merged = new Map()
+  for (const rows of rowSets) {
+    for (const [id, disabled] of rows) {
+      if (!merged.has(id)) merged.set(id, disabled)
+    }
+  }
+  return merged
+}
+
+function renderDesktopMarketState(rows) {
+  const lines = [DESKTOP_SKIN_STATE_START]
+  for (const [id, disabled] of [...rows].sort(([left], [right]) => left.localeCompare(right))) {
+    lines.push('- id: ' + id, '  disabled: ' + (disabled ? 'true' : 'false'))
+  }
+  lines.push(DESKTOP_SKIN_STATE_END)
+  return lines.join('\n')
+}
+
+function stripLegacySkinLoaderRows(text) {
+  const lines = String(text).split(/\r?\n/u)
+  const output = []
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index]
+    const id = LOADER_ROW_ID.exec(line)
+    if (id === null) {
+      if (legacySkinPackageMatch(line) === undefined) output.push(line)
+      index += 1
+      continue
+    }
+    const indentation = lineIndentation(line)
+    let end = index + 1
+    while (end < lines.length) {
+      const candidate = lines[end]
+      if (candidate.trim() !== '' && lineIndentation(candidate) <= indentation) break
+      end += 1
+    }
+    const rowLines = lines.slice(index, end)
+    const hasLegacyPackage = rowLines.some(candidate => legacySkinPackageMatch(candidate) !== undefined)
+    if (!isLegacySkinLoaderId(id[1]) && !hasLegacyPackage) output.push(...rowLines)
+    index = end
+  }
+  return dropEmptyInsertBlocks(output.join('\n'))
+}
+
+function stripDesktopMarketStateRows(text) {
+  const lines = String(text).split(/\r?\n/u)
+  const output = []
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index]
+    const id = LOADER_ROW_ID.exec(line)
+    if (id === null) {
+      output.push(line)
+      index += 1
+      continue
+    }
+    const indentation = lineIndentation(line)
+    let end = index + 1
+    while (end < lines.length) {
+      const candidate = lines[end]
+      if (candidate.trim() !== '' && lineIndentation(candidate) <= indentation) break
+      end += 1
+    }
+    const rowLines = lines.slice(index, end)
+    const hasName = rowLines.some(candidate => /^\s*name:\s*/u.test(candidate))
+    const hasDisabled = rowLines.some(candidate => LOADER_DISABLED.test(candidate))
+    const isMarketState = indentation === 0
+      && !hasName
+      && hasDisabled
+      && !/^ui-skin-/u.test(id[1])
+    if (!isMarketState) output.push(...rowLines)
+    index = end
+  }
+  return dropEmptyInsertBlocks(output.join('\n'))
+}
+
+function legacySectionPayload(section, complete) {
+  if (section === undefined || !complete) return ''
+  const payload = section.slice(SKIN_PATCH_START.length, -SKIN_PATCH_END.length)
+  return stripDesktopMarketStateRows(stripLegacySkinLoaderRows(payload)).trim()
+}
+
+function removeLegacySkinSection(source, bounds) {
+  if (bounds === undefined) return String(source)
+  if (!bounds.complete) return stripManagedSkinSection(source)
+  return String(source).slice(0, bounds.start) + String(source).slice(bounds.end)
+}
+
+function appendPreservedPatchRows(source, payload) {
+  const retained = String(payload).trim()
+  if (retained === '') return String(source)
+  const outside = String(source).trim()
+  if (outside === '' || outside === '[]') return retained + '\n'
+  return outside + '\n\n' + retained + '\n'
+}
+
+function replaceDesktopMarketState(text, rows) {
+  const source = String(text)
+  const bounds = managedSectionBounds(source, DESKTOP_SKIN_STATE_START, DESKTOP_SKIN_STATE_END)
+  const withoutState = bounds === undefined
+    ? source
+    : source.slice(0, bounds.start) + source.slice(bounds.end)
+  if (rows.size === 0) return withoutState
+  const outside = withoutState.trim()
+  const section = renderDesktopMarketState(rows)
+  if (outside === '' || outside === '[]') return section + '\n'
+  return outside + '\n\n' + section + '\n'
+}
+
+async function migrateLegacySkinState({ profilePatch, homePatch, dshHome, profileDir }) {
+  const profileBounds = legacySkinSectionBounds(profilePatch)
+  const homeBounds = homePatch === undefined ? undefined : legacySkinSectionBounds(homePatch)
+  const profileSection = profileBounds === undefined
+    ? undefined
+    : String(profilePatch).slice(profileBounds.start, profileBounds.end)
+  const homeSection = homeBounds === undefined
+    ? undefined
+    : String(homePatch).slice(homeBounds.start, homeBounds.end)
+  const profileSelection = legacySkinSelection(profileSection) ?? legacySkinSelection(profilePatch)
+  const homeSelection = legacySkinSelection(homeSection) ?? legacySkinSelection(homePatch)
+  const selection = profileBounds === undefined
+    ? profileSelection ?? homeSelection
+    : profileSelection
+  let changed = false
+  const activeStatePath = join(dshHome, 'skin-center-active.json')
+
+  if (selection !== undefined) {
+    if (BUILTIN_SKIN_IDS.includes(selection.skinId)) {
+      if (!await pathExists(activeStatePath)) {
+        changed = (await writeIfChanged(
+          activeStatePath,
+          JSON.stringify({ active: selection.skinId }, null, 2) + '\n',
+        )) || changed
+      }
+    } else {
+      changed = (await writeIfChanged(
+        join(profileDir, LEGACY_SKIN_SELECTION_ARCHIVE),
+        JSON.stringify({
+          schemaVersion: 1,
+          packageName: selection.packageName,
+          skinId: selection.skinId,
+          reason: 'not-bundled-by-skin-center-v2',
+        }, null, 2) + '\n',
+      )) || changed
+    }
+  }
+
+  const desktopBounds = managedSectionBounds(profilePatch, DESKTOP_SKIN_STATE_START, DESKTOP_SKIN_STATE_END)
+  const desktopSection = desktopBounds === undefined
+    ? undefined
+    : String(profilePatch).slice(desktopBounds.start, desktopBounds.end)
+  const marketRows = mergeDesktopMarketRows(
+    safeDesktopMarketRows(desktopSection),
+    profileBounds?.complete ? safeDesktopMarketRows(profileSection) : new Map(),
+    homeBounds?.complete ? safeDesktopMarketRows(homeSection) : new Map(),
+  )
+
+  const profilePayload = legacySectionPayload(profileSection, profileBounds?.complete === true)
+  const homePayload = legacySectionPayload(homeSection, homeBounds?.complete === true)
+  let nextProfilePatch = removeLegacySkinSection(profilePatch, profileBounds)
+  nextProfilePatch = appendPreservedPatchRows(nextProfilePatch, profilePayload)
+  nextProfilePatch = appendPreservedPatchRows(nextProfilePatch, homePayload)
+  nextProfilePatch = stripLegacySkinLoaderRows(nextProfilePatch)
+  nextProfilePatch = replaceDesktopMarketState(nextProfilePatch, marketRows)
+  let nextHomePatch = homePatch
+  if (homePatch !== undefined) {
+    nextHomePatch = stripLegacySkinLoaderRows(removeLegacySkinSection(homePatch, homeBounds))
+  }
+
+  return {
+    profilePatch: nextProfilePatch,
+    homePatch: nextHomePatch,
+    stateChanged: changed,
+  }
 }
 
 export function mergeDesktopPatch(existing = '') {
@@ -310,6 +713,46 @@ async function readJsonIfPresent(path) {
   } catch (error) {
     if (error?.code === 'ENOENT') return undefined
     throw error
+  }
+}
+
+async function readDesktopProfileJson(path, label) {
+  try {
+    return await readJsonIfPresent(path)
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error
+    const wrapped = new Error(`desktop profile ${label} is invalid`, { cause: error })
+    wrapped.code = DESKTOP_PROFILE_BOOTSTRAP_ERROR
+    throw wrapped
+  }
+}
+
+function profileBootstrapError(message, cause) {
+  const error = new Error(message, { cause })
+  error.code = DESKTOP_PROFILE_BOOTSTRAP_ERROR
+  return error
+}
+
+function desktopProfileRecord(value, label) {
+  if (value === undefined) return value
+  if (value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype) {
+    return value
+  }
+  throw profileBootstrapError(`desktop profile ${label} must be a JSON object`)
+}
+
+function throwProfileNodeModulesBootstrapError(message, error) {
+  // A filesystem permission failure cannot be repaired by moving a profile
+  // dependency tree, so retain its normal host/permission error path.
+  if (['EACCES', 'EPERM'].includes(error?.code)) throw error
+  throw profileBootstrapError(message, error)
+}
+
+async function readDesktopManagedPackageJson(path) {
+  try {
+    return await readJsonIfPresent(path)
+  } catch (error) {
+    throwProfileNodeModulesBootstrapError('desktop profile managed package metadata is invalid', error)
   }
 }
 
@@ -380,13 +823,27 @@ async function linkManagedPackage({
   legacyDependencySpec,
 }) {
   const target = join(profileDir, 'node_modules', ...packagePathSegments(packageName))
-  await mkdir(dirname(target), { recursive: true })
-  if (await pathExists(target)) {
+  let targetExists
+  try {
+    await mkdir(dirname(target), { recursive: true })
+    targetExists = await pathExists(target)
+  } catch (error) {
+    throwProfileNodeModulesBootstrapError('desktop profile managed package path is invalid', error)
+  }
+  if (targetExists) {
     if (await linkTargetsSource(target, sourceDir)) {
       return { changed: false, record: { mode: 'link', source: sourceDir } }
     }
-    const metadata = await lstat(target)
-    const installed = await readJsonIfPresent(join(target, 'package.json'))
+    let metadata
+    try {
+      metadata = await lstat(target)
+    } catch (error) {
+      throwProfileNodeModulesBootstrapError('desktop profile managed package path is invalid', error)
+    }
+    // This lives in the profile's mutable node_modules tree.  A malformed
+    // package manifest is therefore a recoverable Desktop bootstrap failure,
+    // unlike a malformed bundled runtime package at sourceDir.
+    const installed = await readDesktopManagedPackageJson(join(target, 'package.json'))
     if (previous?.mode === 'copy' && previous.source === sourceDir && installed?.name === packageName) {
       return { changed: false, record: previous }
     }
@@ -408,7 +865,12 @@ async function linkManagedPackage({
       && packaged?.name === packageName
       && (matchingLegacyVersion || declaredByLegacyProfile)
     if (!ownedLink && !ownedCopy && !migratableLegacyCopy) {
-      throw new Error(`refusing to replace unmanaged package at ${target}`)
+      // An unrecorded managed-package path is part of the Desktop profile
+      // bootstrap surface.  It can be left behind by a hand-installed or
+      // partially downloaded dependency tree, so let the caller take the
+      // reversible profile-baseline path rather than failing before runtime
+      // recovery is initialized.
+      throw profileBootstrapError(`refusing to replace unmanaged package at ${target}`)
     }
     await rm(target, { recursive: true, force: true })
   }
@@ -431,7 +893,7 @@ async function retireManagedPackage({ packageName, profileDir, previous }) {
     metadata = await lstat(target)
   } catch (error) {
     if (error?.code === 'ENOENT') return false
-    throw error
+    throwProfileNodeModulesBootstrapError('desktop profile managed package path is invalid', error)
   }
 
   if (previous.mode === 'link' && metadata.isSymbolicLink()) {
@@ -442,56 +904,12 @@ async function retireManagedPackage({ packageName, profileDir, previous }) {
   }
 
   if (previous.mode === 'copy' && metadata.isDirectory()) {
-    const installed = await readJsonIfPresent(join(target, 'package.json'))
+    const installed = await readDesktopManagedPackageJson(join(target, 'package.json'))
     if (installed?.name !== packageName || previous.source === undefined) return false
     await rm(target, { recursive: true, force: true })
     return true
   }
   return false
-}
-
-function selectedBundledSkinPackage(managedSection) {
-  if (managedSection === undefined) return undefined
-  const matches = [...managedSection.matchAll(/^\s+name:\s*(['"])(@linxin666\/dsh-client-ui-skin-([a-z0-9-]+))\1\s*$/gmu)]
-  const selected = matches.at(-1)
-  return selected ? { packageName: selected[2], skinId: selected[3] } : undefined
-}
-
-async function resolveBundledSkinSelection({ managedSection, carrierRoot }) {
-  if (typeof carrierRoot !== 'string') return undefined
-  const selected = selectedBundledSkinPackage(managedSection)
-  if (selected === undefined || !selected.packageName.startsWith(BUNDLED_SKIN_PACKAGE_PREFIX)) return undefined
-  const { packageName, skinId } = selected
-  const sourceDir = join(carrierRoot, 'skins', skinId)
-  const sourceManifest = await readJsonIfPresent(join(sourceDir, 'package.json'))
-  return sourceManifest?.name === packageName ? { packageName, sourceDir } : undefined
-}
-
-async function ensureBundledSkinAlias({ selection, profileDir, previous }) {
-  if (selection === undefined) return { changed: false }
-  const { packageName, sourceDir } = selection
-  const target = join(profileDir, 'node_modules', ...packagePathSegments(packageName))
-  if (await pathExists(target)) {
-    if (await linkTargetsSource(target, sourceDir)) {
-      return { changed: false, packageName, record: { mode: 'link', source: sourceDir } }
-    }
-    const installed = await readJsonIfPresent(join(target, 'package.json'))
-    const metadata = await lstat(target)
-    const ownedLink = previous?.mode === 'link'
-      && metadata.isSymbolicLink()
-      && await linkTargetsSource(target, previous.source)
-    const ownedCopy = previous?.mode === 'copy'
-      && metadata.isDirectory()
-      && typeof previous.source === 'string'
-      && installed?.name === packageName
-    if (!ownedLink && !ownedCopy) {
-      if (installed?.name === packageName) return { changed: false, packageName }
-      if (!metadata.isSymbolicLink()) throw new Error(`refusing to replace unmanaged package at ${target}`)
-      await rm(target, { recursive: true, force: true })
-    }
-  }
-  const result = await linkManagedPackage({ packageName, profileDir, sourceDir, previous })
-  return { ...result, packageName }
 }
 
 export async function ensureDesktopProfile({
@@ -506,12 +924,21 @@ export async function ensureDesktopProfile({
   await mkdir(profileDir, { recursive: true })
   const manifestPath = join(profileDir, 'package.json')
   const recordPath = join(profileDir, '.dsh-desktop-links.json')
-  const previousRecords = (await readJsonIfPresent(recordPath)) ?? {}
-  const existing = await readJsonIfPresent(manifestPath)
+  const storedRecords = await readDesktopProfileJson(recordPath, 'link record')
+  const previousRecords = storedRecords === undefined
+    ? {}
+    : desktopProfileRecord(storedRecords, 'link record')
+  const existing = desktopProfileRecord(
+    await readDesktopProfileJson(manifestPath, 'manifest'),
+    'manifest',
+  )
   const manifest = createDesktopProfileManifest(existing)
   const activePackageRoots = new Map(packageRoots)
   const codexConnectEnabled = manifest.dsh.profile.bundles.includes('dsh-codex-connect')
   if (!codexConnectEnabled) activePackageRoots.delete('dsh-codex-connect')
+  for (const packageName of activePackageRoots.keys()) {
+    if (isRetiredLegacySkinPackage(packageName)) activePackageRoots.delete(packageName)
+  }
 
   for (const [packageName, sourceDir] of activePackageRoots) {
     manifest.dependencies[packageName] = `link:${sourceDir.replaceAll('\\', '/')}`
@@ -528,49 +955,54 @@ export async function ensureDesktopProfile({
     if (error?.code === 'ENOENT') return ''
     throw error
   })
+  if (isSemanticallyEmptyPatch(existingPatch)) existingPatch = ''
   const homePatchPath = join(dshHome, 'cordis.patch.yml')
   let homePatch = await readFile(homePatchPath, 'utf8').catch((error) => {
     if (error?.code === 'ENOENT') return undefined
     throw error
   })
-  const globalSkinSection = extractManagedSkinSection(homePatch ?? '')
-  // Desktop 2.2/2.3 incorrectly made the shared harness-home patch the skin
-  // authority. Move that managed block into the isolated desktop profile and
-  // then remove it from the global file so official `dsh web` profiles are not
-  // contaminated. An existing profile block wins over the obsolete global
-  // copy, but the global copy is removed in either case.
-  if (globalSkinSection !== undefined) {
-    if (extractManagedSkinSection(existingPatch) === undefined) {
-      const rawPrefix = existingPatch.trim()
-      const prefix = rawPrefix === '[]' ? '' : rawPrefix
-      existingPatch = prefix ? `${prefix}\n\n${globalSkinSection}\n` : `${globalSkinSection}\n`
-    }
-    const strippedHomePatch = stripManagedSkinSection(homePatch ?? '')
-    homePatch = strippedHomePatch.trim() === '' ? ROOT_CONFIG : `${strippedHomePatch.trimEnd()}\n`
-    changed = (await writeIfChanged(homePatchPath, homePatch)) || changed
-  }
-  // DSH parses an existing patch file as YAML and requires a top-level array.
-  // An empty file parses as null, so repair blank files left by desktop 0.1.8
-  // even after its one-time legacy migration has already completed.
-  if (homePatch !== undefined && homePatch.trim() === '') {
+  const originalHomePatch = homePatch
+  const legacySkinMigration = await migrateLegacySkinState({
+    profilePatch: existingPatch,
+    homePatch,
+    dshHome,
+    profileDir,
+  })
+  existingPatch = legacySkinMigration.profilePatch
+  homePatch = legacySkinMigration.homePatch
+  changed = legacySkinMigration.stateChanged || changed
+  // DSH requires a top-level patch array. Repair only documents with no
+  // semantic entries: blank/comment-only files, empty arrays, and legacy empty
+  // mappings. Non-empty or malformed user configuration remains untouched.
+  if (homePatch !== undefined && isSemanticallyEmptyPatch(homePatch) && homePatch !== ROOT_CONFIG) {
     homePatch = ROOT_CONFIG
+  }
+  if (homePatch !== originalHomePatch) {
     changed = (await writeIfChanged(homePatchPath, homePatch)) || changed
   }
-  const qqBotEnabled = readQqBotPatchEnabled(existingPatch) ?? false
-  const managedPatch = mergeQqBotPatch(mergeDesktopPatch(existingPatch), qqBotEnabled)
+  let managedPatch
+  try {
+    const qqBotEnabled = readQqBotPatchEnabled(existingPatch) ?? false
+    managedPatch = mergeQqBotPatch(mergeDesktopPatch(existingPatch), qqBotEnabled)
+  } catch (error) {
+    throw profileBootstrapError('desktop profile patch is invalid', error)
+  }
   changed = (await writeIfChanged(patchPath, managedPatch)) || changed
   changed = (await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), WORKSPACE_CONFIG)) || changed
   changed = (await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)) || changed
 
-  const bundledSkinSelection = await resolveBundledSkinSelection({
-    managedSection: extractManagedSkinSection(managedPatch),
-    carrierRoot: activePackageRoots.get('@linxin666/dsh-skins'),
-  })
-  const packagesToRetire = codexConnectEnabled
-    ? RETIRED_MANAGED_PACKAGES
-    : [...RETIRED_MANAGED_PACKAGES, 'dsh-codex-connect']
-  const retired = await Promise.all(packagesToRetire
-    .filter((packageName) => packageName !== bundledSkinSelection?.packageName)
+  const legacyProfilePackages = [
+    ...Object.keys(existing?.dependencies ?? {}),
+    ...(Array.isArray(existing?.dsh?.profile?.bundles) ? existing.dsh.profile.bundles : []),
+    ...Object.keys(previousRecords),
+  ].filter(isRetiredLegacySkinPackage)
+  const packagesToRetire = new Set([
+    ...RETIRED_MANAGED_PACKAGES,
+    ...legacyProfilePackages,
+    ...(codexConnectEnabled ? [] : ['dsh-codex-connect']),
+  ])
+  const retired = await Promise.all([...packagesToRetire]
+    .toSorted()
     .map((packageName) =>
     retireManagedPackage({
       packageName,
@@ -598,15 +1030,6 @@ export async function ensureDesktopProfile({
     nextRecords[packageName] = result.record
     changed = result.changed || changed
   }
-  const skinAlias = await ensureBundledSkinAlias({
-    selection: bundledSkinSelection,
-    profileDir,
-    previous: bundledSkinSelection === undefined
-      ? undefined
-      : previousRecords[bundledSkinSelection.packageName],
-  })
-  if (skinAlias.record !== undefined) nextRecords[skinAlias.packageName] = skinAlias.record
-  changed = skinAlias.changed || changed
   changed = (await writeIfChanged(recordPath, `${JSON.stringify(nextRecords, null, 2)}\n`)) || changed
 
   return { changed, manifest, profileDir }

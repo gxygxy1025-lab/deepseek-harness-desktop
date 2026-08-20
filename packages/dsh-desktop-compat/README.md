@@ -10,6 +10,20 @@ The package preserves the existing queue-first interaction. If DSH rc.6 becomes 
 
 The implementation is host-only and uses public `agent/status`, agent inbox, `followup`, and `tools/post-execute` SDK contracts. It does not patch files in DeepSeek Harness and can be removed after the upstream runtime implements the documented cancellation behavior.
 
+## Tool-call argument recovery
+
+Some model adapters can emit an extra transport envelope such as
+`{"arguments":{"command":"...","description":"..."}}`. Desktop
+normalizes it in the public `llm/stream` hook before the agent loop parses the
+tool call. It unwraps exactly one level only when the current tool schema
+accepts the nested object and rejects the outer envelope. Ambiguous, malformed,
+unknown, and otherwise invalid calls remain unchanged for DSH's normal schema
+validator.
+
+Each recovery or refusal writes a bounded runtime-log diagnostic with the
+provider, model, tool name, call id, source, and reason. Raw tool arguments are
+never written to that diagnostic.
+
 ## Install
 
 DeepSeek Harness Desktop 2.0 mounts this bundle automatically in its isolated desktop profile. The package is not intended as a general Web UI plugin.

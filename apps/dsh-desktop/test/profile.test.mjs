@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
@@ -10,8 +10,9 @@ import { pathToFileURL } from 'node:url'
 import {
   AGGREGATED_BUNDLES,
   BUILTIN_BUNDLES,
-  BUILTIN_SKIN_PACKAGES,
+  BUILTIN_SKIN_IDS,
   DESKTOP_PATCH_CONFIG,
+  DESKTOP_AGGREGATE_WORKSPACE_OVERRIDE_PACKAGES,
   DEPENDENCY_ONLY_BUNDLES,
   DESKTOP_PLUGIN_COMPAT_PACKAGES,
   DESKTOP_RUNTIME_OVERRIDE_PACKAGES,
@@ -20,6 +21,7 @@ import {
   RETIRED_MANAGED_PACKAGES,
   createDesktopProfileManifest,
   ensureDesktopProfile,
+  isSemanticallyEmptyPatch,
   mergeDesktopPatch,
   materializeFilesystemPath,
   packagePathSegments,
@@ -87,7 +89,8 @@ test('profile manifest removes bundles already supplied by the web UI aggregate'
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-web-ui-compat'), false)
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-client-ui-skin-harbor'), false)
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-client-ui-skin-qq2006'), false)
-  assert.equal(BUILTIN_SKIN_PACKAGES.includes('@linxin666/dsh-client-ui-skin-qq2006'), false)
+  assert.equal(BUILTIN_SKIN_IDS.includes('qq2006'), false)
+  assert.equal(BUILTIN_SKIN_IDS.includes('maid-atelier'), true)
   assert.equal(RETIRED_MANAGED_PACKAGES.includes('@linxin666/dsh-client-ui-skin-qq2006'), true)
 })
 
@@ -119,7 +122,7 @@ test('desktop profile includes the official QQ Bot bundle', () => {
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@tencent-connect/dsh-qqbot'), true)
 })
 
-test('desktop profile mounts the queue recovery compatibility bundle', () => {
+test('desktop profile always mounts the compatibility bundle that owns native workspace opening', () => {
   assert.equal(BUILTIN_BUNDLES.includes('@linxin666/dsh-desktop-compat'), true)
   assert.equal(MANAGED_RUNTIME_PACKAGES.includes('@linxin666/dsh-desktop-compat'), true)
 })
@@ -164,12 +167,12 @@ test('community plugins can resolve desktop compatibility dependencies from the 
   }
 })
 
-test('desktop patch refresh preserves the profile skin section and community rows', () => {
-  const skinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- id: ui-skin-qq98\n# --- end dsh-skin managed ---'
+test('desktop patch refresh preserves Desktop market state and community rows', () => {
+  const skinSection = '# --- dsh-desktop skin state (auto-generated; do not edit) ---\n- id: dsh-liquid-glass\n  disabled: false\n# --- end dsh-desktop skin state ---'
   const communityRow = "- id: community\n  name: '@community/plugin'"
   const merged = mergeDesktopPatch(`${DESKTOP_PATCH_CONFIG}\n${skinSection}\n${communityRow}\n`)
   assert.equal(merged.match(/dsh-desktop managed/gu)?.length, 2)
-  assert.match(merged, /ui-skin-qq98/u)
+  assert.match(merged, /dsh-liquid-glass/u)
   assert.match(merged, /@community\/plugin/u)
   assert.equal(mergeDesktopPatch(merged), merged)
 })
@@ -437,54 +440,66 @@ test('profile bootstrap preserves an incompatible unrecorded schemastery package
   }
 })
 
-test('profile bootstrap keeps skin state in the desktop profile and leaves a clean global patch unchanged', async () => {
+test('profile bootstrap migrates legacy skin selection before DSH loads and preserves non-skin rows', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-skin-migration-'))
   const dshHome = join(root, 'home')
   const profileDir = join(dshHome, 'profiles', 'desktop')
-  const packageRoot = join(root, 'runtime')
-  const skinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- insert:\n    - id: ui-skin-qq98\n# --- end dsh-skin managed ---'
+  const profileSkinSection = [
+    '# --- dsh-skin managed (auto-generated; do not edit) ---',
+    '- insert:',
+    '    - id: ui-skin-xp',
+    `      name: '@linxin666/dsh-client-ui-skin-xp'`,
+    '- id: dsh-solarized',
+    '  disabled: true',
+    '- insert:',
+    '    - id: retained-community',
+    `      name: '@community/plugin'`,
+    '# --- end dsh-skin managed ---',
+  ].join('\n')
+  const homeSkinSection = [
+    '# --- dsh-skin managed (auto-generated; do not edit) ---',
+    '- insert:',
+    '    - id: ui-skin-blue-fantasy',
+    `      name: '@linxin666/dsh-client-ui-skin-blue-fantasy'`,
+    '- id: dsh-liquid-glass',
+    '  disabled: false',
+    '- insert:',
+    '    - id: home-community',
+    `      name: '@community/home'`,
+    '# --- end dsh-skin managed ---',
+  ].join('\n')
+  const desktopMarketState = [
+    '# --- dsh-desktop skin state (auto-generated; do not edit) ---',
+    '- id: dsh-solarized',
+    '  disabled: false',
+    '# --- end dsh-desktop skin state ---',
+  ].join('\n')
   try {
     await mkdir(profileDir, { recursive: true })
-    await mkdir(packageRoot, { recursive: true })
-    await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@linxin666/dsh-web-ui-all' }))
-    await writeFile(join(profileDir, 'cordis.patch.yml'), `${skinSection}\n\n- id: retained\n`)
-    await writeFile(join(dshHome, 'cordis.patch.yml'), '- id: user-row\n')
-    const packageRoots = new Map([['@linxin666/dsh-web-ui-all', packageRoot]])
-    await ensureDesktopProfile({ dshHome, packageRoots })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      dependencies: { '@linxin666/dsh-client-ui-skin-xp': '0.1.18' },
+      dsh: { profile: { bundles: ['@linxin666/dsh-client-ui-skin-xp'] } },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), profileSkinSection + '\n\n' + desktopMarketState + '\n')
+    await writeFile(join(dshHome, 'cordis.patch.yml'), homeSkinSection + '\n\n- id: home-user\n')
+
+    const first = await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
     const profilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
     const homePatch = await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8')
-    assert.match(profilePatch, /dsh-skin managed/u)
-    assert.match(profilePatch, /ui-skin-qq98/u)
-    assert.match(profilePatch, /- id: retained/u)
-    assert.equal(homePatch, '- id: user-row\n')
-    await ensureDesktopProfile({ dshHome, packageRoots })
-    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), homePatch)
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
-})
+    const manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
 
-test('profile bootstrap removes a polluted global skin section without replacing newer profile state', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-empty-home-patch-'))
-  const dshHome = join(root, 'home')
-  const profileDir = join(dshHome, 'profiles', 'desktop')
-  const skinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- insert:\n    - id: ui-skin-qq98\n# --- end dsh-skin managed ---'
-  const homeSkinSection = '# --- dsh-skin managed (auto-generated; do not edit) ---\n- insert:\n    - id: ui-skin-blue-fantasy\n# --- end dsh-skin managed ---'
-  try {
-    await mkdir(profileDir, { recursive: true })
-    await writeFile(join(profileDir, 'cordis.patch.yml'), `${skinSection}\n`)
-    await writeFile(join(dshHome, 'cordis.patch.yml'), `${homeSkinSection}\n`)
-    await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
-    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
-    const profilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
-    assert.match(profilePatch, /ui-skin-qq98/u)
-    assert.doesNotMatch(profilePatch, /ui-skin-blue-fantasy/u)
+    assert.equal(first.changed, true)
+    assert.deepEqual(JSON.parse(await readFile(join(dshHome, 'skin-center-active.json'), 'utf8')), { active: 'xp' })
+    assert.equal(manifest.dependencies['@linxin666/dsh-client-ui-skin-xp'], undefined)
+    assert.equal(manifest.dsh.profile.bundles.includes('@linxin666/dsh-client-ui-skin-xp'), false)
+    assert.doesNotMatch(profilePatch, /dsh-skin managed|dsh-client-ui-skin-|ui-skin-/u)
+    assert.match(profilePatch, /- id: retained-community\r?\n\s+name: '@community\/plugin'/u)
+    assert.match(profilePatch, /- id: home-community\r?\n\s+name: '@community\/home'/u)
+    assert.match(profilePatch, /- id: dsh-solarized\r?\n  disabled: false/u)
+    assert.match(profilePatch, /- id: dsh-liquid-glass\r?\n  disabled: false/u)
+    assert.doesNotMatch(homePatch, /dsh-skin managed|ui-skin-|@community\/home/u)
+    assert.match(homePatch, /- id: home-user/u)
 
-    // Desktop 0.1.8 may already have completed the migration and left a
-    // zero-byte file, so the repair must not depend on detecting legacy rows.
-    await writeFile(join(dshHome, 'cordis.patch.yml'), '')
-    await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
-    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
     const stable = await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
     assert.equal(stable.changed, false)
   } finally {
@@ -492,62 +507,160 @@ test('profile bootstrap removes a polluted global skin section without replacing
   }
 })
 
-test('profile bootstrap keeps a migrated bundled skin resolvable without restoring its dependency', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-bundled-skin-alias-'))
+test('profile bootstrap preserves explicit Skin Center state and archives an unsupported legacy skin', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-retired-skin-migration-'))
   const dshHome = join(root, 'home')
   const profileDir = join(dshHome, 'profiles', 'desktop')
-  const carrierRoot = join(root, 'dsh-skins')
-  const skinRoot = join(carrierRoot, 'skins', 'qq98')
-  const skinPackage = '@linxin666/dsh-client-ui-skin-qq98'
-  const skinSection = `# --- dsh-skin managed (auto-generated; do not edit) ---\n- insert:\n    - id: ui-skin-qq98\n      name: '${skinPackage}'\n# --- end dsh-skin managed ---`
+  const profileSkinSection = [
+    '# --- dsh-skin managed (auto-generated; do not edit) ---',
+    '- insert:',
+    '    - id: ui-skin-qq98',
+    `      name: '@deepseek-ai/dsh-client-ui-skin-qq98'`,
+    '# --- end dsh-skin managed ---',
+  ].join('\n')
+  const homeSkinSection = [
+    '# --- dsh-skin managed (auto-generated; do not edit) ---',
+    '- insert:',
+    '    - id: ui-skin-xp',
+    `      name: '@linxin666/dsh-client-ui-skin-xp'`,
+    '# --- end dsh-skin managed ---',
+  ].join('\n')
   try {
     await mkdir(profileDir, { recursive: true })
-    await mkdir(skinRoot, { recursive: true })
-    await writeFile(join(carrierRoot, 'package.json'), JSON.stringify({ name: '@linxin666/dsh-skins' }))
-    await writeFile(join(skinRoot, 'package.json'), JSON.stringify({ name: skinPackage }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), profileSkinSection + '\n')
+    await writeFile(join(dshHome, 'cordis.patch.yml'), homeSkinSection + '\n')
+    await writeFile(join(dshHome, 'skin-center-active.json'), JSON.stringify({ active: 'mint' }) + '\n')
+
+    await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
+
+    const profilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
+    assert.deepEqual(JSON.parse(await readFile(join(dshHome, 'skin-center-active.json'), 'utf8')), { active: 'mint' })
+    assert.deepEqual(JSON.parse(await readFile(join(profileDir, '.dsh-desktop-retired-skin.json'), 'utf8')), {
+      schemaVersion: 1,
+      packageName: '@deepseek-ai/dsh-client-ui-skin-qq98',
+      skinId: 'qq98',
+      reason: 'not-bundled-by-skin-center-v2',
+    })
+    assert.doesNotMatch(profilePatch, /dsh-skin managed|dsh-client-ui-skin-|ui-skin-/u)
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('profile bootstrap repairs semantically empty patch documents without replacing user entries', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-empty-patch-shapes-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  try {
+    await mkdir(profileDir, { recursive: true })
+    assert.equal(isSemanticallyEmptyPatch(''), true)
+    assert.equal(isSemanticallyEmptyPatch('# legacy placeholder\n{}\n'), true)
+    assert.equal(isSemanticallyEmptyPatch('[]\n'), true)
+    assert.equal(isSemanticallyEmptyPatch('- id: retained\n'), false)
+    assert.equal(isSemanticallyEmptyPatch('plugin: retained\n'), false)
+    assert.equal(isSemanticallyEmptyPatch('{invalid'), false)
+
+    await writeFile(join(dshHome, 'cordis.patch.yml'), '# legacy placeholder\n{}\n')
+    await writeFile(join(profileDir, 'cordis.patch.yml'), '{}\n')
+    await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
+
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
+    const profilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
+    assert.match(profilePatch, /dsh-desktop managed/u)
+    assert.doesNotMatch(profilePatch, /^\{\}$/mu)
+    const composed = spawnSync(
+      process.execPath,
+      [resolveDshCliPath(), '--profile', 'desktop', '--dump-config'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, DSH_HOME: dshHome },
+        timeout: 20_000,
+      },
+    )
+    assert.equal(composed.status, 0, composed.stderr)
+
+    await writeFile(join(dshHome, 'cordis.patch.yml'), 'plugin: retained\n')
+    await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
+    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), 'plugin: retained\n')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('profile bootstrap removes standalone legacy skin loaders and retires owned links', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-standalone-skin-migration-'))
+  const dshHome = join(root, 'home')
+  const profileDir = join(dshHome, 'profiles', 'desktop')
+  const skinPackage = '@deepseek-ai/dsh-client-ui-skin-xp'
+  const skinTarget = join(profileDir, 'node_modules', ...packagePathSegments(skinPackage))
+  const standaloneRows = [
+    '- insert:',
+    '    - id: ui-skin-xp',
+    `      name: '${skinPackage}'`,
+    '- insert:',
+    '    - id: retained-community',
+    `      name: '@community/plugin'`,
+    '- id: retained',
+  ].join('\n')
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await mkdir(skinTarget, { recursive: true })
+    await writeFile(join(skinTarget, 'package.json'), JSON.stringify({ name: skinPackage }))
     await writeFile(join(profileDir, 'package.json'), JSON.stringify({
       dependencies: { [skinPackage]: '0.1.2' },
       dsh: { profile: { bundles: [skinPackage] } },
     }))
-    await writeFile(join(dshHome, 'cordis.patch.yml'), `${skinSection}\n`)
+    await writeFile(join(profileDir, '.dsh-desktop-links.json'), JSON.stringify({
+      [skinPackage]: { mode: 'copy', source: 'legacy-carrier' },
+    }))
+    await writeFile(join(profileDir, 'cordis.patch.yml'), standaloneRows + '\n')
 
-    const packageRoots = new Map([['@linxin666/dsh-skins', carrierRoot]])
-    const first = await ensureDesktopProfile({ dshHome, packageRoots })
+    const first = await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
     const manifest = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
-    const alias = join(profileDir, 'node_modules', '@linxin666', 'dsh-client-ui-skin-qq98')
+    const profilePatch = await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8')
+    const records = JSON.parse(await readFile(join(profileDir, '.dsh-desktop-links.json'), 'utf8'))
 
     assert.equal(first.changed, true)
     assert.equal(manifest.dependencies[skinPackage], undefined)
     assert.equal(manifest.dsh.profile.bundles.includes(skinPackage), false)
-    assert.equal(await realpath(alias), await realpath(skinRoot))
-    assert.match(await readFile(join(profileDir, 'cordis.patch.yml'), 'utf8'), new RegExp(skinPackage, 'u'))
-    assert.equal(await readFile(join(dshHome, 'cordis.patch.yml'), 'utf8'), '[]\n')
-    const records = JSON.parse(await readFile(join(profileDir, '.dsh-desktop-links.json'), 'utf8'))
-    assert.deepEqual(records[skinPackage], { mode: 'link', source: skinRoot })
+    assert.deepEqual(JSON.parse(await readFile(join(dshHome, 'skin-center-active.json'), 'utf8')), { active: 'xp' })
+    assert.doesNotMatch(profilePatch, /dsh-client-ui-skin-|ui-skin-/u)
+    assert.match(profilePatch, /- id: retained-community\r?\n\s+name: '@community\/plugin'/u)
+    assert.match(profilePatch, /- id: retained/u)
+    await assert.rejects(realpath(skinTarget), (error) => error?.code === 'ENOENT')
+    assert.equal(records[skinPackage], undefined)
 
-    const second = await ensureDesktopProfile({ dshHome, packageRoots })
+    const second = await ensureDesktopProfile({ dshHome, packageRoots: new Map() })
     assert.equal(second.changed, false)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test('runtime resolver finds every bundled and desktop support package', () => {
+test('runtime resolver finds every bundled and desktop support package', async () => {
   const resolved = resolveRuntimePackages()
   assert.deepEqual([...resolved.keys()], [...resolved.keys()].toSorted())
   for (const packageName of MANAGED_RUNTIME_PACKAGES) {
     assert.equal(resolved.has(packageName), true, `missing ${packageName}`)
   }
   assert.deepEqual(DESKTOP_SUPPORT_PACKAGES, [
+    '@deepseek-ai/dsh-agent',
+    '@deepseek-ai/dsh-agent-default-model',
     '@deepseek-ai/dsh-client-ui-directory-picker-browse',
     '@deepseek-ai/dsh-host-directory-picker-browse',
+    '@deepseek-ai/dsh-host-webserver',
+    '@deepseek-ai/dsh-llm',
+    '@deepseek-ai/dsh-session',
+    '@deepseek-ai/dsh-session-persistence',
+    '@deepseek-ai/dsh-workspace',
   ])
 
   const aggregate = JSON.parse(readFileSync(join(resolved.get('@linxin666/dsh-web-ui-all'), 'package.json'), 'utf8'))
   const aggregatePatch = readFileSync(join(resolved.get('@linxin666/dsh-web-ui-all'), 'cordis.patch.yml'), 'utf8')
   assert.match(
     aggregatePatch,
-    /- id: ui-mode-switcher\s+name: '@linxin666\/dsh-client-ui-mode-switcher'/u,
+    /- id: web-ui-mode-switcher\s+name: '@linxin666\/dsh-client-ui-mode-switcher'/u,
     'the published aggregate must mount the Desktop-owned mode switcher',
   )
   assert.doesNotMatch(
@@ -555,25 +668,91 @@ test('runtime resolver finds every bundled and desktop support package', () => {
     /- id: ui-community-plugins\s+name: '@linxin666\/dsh-client-ui-community-plugins'/u,
     'the settings override already owns the community plugin index',
   )
-  assert.deepEqual(DESKTOP_RUNTIME_OVERRIDE_PACKAGES, ['@linxin666/dsh-client-ui-web-ui-settings'])
+  assert.deepEqual(DESKTOP_RUNTIME_OVERRIDE_PACKAGES, [
+    '@linxin666/dsh-client-ui-web-ui-settings',
+    '@linxin666/dsh-live-stats',
+  ])
+  assert.deepEqual(DESKTOP_AGGREGATE_WORKSPACE_OVERRIDE_PACKAGES, [
+    '@linxin666/dsh-client-ui-aionui-panel',
+    '@linxin666/dsh-client-ui-git-graph',
+    '@linxin666/dsh-client-ui-task-board',
+    '@linxin666/dsh-ssh',
+  ])
   assert.match(
     resolved.get('@linxin666/dsh-client-ui-web-ui-settings'),
     /packages[\\/]dsh-web-ui-settings$/u,
   )
   for (const packageName of AGGREGATED_BUNDLES) {
-    if (DESKTOP_RUNTIME_OVERRIDE_PACKAGES.includes(packageName)) continue
+    if (
+      DESKTOP_RUNTIME_OVERRIDE_PACKAGES.includes(packageName)
+      || DESKTOP_AGGREGATE_WORKSPACE_OVERRIDE_PACKAGES.includes(packageName)
+      || packageName === 'dsh-better-sidebar'
+    ) continue
     const manifest = JSON.parse(readFileSync(join(resolved.get(packageName), 'package.json'), 'utf8'))
     assert.equal(manifest.version, aggregate.version, `${packageName} did not resolve from the aggregate release`)
   }
+  for (const packageName of DESKTOP_AGGREGATE_WORKSPACE_OVERRIDE_PACKAGES) {
+    assert.match(resolved.get(packageName), /packages[\\/](?:dsh-aionui-panel|dsh-git-graph|dsh-task-board|dsh-ssh)$/u)
+  }
+  const aionRoot = resolved.get('@linxin666/dsh-client-ui-aionui-panel')
+  assert.match(aionRoot, /packages[\\/]dsh-aionui-panel$/u)
+  const aionManifest = JSON.parse(readFileSync(join(aionRoot, 'package.json'), 'utf8'))
+  const aionHost = readFileSync(join(aionRoot, 'lib', 'index.js'), 'utf8')
+  const aionClient = readFileSync(join(aionRoot, 'lib', 'client.js'), 'utf8')
+  const desktopCompatRoot = resolved.get('@linxin666/dsh-desktop-compat')
+  const desktopCompatHost = readFileSync(join(desktopCompatRoot, 'lib', 'index.js'), 'utf8')
+  const desktopOpenPolicy = await import(pathToFileURL(join(desktopCompatRoot, 'lib', 'workspace-file-open-policy.js')).href)
+  assert.equal(aionManifest.dsh.compatibility.capabilities.includes('workspace-files.open'), true)
+  assert.doesNotMatch(aionHost, /\/aionui-panel\/desktop-open-target/u)
+  assert.match(aionClient, /openWorkspaceFile/u)
+  assert.match(desktopCompatHost, /\/desktop\/workspace-file-open-target/u)
+  assert.match(desktopCompatHost, /resolveByPath/u)
+  assert.equal(desktopOpenPolicy.isSafeDesktopWorkspaceFileOpenPath('README.md'), true)
+  assert.equal(desktopOpenPolicy.isSafeDesktopWorkspaceFileOpenPath('payload.cmd'), false)
 })
+
+async function createIsolatedDshCli(root) {
+  // DSH deliberately resolves profile bundles from its own installation before
+  // the profile. In this workspace, that lookup can otherwise discover the
+  // older local aggregate package via pnpm's workspace-link layer. Recreate
+  // the relevant package-install layout in the test temp directory so this
+  // composition assertion exercises the app's pinned published aggregate.
+  const sourceDshRoot = dirname(dirname(resolveDshCliPath()))
+  const sourceModules = dirname(dirname(sourceDshRoot))
+  const sourceDeepseekScope = join(sourceModules, '@deepseek-ai')
+  const isolatedModules = join(root, 'runtime', 'node_modules')
+  const isolatedDeepseekScope = join(isolatedModules, '@deepseek-ai')
+  const isolatedDshRoot = join(isolatedDeepseekScope, 'dsh')
+
+  await mkdir(isolatedDeepseekScope, { recursive: true })
+  await cp(sourceDshRoot, isolatedDshRoot, { recursive: true })
+  for (const entry of await readdir(sourceModules, { withFileTypes: true })) {
+    if (entry.name === '.bin' || entry.name === '@deepseek-ai' || entry.name === '@linxin666') continue
+    await symlink(resolve(sourceModules, entry.name), join(isolatedModules, entry.name), 'junction')
+  }
+  for (const entry of await readdir(sourceDeepseekScope, { withFileTypes: true })) {
+    if (entry.name === 'dsh') continue
+    await symlink(resolve(sourceDeepseekScope, entry.name), join(isolatedDeepseekScope, entry.name), 'junction')
+  }
+
+  const aggregateRoot = resolveRuntimePackages(['@linxin666/dsh-web-ui-all'])
+    .get('@linxin666/dsh-web-ui-all')
+  if (aggregateRoot === undefined) throw new Error('published web UI aggregate is missing')
+  const isolatedLinxinScope = join(isolatedModules, '@linxin666')
+  await mkdir(isolatedLinxinScope, { recursive: true })
+  await symlink(aggregateRoot, join(isolatedLinxinScope, 'dsh-web-ui-all'), 'junction')
+
+  return join(isolatedDshRoot, 'lib', 'bin.js')
+}
 
 test('official DSH CLI composes the isolated desktop profile', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-compose-'))
   try {
     await ensureDesktopProfile({ dshHome: root })
+    const isolatedCliPath = await createIsolatedDshCli(root)
     const result = spawnSync(
       process.execPath,
-      [resolveDshCliPath(), '--profile', 'desktop', '--dump-config'],
+      [isolatedCliPath, '--profile', 'desktop', '--dump-config'],
       {
         encoding: 'utf8',
         env: { ...process.env, DSH_HOME: root },
@@ -581,12 +760,14 @@ test('official DSH CLI composes the isolated desktop profile', async () => {
       },
     )
     assert.equal(result.status, 0, result.stderr)
-    assert.match(result.stdout, /ui-task-board/)
-    assert.match(result.stdout, /ui-mode-switcher/)
-    assert.equal(result.stdout.match(/- id: ui-mode-switcher/gu)?.length, 1)
-    assert.match(result.stdout, /ui-skin-center/)
-    assert.match(result.stdout, /- id: pet/)
-    assert.match(result.stdout, /- id: remote-web-ui/)
+    assert.match(result.stdout, /- id: web-ui-task-board/)
+    assert.equal(result.stdout.match(/- id: web-ui-mode-switcher/gu)?.length, 1)
+    assert.match(result.stdout, /- id: web-ui-plugin-manager/)
+    assert.match(result.stdout, /- id: web-ui-skill-explorer/)
+    assert.match(result.stdout, /- id: web-ui-better-sidebar/)
+    assert.match(result.stdout, /- id: web-ui-skin-center/)
+    assert.match(result.stdout, /- id: web-ui-pet/)
+    assert.match(result.stdout, /- id: web-ui-remote-web-ui/)
     assert.match(result.stdout, /- id: live-stats/)
     assert.match(result.stdout, /directory-picker-desktop-host/)
     assert.match(result.stdout, /dsh-host-directory-picker-browse/)

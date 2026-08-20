@@ -1,9 +1,10 @@
 /**
  * Host-side settings bridge for the Web UI plugin group.
  *
- * Serves the dsh-web-ui family settings namespaces over a same-origin,
- * loopback-only HTTP pair because rc.6 host-apiproxy refuses every
- * third-party namespace at the RPC boundary. The handlers ride the host
+ * Serves the dsh-web-ui family settings namespaces over a same-origin HTTP
+ * pair because older host-apiproxy versions refuse third-party namespaces at
+ * the RPC boundary. Access is loopback-only by default; deployments may opt
+ * in an authenticated local reverse proxy. The handlers ride the host
  * settings seam (ctx.settings), which keeps the official schema validation,
  * revision fencing, persistence, and event emission for free; the bridge only
  * adds the allowlist gate the apiproxy normally provides. Error codes mirror
@@ -11,6 +12,7 @@
  * like an apiproxy answer.
  */
 
+import { timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { SettingsNamespace, SettingsDescriptor, SettingsPathOp, SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { SettingsConflictError, settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -22,27 +24,116 @@ import type { BridgeDescribeResult, BridgeMutateRequest, BridgeMutateResult, Bri
 /** Cap on JSON request bodies (a single mutate is tiny). */
 const MAX_JSON_BODY_BYTES = 64 * 1024
 
-/** Loopback literal check plus browser same-origin markers (mirrors the dsh-ssh route fence). */
-function isLoopbackRequest(request: IncomingMessage): boolean {
-  const address = request.socket.remoteAddress
-  if (address !== '127.0.0.1' && address !== '::1' && address !== '::ffff:127.0.0.1') return false
-  const host = request.headers.host
-  if (typeof host !== 'string') return false
-  let hostUrl: URL
+/** Header an authenticated same-host reverse proxy replaces before forwarding. */
+export const WEB_UI_SETTINGS_PROXY_TOKEN_HEADER = 'x-dsh-web-ui-settings-proxy-token'
+
+/** Optional policy admitting authenticated same-host reverse-proxy requests. */
+export interface BridgeAccess {
+  /** Canonical host[:port] authorities a local authenticated proxy may forward. */
+  trustedProxyHosts?: readonly string[]
+  /** Shared token injected by the proxy; never sent to browsers. */
+  proxyToken?: string
+}
+
+interface ResolvedBridgeAccess {
+  trustedProxyHosts: ReadonlySet<string>
+  proxyToken?: string
+}
+
+/** Whether a socket address is a literal loopback peer. */
+function isLoopbackAddress(address: string | undefined): boolean {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
+}
+
+/** Whether a normalized hostname is a literal loopback authority. */
+function isLoopbackHostname(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname === '[::1]') return true
+  const parts = hostname.split('.')
+  return parts.length === 4
+    && parts[0] === '127'
+    && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+}
+
+interface ParsedAuthority {
+  canonical: string
+  url: URL
+}
+
+/** Parse one bare Host authority. */
+function parseAuthority(authority: string): ParsedAuthority | undefined {
+  if (authority.trim() !== authority) return undefined
+  const authorityMatch = authority.startsWith('[')
+    ? /^\[[^\]]+\](?::([0-9]+))?$/.exec(authority)
+    : /^[^:@/?#\s]+(?::([0-9]+))?$/.exec(authority)
+  if (authorityMatch === null) return undefined
   try {
-    hostUrl = new URL('http://' + host)
+    const url = new URL('http://' + authority)
+    if (url.username !== '' || url.password !== '' || url.pathname !== '/' || url.search !== '' || url.hash !== '') {
+      return undefined
+    }
+    const rawPort = authorityMatch[1]
+    if (rawPort !== undefined && (String(Number(rawPort)) !== rawPort || Number(rawPort) > 65535)) {
+      return undefined
+    }
+    return {
+      canonical: url.hostname.toLowerCase() + (rawPort === undefined ? '' : ':' + rawPort),
+      url,
+    }
   } catch {
-    return false
+    return undefined
   }
-  if (hostUrl.hostname !== '127.0.0.1' && hostUrl.hostname !== 'localhost' && hostUrl.hostname !== '[::1]') return false
+}
+
+/** Resolve and validate the opt-in proxy policy once, when routes mount. */
+function resolveBridgeAccess(access: BridgeAccess | undefined): ResolvedBridgeAccess {
+  const trustedProxyHosts = new Set<string>()
+  for (const entry of access?.trustedProxyHosts ?? []) {
+    const parsed = parseAuthority(entry)
+    if (parsed === undefined || parsed.canonical !== entry.toLowerCase()) {
+      throw new Error('web-ui-settings: trustedProxyHosts entry ' + JSON.stringify(entry) + ' is not a canonical host[:port] authority')
+    }
+    trustedProxyHosts.add(parsed.canonical)
+  }
+  const proxyToken = access?.proxyToken
+  if (trustedProxyHosts.size > 0 && (proxyToken === undefined || proxyToken === '')) {
+    throw new Error('web-ui-settings: authenticated proxy hosts require a non-empty proxy token')
+  }
+  return { trustedProxyHosts, ...proxyToken === undefined ? {} : { proxyToken } }
+}
+
+/** Compare the proxy token without content-dependent early exit. */
+function matchesProxyToken(candidate: unknown, expected: string | undefined): boolean {
+  if (typeof candidate !== 'string' || expected === undefined || candidate === '' || expected === '') return false
+  const candidateBytes = Buffer.from(candidate)
+  const expectedBytes = Buffer.from(expected)
+  return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes)
+}
+
+/** Browser same-origin markers shared by direct loopback and proxy requests. */
+function isSameOriginRequest(request: IncomingMessage, hostUrl: URL): boolean {
   if (request.headers['sec-fetch-site'] === 'cross-site') return false
   const origin = request.headers.origin
   if (origin === undefined) return true
+  if (typeof origin !== 'string') return false
   try {
     return new URL(origin).host === hostUrl.host
   } catch {
     return false
   }
+}
+
+/** Hot-path trust decision over an already validated policy. */
+function isTrustedBridgeRequestResolved(request: IncomingMessage, access: ResolvedBridgeAccess): boolean {
+  if (!isLoopbackAddress(request.socket.remoteAddress)) return false
+  const host = request.headers.host
+  if (typeof host !== 'string') return false
+  const parsedHost = parseAuthority(host)
+  if (parsedHost === undefined || parsedHost.canonical !== host.toLowerCase() || !isSameOriginRequest(request, parsedHost.url)) {
+    return false
+  }
+  if (isLoopbackHostname(parsedHost.url.hostname)) return true
+  if (!access.trustedProxyHosts.has(parsedHost.canonical)) return false
+  return matchesProxyToken(request.headers[WEB_UI_SETTINGS_PROXY_TOKEN_HEADER], access.proxyToken)
 }
 
 /** One JSON response. */
@@ -117,16 +208,14 @@ export interface BridgeHandlers {
  * @returns the handlers.
  */
 export function makeBridgeHandlers(deps: BridgeDeps): BridgeHandlers {
-  const allowlisted = (): string[] => {
-    const descriptors = deps.settings.describe({ redactSecrets: true })
+  const allowlisted = (descriptors: readonly SettingsDescriptor[]): string[] => {
     const registered = descriptors.map(descriptor => String(descriptor.ns))
     return composeAllowlist(extractWebSettingsNamespaces(deps.readSettingsYaml()), registered)
   }
   return {
     async describe() {
       const descriptors = deps.settings.describe({ redactSecrets: true })
-      const allowlist = allowlisted()
-      const namespaces = allowlist
+      const namespaces = allowlisted(descriptors)
         .map(ns => descriptors.find(descriptor => String(descriptor.ns) === ns))
         .filter((descriptor): descriptor is SettingsDescriptor => descriptor !== undefined)
         .map(toView)
@@ -141,8 +230,8 @@ export function makeBridgeHandlers(deps: BridgeDeps): BridgeHandlers {
         return { ok: false, code: 'settings-rejected', message: 'malformed bridge settings request' }
       }
       const { ns } = body
-      const allowlist = allowlisted()
-      if (!allowlist.includes(ns)) {
+      const descriptors = deps.settings.describe({ redactSecrets: true })
+      if (!allowlisted(descriptors).includes(ns)) {
         return { ok: false, code: 'settings-not-exposed', message: 'settings namespace "' + ns + '" is not exposed to configuration clients' }
       }
       const expectedRevision = typeof body.expectedRevision === 'number' ? body.expectedRevision : undefined
@@ -161,15 +250,18 @@ export function makeBridgeHandlers(deps: BridgeDeps): BridgeHandlers {
 }
 
 /**
- * Build the loopback-only bridge routes.
+ * Build the loopback-default bridge routes, optionally admitting one
+ * authenticated same-host reverse proxy.
  * @param deps - handler dependencies.
+ * @param access - opt-in authenticated proxy policy.
  * @returns the exact-path route registrations.
  */
-export function makeBridgeRoutes(deps: BridgeDeps): WebRoute[] {
+export function makeBridgeRoutes(deps: BridgeDeps, access?: BridgeAccess): WebRoute[] {
   const handlers = makeBridgeHandlers(deps)
+  const resolvedAccess = resolveBridgeAccess(access)
   const guard = (req: IncomingMessage, res: ServerResponse): boolean => {
-    if (!isLoopbackRequest(req)) {
-      writeJson(res, 403, { error: 'loopback requests only' })
+    if (!isTrustedBridgeRequestResolved(req, resolvedAccess)) {
+      writeJson(res, 403, { error: 'forbidden' })
       return false
     }
     if (req.method !== 'POST') {

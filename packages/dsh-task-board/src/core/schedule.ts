@@ -26,6 +26,15 @@ export interface CronSchedule {
   weekdayWildcard: boolean
 }
 
+/** Calendar fields used by the local-time and IANA-timezone matchers. */
+interface CronDateParts {
+  minute: number
+  hour: number
+  day: number
+  month: number
+  weekday: number
+}
+
 /** Inclusive ranges per field, in cron order. */
 const FIELD_RANGES: ReadonlyArray<readonly [number, number]> = [
   [0, 59], // minutes
@@ -90,6 +99,65 @@ export function nextRunAtMs(expr: string, fromMs: number): number | undefined {
   return undefined
 }
 
+/**
+ * Check that a user-supplied IANA time zone is supported by this runtime.
+ * `Intl` is available in supported browsers and Node runtimes; returning
+ * false rather than throwing keeps malformed persisted data recoverable.
+ */
+export function isValidTimeZone(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() === '' || value.length > 128) return false
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format(0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The host's resolved IANA zone, with a deterministic UTC fallback for
+ * minimal runtimes. New durable rules may persist this value; legacy rules
+ * intentionally leave it absent and retain their old local-time behavior.
+ */
+export function defaultTimeZone(): string {
+  try {
+    const value = Intl.DateTimeFormat().resolvedOptions().timeZone
+    return isValidTimeZone(value) ? value : 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
+/**
+ * Compute the next cron occurrence in an explicit IANA time zone. The scan
+ * advances in absolute minutes, so daylight-saving gaps are skipped and a
+ * repeated wall-clock minute remains a distinct, deterministically keyed
+ * instant. Passing `undefined` preserves the legacy local-time implementation.
+ */
+export function nextRunAtMsInTimeZone(expr: string, fromMs: number, timeZone: string | undefined): number | undefined {
+  if (timeZone === undefined) return nextRunAtMs(expr, fromMs)
+  if (!isValidTimeZone(timeZone)) return undefined
+  const schedule = parseCron(expr)
+  if (schedule === null) return undefined
+  const format = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  })
+  const minuteMs = 60_000
+  const first = Math.floor(fromMs / minuteMs) * minuteMs + minuteMs
+  const limitMs = fromMs + 366 * 24 * 60 * minuteMs
+  for (let at = first; at <= limitMs; at += minuteMs) {
+    if (matchesParts(schedule, timeZoneParts(format, at))) return at
+  }
+  return undefined
+}
+
 /** Parse one comma-list field into the match set. */
 function parseField(field: string, min: number, max: number, out: Set<number>): boolean {
   if (field === '*') {
@@ -125,14 +193,51 @@ function parseField(field: string, min: number, max: number, out: Set<number>): 
 
 /** Day/weekday OR semantics: a restricted day field alone gates, and vice versa. */
 function matches(schedule: CronSchedule, date: Date): boolean {
-  if (!schedule.minutes.has(date.getMinutes())) return false
-  if (!schedule.hours.has(date.getHours())) return false
-  if (!schedule.months.has(date.getMonth() + 1)) return false
-  const dayMatches = schedule.days.has(date.getDate())
-  const weekdayMatches = schedule.weekdays.has(date.getDay())
+  return matchesParts(schedule, {
+    minute: date.getMinutes(),
+    hour: date.getHours(),
+    day: date.getDate(),
+    month: date.getMonth() + 1,
+    weekday: date.getDay(),
+  })
+}
+
+function matchesParts(schedule: CronSchedule, date: CronDateParts): boolean {
+  if (!schedule.minutes.has(date.minute)) return false
+  if (!schedule.hours.has(date.hour)) return false
+  if (!schedule.months.has(date.month)) return false
+  const dayMatches = schedule.days.has(date.day)
+  const weekdayMatches = schedule.weekdays.has(date.weekday)
   if (schedule.dayWildcard) return weekdayMatches
   if (schedule.weekdayWildcard) return dayMatches
   return dayMatches || weekdayMatches
+}
+
+function timeZoneParts(format: Intl.DateTimeFormat, at: number): CronDateParts {
+  const parts = format.formatToParts(new Date(at))
+  const value = (type: Intl.DateTimeFormatPartTypes): number => {
+    const raw = parts.find(part => part.type === type)?.value
+    return raw === undefined ? NaN : Number(raw)
+  }
+  const weekdayText = parts.find(part => part.type === 'weekday')?.value
+  const weekdays: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  }
+  const hour = value('hour')
+  return {
+    minute: value('minute'),
+    // Some ICU builds render midnight as 24 despite h23; cron treats it as 0.
+    hour: hour === 24 ? 0 : hour,
+    day: value('day'),
+    month: value('month'),
+    weekday: weekdayText === undefined ? NaN : weekdays[weekdayText] ?? NaN,
+  }
 }
 
 function isDigits(value: string): boolean {

@@ -181,12 +181,29 @@ export function migrateV2JsonToV3(raw: string, now = Date.now()): TaskLedgerDocu
 export function ledgerDocumentV3Hash(document: TaskLedgerDocumentV3): string {
   // The digest only detects a torn/incorrect copy; it is not a security hash.
   // Keep this core helper browser-safe so RemoteTaskStoreV3 can reuse it.
+  // Parser normalization can legally reorder optional fields (for example a
+  // settled TaskRun's finishedAt/resultStatus), so use a canonical object-key
+  // order rather than plain JSON.stringify before comparing write/read copies.
   let hash = 0x811c9dc5
-  for (const character of JSON.stringify(document)) {
+  for (const character of canonicalJson(document)) {
     hash ^= character.charCodeAt(0)
     hash = Math.imul(hash, 0x01000193)
   }
   return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(entry => canonicalJson(entry)).join(',')}]`
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record).sort().flatMap(key => {
+    const child = record[key]
+    // Match JSON.stringify: object keys with undefined/function/symbol values
+    // are omitted. Task ledger values are JSON data, but this keeps the hash
+    // total for in-memory documents during a controlled migration.
+    if (child === undefined || typeof child === 'function' || typeof child === 'symbol') return []
+    return [`${JSON.stringify(key)}:${canonicalJson(child)}`]
+  }).join(',')}}`
 }
 
 export function isTaskLedgerDocumentV3(value: unknown): value is TaskLedgerDocumentV3 {
