@@ -20,6 +20,7 @@ const resources = resolve(resourcesArgument || join(appDir, 'dist', 'win-unpacke
 const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
 const requiredPackages = [
   ...DSH_BOOT_RUNTIME_PACKAGES,
+  '@deepseek-ai/dsh-host-directory-picker',
   'electron-updater',
   'fflate',
   'pnpm',

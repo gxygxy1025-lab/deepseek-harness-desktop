@@ -97,6 +97,7 @@ test('release recovery restores pnpm peer snapshots omitted by electron-builder'
       '@deepseek-ai/dsh-atomic-write',
       '@deepseek-ai/dsh-attachment',
       '@deepseek-ai/dsh-brand',
+      '@deepseek-ai/dsh-host-directory-picker',
       '@deepseek-ai/dsh-host-webserver',
       '@deepseek-ai/dsh-sandbox-policy',
       '@deepseek-ai/dsh-settings',
