@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@deepseek-ai/dsh-web-app@0.1.1-rc.2': b44a5c2909054ea7928402fdd21db1a6351a6d6680b2d5d61a4b8f1d80563fd4
   '@deepseek-ai/dsh@0.1.1-rc.2': c92c211e1ab883523abfa65b0d848afb3ca4a30f812feff5d4e48778968da4bb
 
 importers:
@@ -6797,7 +6798,7 @@ snapshots:
       '@deepseek-ai/dsh-agent': 0.1.1-rc.2(da48dfcd583c9939f89a8022d99b4b93)
       '@deepseek-ai/dsh-llm': 0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-attachment@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-brand@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-timeout@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))
 
-  '@deepseek-ai/dsh-web-app@0.1.1-rc.2(ae186a21c53394d79b8d21b154a7f6f3)':
+  '@deepseek-ai/dsh-web-app@0.1.1-rc.2(patch_hash=b44a5c2909054ea7928402fdd21db1a6351a6d6680b2d5d61a4b8f1d80563fd4)(ae186a21c53394d79b8d21b154a7f6f3)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
       '@deepseek-ai/cordis-plugin-loader': 1.0.2(@deepseek-ai/cordis@4.0.1)(node-addon-require-builtin@0.1.4)
@@ -7024,7 +7025,7 @@ snapshots:
       '@deepseek-ai/dsh-tool-todo': 0.1.1-rc.2(2eb99e44f23ad6c44e62c19bb7a85fb9)
       '@deepseek-ai/dsh-tool-web': 0.1.1-rc.2(aa2f29808d039174fef17a2a0206ec4d)
       '@deepseek-ai/dsh-tool-workflow': 0.1.1-rc.2(ba2ccfb34f48561f27a01fd2fb4eca5b)
-      '@deepseek-ai/dsh-web-app': 0.1.1-rc.2(ae186a21c53394d79b8d21b154a7f6f3)
+      '@deepseek-ai/dsh-web-app': 0.1.1-rc.2(patch_hash=b44a5c2909054ea7928402fdd21db1a6351a6d6680b2d5d61a4b8f1d80563fd4)(ae186a21c53394d79b8d21b154a7f6f3)
       '@deepseek-ai/dsh-workflow-worker-thread': 0.1.1-rc.2(ca30ec84585b672158b5f0b87e9fb4de)
       commander: 15.0.0
       js-yaml: 4.3.1

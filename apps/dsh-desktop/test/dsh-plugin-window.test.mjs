@@ -16,3 +16,13 @@ test('patched DSH plugin forwarding hides the Windows package-manager window', a
   assert.match(source, /spawnSync\("pnpm"/u)
   assert.match(source, /shell: process\.platform === "win32",\s*windowsHide: process\.platform === "win32"/u)
 })
+
+test('patched DSH web app browser launcher hides the Windows launcher window', async () => {
+  const dshEntry = require.resolve('@deepseek-ai/dsh/lib/bin.js')
+  const dshRequire = createRequire(dshEntry)
+  const webAppEntry = dshRequire.resolve('@deepseek-ai/dsh-web-app')
+  const source = await readFile(webAppEntry, 'utf8')
+
+  assert.match(source, /function spawnBrowserLauncher\(url\)/u)
+  assert.match(source, /env: scrubbedParentEnv\(\),\s*windowsHide: process\.platform === "win32",/u)
+})
