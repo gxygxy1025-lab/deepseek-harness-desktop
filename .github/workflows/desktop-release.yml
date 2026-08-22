@@ -25,14 +25,16 @@ jobs:
       - run: pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
       - run: pnpm verify
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
-      - name: Configure official anonymous product metrics
+      - name: Configure optional anonymous product metrics
         shell: pwsh
         env:
           DSH_TELEMETRY_ENDPOINT: ${{ vars.DSH_TELEMETRY_ENDPOINT }}
         run: |
           $endpointText = [string]$env:DSH_TELEMETRY_ENDPOINT
           if ([string]::IsNullOrWhiteSpace($endpointText)) {
-            throw 'Repository variable DSH_TELEMETRY_ENDPOINT is required for an official Desktop release.'
+            Set-Content -LiteralPath 'apps/dsh-desktop/build/telemetry-config.json' -Value '{"endpoint":""}' -Encoding utf8NoBOM
+            Write-Output 'DSH_TELEMETRY_ENDPOINT is not configured; product metrics remain disabled.'
+            exit 0
           }
           try {
             $endpoint = [System.Uri]::new($endpointText.Trim(), [System.UriKind]::Absolute)

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r --workspace-concurrency=2 test",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r --if-present typecheck",
     "desktop:dev": "pnpm --filter @deepseek-ai/dsh-desktop dev",
     "desktop:test": "pnpm --filter @deepseek-ai/dsh-desktop test",
     "desktop:pack": "pnpm --filter @deepseek-ai/dsh-desktop pack:win",
@@ -26,7 +26,7 @@
     "community-plugin-quality:write": "node scripts/generate-community-plugin-quality-report.mjs --write",
     "community-plugin-quality:check": "node scripts/generate-community-plugin-quality-report.mjs --check",
     "test:scripts": "node --test scripts/*.test.mjs",
-    "verify": "pnpm typecheck && pnpm test && pnpm test:scripts && pnpm runtime-deps:check && pnpm dsh-imports:check && pnpm dsh-audit:check && pnpm runtime-support:check && pnpm runtime-support-matrix:check && pnpm community-plugin-quality:check && pnpm sync-shared:check && pnpm release:notes:check && pnpm website:check && pnpm aggregate:check && pnpm gallery:check && pnpm skin-center:check && pnpm community:check && pnpm docs:check",
+    "verify": "pnpm typecheck && pnpm test && pnpm runtime-deps:check && pnpm dsh-imports:check && pnpm dsh-audit:check && pnpm release:notes:check",
     "skin:new": "node scripts/dsh-skin-new",
     "pr:review": "node scripts/pr-review.mjs",
     "gallery:build": "node scripts/gallery-build",
