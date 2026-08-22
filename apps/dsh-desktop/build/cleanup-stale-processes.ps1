@@ -18,6 +18,7 @@ $shutdownReceiptMarkerValue = 'dsh-desktop-update-shutdown-receipt=2'
 $gracefulShutdownTimeoutMs = 7000
 $receiptShutdownTimeoutMs = 15000
 $receiptProcessExitTimeoutMs = 5000
+$receiptProcessTreeExitTimeoutMs = 10000
 $preflightRetryAttempts = 50
 $forceAttempts = 12
 $retryDelayMs = 400
@@ -672,6 +673,16 @@ namespace DshInstaller
 
   if ($receiptAttempted) {
     $targets = @(Get-InstallProcesses)
+    if ($targets.Count -eq 0) {
+      Complete-Preflight
+    }
+    # The receipt belongs to the browser process, while Electron helpers and
+    # the embedded runtime can take a little longer to leave the process tree.
+    $treeWait = [System.Diagnostics.Stopwatch]::StartNew()
+    do {
+      Start-Sleep -Milliseconds $retryDelayMs
+      $targets = @(Get-InstallProcesses)
+    } while ($targets.Count -gt 0 -and $treeWait.ElapsedMilliseconds -lt $receiptProcessTreeExitTimeoutMs)
     if ($targets.Count -eq 0) {
       Complete-Preflight
     }
