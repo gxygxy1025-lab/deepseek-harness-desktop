@@ -1,0 +1,44 @@
+diff --git a/lib/types-CNjZgO4h.js b/lib/types-CNjZgO4h.js
+index f160b600a6d7c90d1035ce6617d27328bb116fe3..8a1b3d5c155493f57801792617c0525b1e5a2f2e 100644
+--- a/lib/types-CNjZgO4h.js
++++ b/lib/types-CNjZgO4h.js
+@@ -772,9 +772,11 @@ function assertPrivateTempDisjoint(writableDirs, tempDir) {
+ //#endregion
+ //#region lib/types/spawn.js
+ /**
+-* Restricted-process spawning: anonymous pipes for stdio, STARTUPINFOW with
+-* STARTF_USESTDHANDLES, CreateProcessAsUserW under the restricted token, then
+-* asynchronous pipe draining and exit waiting. Console isolation
++* Restricted-process spawning: anonymous pipes for stdio, STARTUPINFOW with
++* STARTF_USESTDHANDLES and STARTF_USESHOWWINDOW/SW_HIDE,
++* CreateProcessAsUserW under the restricted token, then asynchronous pipe
++* draining and exit waiting. Hiding the first window preserves the shared
++* console while preventing Windows Terminal from flashing. Console isolation
+ * (CREATE_NO_WINDOW / CREATE_NEW_CONSOLE) is intentionally absent: under this
+ * restriction scheme hidden-console children die with STATUS_DLL_INIT_FAILED
+ * (0xC0000142) — verified empirically, see win32-abi.ts. Stdio redirection is
+@@ -850,11 +852,12 @@ function spawnSandboxed(api, token, options) {
+ 	const stdErr = createPipe(api);
+ 	setInheritable(api, stdIn.read, "stdin read end");
+ 	setInheritable(api, stdOut.write, "stdout write end");
+ 	setInheritable(api, stdErr.write, "stderr write end");
+ 	const startupInfo = allocStartupInfo();
+ 	encodeStartupInfo(startupInfo, {
+ 		cb: 104,
+-		dwFlags: 256,
++		dwFlags: 257,
++		wShowWindow: 0,
+ 		hStdInput: stdIn.read,
+ 		hStdOutput: stdOut.write,
+ 		hStdError: stdErr.write
+@@ -990,8 +993,9 @@ function spawnSandboxedInherited(api, token, options) {
+ 	makeInheritable(stdErr, "stderr");
+ 	const startupInfo = allocStartupInfo();
+ 	encodeStartupInfo(startupInfo, {
+ 		cb: 104,
+-		dwFlags: 256,
++		dwFlags: 257,
++		wShowWindow: 0,
+ 		hStdInput: stdIn,
+ 		hStdOutput: stdOut,
+ 		hStdError: stdErr

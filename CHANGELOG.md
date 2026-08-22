@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.7 - 2026-08-22
+
+- 修复任务执行 `Pwsh` 时 Windows ACL 沙箱二次启动受限进程导致 Terminal 黑框弹出的问题。
+- 对沙箱的管道输出与继承输出两条 `CreateProcessAsUserW` 路径统一设置 `STARTF_USESHOWWINDOW` 和 `SW_HIDE`。
+- 保留受限令牌、ACL、标准输入输出管道和进程终止语义，不使用会导致受限 PowerShell 启动失败的 `CREATE_NO_WINDOW`。
+
 ## 1.0.6 - 2026-08-22
 
 - 修复 Windows 搜索、安装或更新插件时官方 DSH 通用子进程可能显示终端窗口的问题。

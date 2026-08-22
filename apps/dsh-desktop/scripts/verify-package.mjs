@@ -47,6 +47,21 @@ for (const relativePath of CRITICAL_RUNTIME_FILES) {
   await access(join(unpackedModules, ...relativePath.split('/')))
 }
 
+const sandboxLib = join(unpackedModules, '@deepseek-ai', 'dsh-sandbox-windows-acl', 'lib')
+const sandboxImplementations = (await readdir(sandboxLib))
+  .filter((name) => /^types-.*\.js$/u.test(name))
+if (sandboxImplementations.length !== 1) {
+  throw new Error(`packaged Windows ACL sandbox implementation count is ${sandboxImplementations.length}`)
+}
+const sandboxSource = await readFile(join(sandboxLib, sandboxImplementations[0]), 'utf8')
+const hiddenSandboxLaunches = sandboxSource.match(/dwFlags: 257,\s*wShowWindow: 0/gu) ?? []
+if (hiddenSandboxLaunches.length !== 2) {
+  throw new Error(`packaged Windows ACL sandbox has ${hiddenSandboxLaunches.length} hidden launch paths`)
+}
+if (/createProcessAsUserW\([^;]+, 134217728,/u.test(sandboxSource)) {
+  throw new Error('packaged Windows ACL sandbox uses incompatible CREATE_NO_WINDOW isolation')
+}
+
 await access(join(resources, 'app.asar'))
 await access(join(resources, 'app-icon.png'))
 for (const [name, expected] of [

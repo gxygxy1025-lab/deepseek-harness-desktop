@@ -37,3 +37,21 @@ test('patched DSH subprocess runtime hides every Windows command window', async 
 
   assert.match(source, /detached: platform !== "win32",\s*windowsHide: platform === "win32"/u)
 })
+
+test('patched Windows ACL sandbox hides both restricted process launch paths', async () => {
+  const dshEntry = require.resolve('@deepseek-ai/dsh/lib/bin.js')
+  const dshRequire = createRequire(dshEntry)
+  const baseEntry = dshRequire.resolve('@deepseek-ai/dsh-base')
+  const baseRequire = createRequire(baseEntry)
+  const sandboxEntry = baseRequire.resolve('@deepseek-ai/dsh-sandbox-windows-acl')
+  const sandboxDirectory = dirname(sandboxEntry)
+  const implementationFiles = (await readdir(sandboxDirectory))
+    .filter((file) => /^types-.*\.js$/u.test(file))
+
+  assert.equal(implementationFiles.length, 1)
+  const source = await readFile(join(sandboxDirectory, implementationFiles[0]), 'utf8')
+
+  const hiddenStartupInfo = source.match(/dwFlags: 257,\s*wShowWindow: 0/gu) ?? []
+  assert.equal(hiddenStartupInfo.length, 2)
+  assert.doesNotMatch(source, /createProcessAsUserW\([^;]+, 134217728,/u)
+})

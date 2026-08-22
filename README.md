@@ -8,7 +8,7 @@ DeepSeek Harness Desktop 是一个面向 Windows 10/11 x64 的社区桌面封装
 
 从 [GitHub Releases](https://github.com/gxygxy1025-lab/deepseek-harness-desktop/releases/latest) 下载 `DeepSeek-Harness-Desktop-Setup-<version>-x64.exe`，关闭旧版后运行安装程序。安装包内置运行所需的 Node.js/Electron 环境，不要求用户单独安装开发工具。
 
-当前应用版本为 `1.0.6`，官方 Runtime 精确固定为 `@deepseek-ai/dsh@0.1.1-rc.2`。应用通过 GitHub Release 的 `latest.yml` 检查更新，下载完成后由用户确认安装。
+当前应用版本为 `1.0.7`，官方 Runtime 精确固定为 `@deepseek-ai/dsh@0.1.1-rc.2`。应用通过 GitHub Release 的 `latest.yml` 检查更新，下载完成后由用户确认安装。
 
 ## 核心能力
 
