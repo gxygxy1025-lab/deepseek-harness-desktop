@@ -13,12 +13,4 @@ export function createRetryableLazyLoader(load) {
     return pending
   }
 }
-const loadQrCode = createRetryableLazyLoader(() => import('qrcode'))
-
-export async function renderQrDataUrl(value, options) {
-  const module = await loadQrCode()
-  const qrcode = module.default ?? module
-  if (typeof qrcode?.toDataURL !== 'function') throw new TypeError('qrcode module has no toDataURL export')
-  return qrcode.toDataURL(value, options)
-}
 

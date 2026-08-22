@@ -330,6 +330,16 @@ test('manual update errors are visible and clear taskbar progress', async () => 
   assert.equal(harness.progress.at(-1), -1)
 })
 
+test('GitHub missing-release errors are summarized without exposing response details', async () => {
+  const harness = createHarness()
+  await harness.controller.check({ manual: true })
+  harness.updater.emit('error', new Error('404 "method: GET url: https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/releases.atom" Headers: { "content-security-policy": "default-src none" }'))
+  await tick()
+  assert.equal(harness.controller.getStatus().phase, 'error')
+  assert.match(harness.controller.getStatus().message, /GitHub 暂时没有可用的更新版本/u)
+  assert.doesNotMatch(harness.controller.getStatus().message, /content-security-policy|releases\.atom/u)
+})
+
 test('manual checks explain when updates are unavailable in development', async () => {
   const harness = createHarness({ enabled: false })
   assert.equal(await harness.controller.check({ manual: true }), false)

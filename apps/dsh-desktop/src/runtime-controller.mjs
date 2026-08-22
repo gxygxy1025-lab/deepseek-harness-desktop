@@ -33,6 +33,7 @@ function runtimeArguments(cliPath, preferredPort, consolePreloadPath) {
     DESKTOP_PROFILE_NAME,
     '--port',
     String(preferredPort),
+    '--no-open',
   ]
 }
 

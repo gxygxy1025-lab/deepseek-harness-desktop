@@ -128,7 +128,7 @@ test('non-Windows runtime launch remains a direct argv spawn', () => {
     preferredPort: 43_125,
   }), {
     executable: '/opt/deepseek-harness',
-    args: ['--expose-internals', '/opt/dsh/bin.js', '--profile', 'desktop', '--port', '43125'],
+    args: ['--expose-internals', '/opt/dsh/bin.js', '--profile', 'desktop', '--port', '43125', '--no-open'],
   })
 })
 

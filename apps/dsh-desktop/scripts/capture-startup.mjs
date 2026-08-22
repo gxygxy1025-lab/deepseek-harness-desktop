@@ -84,7 +84,7 @@ try {
     await page.locator('#dsh-desktop-update-surface:not([hidden])').waitFor({ state: 'visible' })
   }
   if (communityMode) {
-    await page.locator('#community-qr[src^="data:image/png;base64,"]').waitFor({ state: 'visible' })
+    await page.getByRole('link', { name: '一键加群' }).waitFor({ state: 'visible' })
   }
   await page.setViewportSize(communityMode ? { width: 580, height: 740 } : compactMode ? { width: 1024, height: 720 } : { width: 1440, height: 900 })
   if (communityMode) {

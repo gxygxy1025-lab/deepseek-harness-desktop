@@ -16,7 +16,6 @@ const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
 const requiredPackages = [
   ...CORE_RUNTIME_PACKAGES,
   'electron-updater',
-  'qrcode',
 ]
 
 for (const packageName of requiredPackages) {

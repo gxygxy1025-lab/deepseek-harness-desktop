@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { ensureApiRetryPolicies } from './api-retry-policy.mjs'
 import { resolveDesktopVersion } from './app-version.mjs'
-import { createCommunityQrImage } from './community.mjs'
 import {
   CLOSE_BEHAVIORS,
   createCloseBehaviorController,
@@ -54,7 +53,6 @@ import { attachWindowStatePersistence, loadWindowState } from './window-state.mj
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
 const MAIN_PRELOAD_PATH = join(SOURCE_DIR, 'preload-main.cjs')
-const STARTUP_PATH = join(SOURCE_DIR, 'ui', 'startup.html')
 const COMMUNITY_PATH = join(SOURCE_DIR, 'ui', 'community.html')
 
 export const SECONDARY_WINDOW_PARTITION = 'dsh-desktop-secondary'
@@ -606,7 +604,6 @@ export async function startElectronApp(metadata) {
     let createdWindow
     let operation
     operation = (async () => {
-      const qrImage = await createCommunityQrImage()
       if (!mainWindow || mainWindow.isDestroyed()) {
         throw new Error('main window closed before the community window could open')
       }
@@ -651,7 +648,7 @@ export async function startElectronApp(metadata) {
         removeCommunityWindowChrome()
         if (communityWindow === createdWindow) communityWindow = undefined
       })
-      await createdWindow.loadFile(COMMUNITY_PATH, { query: { qr: qrImage, theme: chromeTheme } })
+      await createdWindow.loadFile(COMMUNITY_PATH, { query: { theme: chromeTheme } })
       return createdWindow
     })().catch((error) => {
       if (createdWindow && !createdWindow.isDestroyed()) createdWindow.destroy()
@@ -671,15 +668,7 @@ export async function startElectronApp(metadata) {
     mainWindow.show()
     mainWindow.focus()
   }
-  const loadStartup = async () => {
-    activeOrigin = undefined
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const preview = process.env.DSH_DESKTOP_STARTUP_PREVIEW_STATE
-      await mainWindow.loadFile(STARTUP_PATH, preview ? { query: { preview } } : undefined)
-    }
-  }
-  let releaseStartupSurface
-  const startupSurfaceReady = new Promise((resolve) => { releaseStartupSurface = resolve })
+  const startupSurfaceReady = Promise.resolve()
   let runtimeStartedAt
   const showRuntime = async (status, runtimeReadyAt) => {
     await startupSurfaceReady
@@ -698,7 +687,6 @@ export async function startElectronApp(metadata) {
       }
     } catch (error) {
       void logStore.append(`[renderer] ${error.message}`)
-      void loadStartup().catch(() => {})
     }
   }
   runtimeProvider.on('status', (status) => {
@@ -714,7 +702,6 @@ export async function startElectronApp(metadata) {
       void showRuntime(status, runtimeReadyAt)
     } else if (['crashed', 'stopping', 'restarting'].includes(status.state)) {
       deepLinkRouter.setReady(false)
-      if (!mainWindow.webContents.getURL().startsWith('file:')) void loadStartup().catch(() => {})
     }
   })
 
@@ -724,7 +711,7 @@ export async function startElectronApp(metadata) {
   mainWindow.on('closed', () => { mainWindow = undefined })
   const holdRuntime = process.env.DSH_DESKTOP_HOLD_STARTUP === '1'
   const startup = beginDesktopStartup({
-    loadShell: loadStartup,
+    loadShell: async () => {},
     startRuntime: () => runtimeProvider.start(),
     holdRuntime,
   })
@@ -734,8 +721,6 @@ export async function startElectronApp(metadata) {
   if (!holdRuntime) {
     await logStore.append(`[startup] shell-ready=${Math.round(performance.now() - applicationStartedAt)}ms`)
   }
-  releaseStartupSurface()
-
   let quitInProgress = false
   const shutdownLifecycle = createDesktopShutdownLifecycle({
     prepareStop: async () => {},

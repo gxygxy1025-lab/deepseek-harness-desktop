@@ -65,4 +65,4 @@ DeepSeek Harness Desktop 官方正式版默认启用匿名产品统计，不在�
 
 ## 联系方式
 
-如对本政策或匿名产品统计有疑问，请通过 [GitHub Issues](https://github.com/ningbainb/deepseek-harness-desktop/issues) 联系项目维护者。
+如对本政策或匿名产品统计有疑问，请通过 [GitHub Issues](https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/issues) 联系项目维护者。

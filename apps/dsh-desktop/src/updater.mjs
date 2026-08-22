@@ -61,6 +61,14 @@ function asErrorMessage(error) {
   return error instanceof Error ? error.message : String(error || 'Unknown update error')
 }
 
+function userFacingUpdateError(error) {
+  const message = asErrorMessage(error)
+  if (/\b404\b/u.test(message) && /github\.com[\s\S]*releases(?:\.atom|\/latest)?/iu.test(message)) {
+    return 'GitHub 暂时没有可用的更新版本，请稍后重试，或前往 GitHub 下载页面。'
+  }
+  return message
+}
+
 export class DesktopUpdateController extends EventEmitter {
   constructor({
     updater,
@@ -249,7 +257,7 @@ export class DesktopUpdateController extends EventEmitter {
     this.manualCheck = false
     this.downloading = false
     this.#setProgress(-1)
-    const message = asErrorMessage(error)
+    const message = userFacingUpdateError(error)
     this.#appendDiagnostic(`[updater] ${message}`)
     this.#publish({ phase: 'error', message, visible: shouldShow })
     if (recoverInstall) {
