@@ -2,7 +2,6 @@ export const DESKTOP_API_VERSION = '1.2.0'
 
 export const DESKTOP_SURFACES = Object.freeze({
   MAIN: 'main',
-  COMMUNITY: 'community',
 })
 
 export const DESKTOP_ERROR_CODES = Object.freeze({
@@ -31,7 +30,6 @@ const CAPABILITIES_BY_SURFACE = Object.freeze({
     DESKTOP_CAPABILITIES.DEEP_LINKS_SUBSCRIBE,
     DESKTOP_CAPABILITIES.WORKSPACE_FILES_OPEN,
   ]),
-  [DESKTOP_SURFACES.COMMUNITY]: Object.freeze([]),
 })
 
 export class DesktopContractError extends Error {

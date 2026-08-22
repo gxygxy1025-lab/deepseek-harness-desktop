@@ -5,7 +5,6 @@ export function createApplicationMenuTemplate({
   app,
   shell,
   controller,
-  openCommunity,
   openFeedback,
   openLogs,
   openPrivacy = () => shell.openExternal(PRIVACY_POLICY_URL),

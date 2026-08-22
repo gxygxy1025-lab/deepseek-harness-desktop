@@ -27,7 +27,7 @@ const EVENT_POLICY = Object.freeze({
   }),
   surface_opened: Object.freeze({
     outcomes: new Set(['opened']),
-    details: new Set(['settings', 'community', 'updates', 'help']),
+    details: new Set(['settings', 'updates', 'help']),
     buckets: new Set(['none']),
   }),
   update_result: Object.freeze({

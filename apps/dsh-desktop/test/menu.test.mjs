@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  COMMUNITY_QQ_URL,
   GITHUB_DOWNLOADS_URL,
   GITHUB_FEEDBACK_URL,
   GITHUB_PROJECT_URL,
@@ -11,12 +10,11 @@ import {
 import { createApplicationMenuTemplate } from '../src/menu.mjs'
 import { installEditContextMenu } from '../src/menu.mjs'
 
-test('community and feedback destinations are fixed secure URLs', () => {
-  assert.equal(COMMUNITY_QQ_URL, 'https://qm.qq.com/q/vehlNjaeye')
+test('project and feedback destinations are fixed secure URLs', () => {
   assert.equal(GITHUB_DOWNLOADS_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/releases/latest')
   assert.equal(GITHUB_FEEDBACK_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/issues/new/choose')
   assert.equal(GITHUB_PROJECT_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop')
-  assert.equal(PRIVACY_POLICY_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/blob/release/core-1.0.0/PRIVACY.md')
+  assert.equal(PRIVACY_POLICY_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/blob/main/PRIVACY.md')
 })
 
 test('Help menu exposes feedback, project, and privacy actions without community entry', () => {
@@ -25,7 +23,6 @@ test('Help menu exposes feedback, project, and privacy actions without community
     app: { getVersion: () => '0.1.8' },
     shell: { openExternal: (url) => calls.push(['project', url]) },
     controller: { restart: () => calls.push(['restart']) },
-    openCommunity: () => calls.push(['community']),
     openFeedback: () => calls.push(['feedback']),
     openLogs: () => calls.push(['logs']),
     openPrivacy: () => calls.push(['privacy']),
@@ -54,7 +51,6 @@ test('App menu exposes all persisted close choices and makes background automati
     app: { getVersion: () => '2.7.0' },
     shell: { openExternal: () => {} },
     controller: { restart: () => {} },
-    openCommunity: () => {},
     openFeedback: () => {},
     openLogs: () => {},
     checkForUpdates: () => {},
@@ -79,7 +75,6 @@ test('Edit menu and native context menu expose paste without renderer clipboard 
     app: { getVersion: () => '2.4.0' },
     shell: { openExternal: () => {} },
     controller: { restart: () => {} },
-    openCommunity: () => {},
     openFeedback: () => {},
     openExtensions: () => {},
     openLogs: () => {},
@@ -132,7 +127,6 @@ test('menu actions report rejected operations without returning a rejected promi
     app: { getVersion: () => '0.1.8' },
     shell: { openExternal: async () => { throw new Error('project failed') } },
     controller: { restart: async () => { throw new Error('restart failed') } },
-    openCommunity: () => {},
     openFeedback: () => {},
     openExtensions: () => {},
     openLogs: () => {},

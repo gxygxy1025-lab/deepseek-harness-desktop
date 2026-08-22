@@ -9,7 +9,7 @@ import {
   discoverSkills,
   importSkill,
   parseSkillFrontmatter,
-} from '../src/extensions/skills.mjs'
+} from '../src/skills.mjs'
 
 const validSkill = (name, description = 'A useful skill') => `---\nname: ${name}\ndescription: ${description}\n---\n\n# Instructions\n`
 

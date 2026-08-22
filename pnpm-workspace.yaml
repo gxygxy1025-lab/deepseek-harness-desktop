@@ -2,11 +2,7 @@ packages:
   - 'apps/*'
 
 autoInstallPeers: false
-minimumReleaseAge: 1440
-minimumReleaseAgeExclude:
-  # The official DSH rc.2 release is coordinated across this namespace.
-  - '@deepseek-ai/*'
-
+minimumReleaseAge: 720
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': true
@@ -18,5 +14,6 @@ allowBuilds:
   protobufjs: true
 
 patchedDependencies:
+  '@deepseek-ai/dsh-subprocess-local@0.1.1-rc.2': patches/@deepseek-ai__dsh-subprocess-local@0.1.1-rc.2.patch
   '@deepseek-ai/dsh-web-app@0.1.1-rc.2': patches/@deepseek-ai__dsh-web-app@0.1.1-rc.2.patch
   '@deepseek-ai/dsh@0.1.1-rc.2': patches/@deepseek-ai__dsh@0.1.1-rc.2.patch

@@ -1,7 +1,5 @@
 # Notices
 
-This repository includes the dsh-web-ui plugin and skin collection originally copyrighted by zhu1090093659, plus the DeepSeek Harness Desktop shell and contributions from project contributors. See the per-package license files for package-specific notices.
+DeepSeek Harness Desktop is a community-maintained desktop wrapper. It is not an official DeepSeek release. DeepSeek names and marks belong to their respective owners.
 
-DeepSeek Harness and the `@deepseek-ai/dsh` packages are third-party dependencies distributed under their own terms. This community project is not an official DeepSeek release. DeepSeek names and marks belong to their respective owners.
-
-The Windows release also bundles Electron, pnpm, Chromium, Node.js, and transitive open-source dependencies. Their license files are included in the packaged dependency tree where supplied by the upstream packages.
+The application bundles official `@deepseek-ai/*` packages, Electron, Chromium, Node.js, and transitive open-source dependencies under their respective licenses. The repository itself is distributed under the BSD 3-Clause License.

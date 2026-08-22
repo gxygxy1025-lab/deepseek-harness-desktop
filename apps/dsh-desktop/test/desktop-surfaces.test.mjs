@@ -17,9 +17,9 @@ class FakeWebContents extends EventEmitter {
 test('surface registry binds identity and removes it at destruction', () => {
   const registry = new DesktopSurfaceRegistry()
   const contents = new FakeWebContents()
-  const dispose = registry.register(contents, 'community')
-  assert.equal(registry.surfaceOf(contents), 'community')
-  assert.equal(registry.assert(contents, ['main', 'community']), 'community')
+  const dispose = registry.register(contents, 'main')
+  assert.equal(registry.surfaceOf(contents), 'main')
+  assert.equal(registry.assert(contents, 'main'), 'main')
   contents.destroy()
   assert.equal(registry.surfaceOf(contents), undefined)
   dispose()
@@ -33,8 +33,5 @@ test('surface registry rejects unknown and disallowed renderer identities', () =
     () => registry.assert(new FakeWebContents(), 'main'),
     (error) => error.code === DESKTOP_ERROR_CODES.SURFACE_UNKNOWN,
   )
-  assert.throws(
-    () => registry.assert(main, 'community'),
-    (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
-  )
+  assert.throws(() => registry.register(new FakeWebContents(), 'secondary'), /invalid desktop surface/u)
 })

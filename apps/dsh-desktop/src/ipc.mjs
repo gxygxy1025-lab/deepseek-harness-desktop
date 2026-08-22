@@ -8,7 +8,7 @@ import { normalizeDesktopNotification } from './notifications.mjs'
 import { openWorkspaceFile } from './workspace-files.mjs'
 
 const ACTIONS = new Set(['retry', 'repair', 'open-logs', 'export-diagnostics', 'exit'])
-const HELP_ACTIONS = new Set(['community', 'downloads', 'feedback', 'project', 'privacy', 'updates'])
+const HELP_ACTIONS = new Set(['downloads', 'feedback', 'project', 'privacy', 'updates'])
 const WINDOW_CHROME_THEMES = new Set(['light', 'dark'])
 const UPDATE_PHASES = new Set(['idle', 'checking', 'downloading', 'installing', 'current', 'ready', 'unavailable', 'error'])
 
@@ -124,7 +124,6 @@ export function registerDesktopIpc({
   exitApp,
   handleHelpAction,
   setWindowChromeTheme,
-  claimStarPrompt,
   getUpdateController,
   getSettingsWindowBounds = async () => undefined,
   setSettingsWindowBounds = async () => undefined,
@@ -150,7 +149,6 @@ export function registerDesktopIpc({
     'desktop:action',
     'desktop:help-action',
     'desktop:window-chrome-theme',
-    'desktop:star-prompt-claim',
     'desktop:update-status',
     'desktop:update-check',
     'desktop:update-install',
@@ -176,7 +174,7 @@ export function registerDesktopIpc({
     })
   }
   const main = DESKTOP_SURFACES.MAIN
-  const registered = [main, DESKTOP_SURFACES.COMMUNITY]
+  const registered = [main]
 
   handle('desktop:contract', registered, (_event, surface) => desktopContractForSurface(
     surface,
@@ -219,7 +217,6 @@ export function registerDesktopIpc({
     await handleHelpAction(action)
     return true
   })
-  handle('desktop:star-prompt-claim', main, async () => await claimStarPrompt?.() === true)
   handle('desktop:update-status', main, () => publicUpdateStatus(getUpdateController?.()?.getStatus?.()))
   handle('desktop:update-check', main, () => {
     try { onUpdateCheck() } catch {}

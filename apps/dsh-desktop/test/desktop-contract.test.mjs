@@ -23,11 +23,7 @@ test('Desktop Contract v1 capability snapshots stay exact', () => {
       'workspace-files.open',
     ],
   })
-  assert.deepEqual(desktopContractForSurface('community'), {
-    apiVersion: '1.2.0',
-    surface: 'community',
-    capabilities: [],
-  })
+  assert.throws(() => desktopContractForSurface('community'), /not registered/u)
   assert.deepEqual(DESKTOP_ERROR_CODES, {
     SURFACE_UNKNOWN: 'desktop-surface-unknown',
     CAPABILITY_DENIED: 'desktop-capability-denied',

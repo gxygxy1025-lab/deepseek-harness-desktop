@@ -32,7 +32,7 @@ test('window chrome IPC accepts only supported themes', () => {
 })
 
 test('window chrome Help IPC accepts only fixed application actions', () => {
-  for (const action of ['community', 'downloads', 'feedback', 'project', 'privacy', 'updates']) {
+  for (const action of ['downloads', 'feedback', 'project', 'privacy', 'updates']) {
     assert.equal(normalizeHelpAction(action), action)
   }
   for (const action of ['open-url', 'https://example.com', '', 42]) {
@@ -77,15 +77,13 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
       return browserWindow
     },
     setWindowChromeTheme: () => {},
-    claimStarPrompt: async () => true,
     getUpdateController: () => undefined,
     onRecoveryAction: (action) => observed.push(['recovery', action]),
     onSettingsOpened: () => observed.push(['settings']),
     onUpdateCheck: () => observed.push(['updates']),
   })
 
-  assert.equal(await handlers.get('desktop:help-action')({ sender }, 'community'), true)
-  assert.equal(await handlers.get('desktop:star-prompt-claim')({ sender }), true)
+  assert.equal(await handlers.get('desktop:help-action')({ sender }, 'privacy'), true)
   await handlers.get('desktop:action')({ sender }, 'retry')
   assert.deepEqual(
     await handlers.get('desktop:action')({ sender }, 'export-diagnostics'),
@@ -96,13 +94,13 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
   assert.equal(handlers.has('desktop:background-status'), false)
   assert.equal(handlers.has('desktop:close-behavior-get'), false)
   assert.equal(handlers.has('desktop:close-behavior-set'), false)
-  assert.deepEqual(handled, ['community'])
+  assert.deepEqual(handled, ['privacy'])
   assert.deepEqual(exported, ['startup-diagnostics'])
   assert.deepEqual(observed, [['recovery', 'retry'], ['settings'], ['updates']])
   unregister()
 })
 
-test('desktop IPC rejects unregistered and wrong-surface senders with stable codes', async () => {
+test('desktop IPC rejects unregistered senders with stable codes', async () => {
   const handlers = new Map()
   const ipcMain = {
     handle: (channel, handler) => handlers.set(channel, handler),
@@ -112,9 +110,7 @@ test('desktop IPC rejects unregistered and wrong-surface senders with stable cod
   controller.status = { state: 'ready' }
   const surfaceRegistry = new DesktopSurfaceRegistry()
   const mainSender = {}
-  const communitySender = {}
   surfaceRegistry.register(mainSender, 'main')
-  surfaceRegistry.register(communitySender, 'community')
   const unregister = registerDesktopIpc({
     ipcMain,
     surfaceRegistry,
@@ -131,14 +127,6 @@ test('desktop IPC rejects unregistered and wrong-surface senders with stable cod
     getUpdateController: () => undefined,
   })
 
-  await assert.rejects(
-    handlers.get('desktop:update-install')({ sender: communitySender }),
-    (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
-  )
-  await assert.rejects(
-    handlers.get('desktop:action')({ sender: communitySender }, 'export-diagnostics'),
-    (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
-  )
   await assert.rejects(
     handlers.get('desktop:contract')({ sender: {} }),
     (error) => error.code === DESKTOP_ERROR_CODES.SURFACE_UNKNOWN,
@@ -160,9 +148,7 @@ test('workspace-file IPC is main-surface-only and delegates the native-open auth
   controller.status = { state: 'ready', url: 'http://127.0.0.1:43125/' }
   const surfaceRegistry = new DesktopSurfaceRegistry()
   const mainSender = {}
-  const communitySender = {}
   surfaceRegistry.register(mainSender, 'main')
-  surfaceRegistry.register(communitySender, 'community')
   const calls = []
   const shell = {
     openPath: async () => {
@@ -207,10 +193,6 @@ test('workspace-file IPC is main-surface-only and delegates the native-open auth
     assert.equal(calls[0].getRuntimeOrigin(), 'http://127.0.0.1:43125/')
     assert.equal(calls[0].getWorkspaceFileOpenToken(), 'a'.repeat(43))
 
-    await assert.rejects(
-      handlers.get('desktop:workspace-file-open')({ sender: communitySender }, request),
-      (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
-    )
     await assert.rejects(
       handlers.get('desktop:workspace-file-open')({ sender: {} }, request),
       (error) => error.code === DESKTOP_ERROR_CODES.SURFACE_UNKNOWN,

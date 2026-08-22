@@ -61,11 +61,6 @@ try {
   const page = await electronApp.firstWindow()
   page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
-  const starPrompt = page.locator('#dsh-desktop-star-prompt[data-open="true"]')
-  if (await starPrompt.isVisible()) {
-    await starPrompt.getByRole('button', { name: '先继续使用', exact: true }).click()
-    await starPrompt.waitFor({ state: 'hidden' })
-  }
   const continueButton = page.getByRole('button', { name: /^(?:继续|Continue)$/u })
   const introDialog = page.getByRole('dialog').filter({ has: continueButton })
   if (await introDialog.isVisible()) {

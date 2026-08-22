@@ -22,7 +22,7 @@ import { DeepLinkRouter, normalizeDeepLink } from './deep-links.mjs'
 import { BoundedLogStore } from './log-store.mjs'
 import { DESKTOP_SURFACES } from './desktop-contract.mjs'
 import { DesktopSurfaceRegistry } from './desktop-surfaces.mjs'
-import { defaultSkillRoots, discoverSkills } from './extensions/skills.mjs'
+import { defaultSkillRoots, discoverSkills } from './skills.mjs'
 import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu, installEditContextMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
@@ -34,7 +34,6 @@ import { installRendererPermissions } from './renderer-permissions.mjs'
 import { installSettingsWindow } from './settings-window.mjs'
 import { exportStartupDiagnostics } from './startup-diagnostics.mjs'
 import { SettingsWindowStateStore } from './settings-window-state.mjs'
-import { installStarPromptSurface, StarPromptStore } from './star-prompt.mjs'
 import { ProductTelemetryClient } from './telemetry-client.mjs'
 import { resolveTelemetryEndpoint } from './telemetry-config.mjs'
 import { normalizeProductContext } from './telemetry-events.mjs'
@@ -46,16 +45,13 @@ import { parseUpdateMirrors, probeUpdateSource, UpdateDownloadRouter } from './u
 import { parseUpdateShutdownRequest, writeUpdateShutdownReceipt } from './update-shutdown-receipt.mjs'
 import { installUpdateSurface } from './update-surface.mjs'
 import { DesktopTrayLifecycle, restoreDesktopWindow } from './tray-lifecycle.mjs'
-import { getWindowChromeTheme, installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
+import { installWindowChrome, setWindowChromeTheme, windowChromeBrowserOptions } from './window-chrome.mjs'
 import { installConversationPolish } from './conversation-polish.mjs'
 import { installConversationSkills } from './conversation-skills.mjs'
 import { attachWindowStatePersistence, loadWindowState } from './window-state.mjs'
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
 const MAIN_PRELOAD_PATH = join(SOURCE_DIR, 'preload-main.cjs')
-const COMMUNITY_PATH = join(SOURCE_DIR, 'ui', 'community.html')
-
-export const SECONDARY_WINDOW_PARTITION = 'dsh-desktop-secondary'
 
 function runtimeHome() {
   return process.env.DSH_HOME || join(homedir(), '.dsh')
@@ -64,18 +60,6 @@ function runtimeHome() {
 function runtimeWorkspace(app) {
   if (!app.isPackaged) return join(SOURCE_DIR, '..', '..', '..')
   return homedir()
-}
-
-export function secondaryWindowWebPreferences({ preload } = {}) {
-  return {
-    ...(preload ? { preload } : {}),
-    partition: SECONDARY_WINDOW_PARTITION,
-    contextIsolation: true,
-    sandbox: true,
-    nodeIntegration: false,
-    webSecurity: true,
-    spellcheck: false,
-  }
 }
 
 export function requestsUpdateShutdown(commandLine = [], additionalData) {
@@ -296,7 +280,6 @@ export async function startElectronApp(metadata) {
   const userData = app.getPath('userData')
   const logsDirectory = join(userData, 'logs')
   const logStore = new BoundedLogStore({ directory: logsDirectory })
-  const starPromptStore = new StarPromptStore({ path: join(userData, 'star-prompt-state.json') })
   const closePreferencesStore = new DesktopClosePreferencesStore(join(userData, 'desktop-preferences.json'))
   let closeBehavior = (await closePreferencesStore.load()).closeBehavior
   let trayLifecycle
@@ -411,6 +394,7 @@ export async function startElectronApp(metadata) {
     webPreferences: {
       preload: MAIN_PRELOAD_PATH,
       contextIsolation: true,
+      // The official Windows Web Surface currently fails navigation in Electron's renderer sandbox.
       sandbox: process.platform !== 'win32',
       nodeIntegration: false,
       webSecurity: true,
@@ -438,16 +422,9 @@ export async function startElectronApp(metadata) {
     browserWindow: mainWindow,
     onError: (error) => void logStore.append(`[update-surface] ${error.message}`),
   })
-  const removeStarPromptSurface = installStarPromptSurface({
-    browserWindow: mainWindow,
-    forceVisible: process.env.DSH_DESKTOP_STAR_PROMPT_PREVIEW === '1',
-    onError: (error) => void logStore.append(`[star-prompt] ${error.message}`),
-  })
   if (state.maximized) mainWindow.maximize()
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
   let activeOrigin
-  let communityWindow
-  let communityWindowPromise
   let updateController
 
   installNavigationPolicy({
@@ -520,7 +497,6 @@ export async function startElectronApp(metadata) {
     }),
     exitApp: () => app.quit(),
     handleHelpAction: (action) => {
-      if (action === 'community') return createCommunityWindow()
       if (action === 'updates') {
         productMetrics.recordSurface('updates')
         return updateController?.check({ manual: true })
@@ -535,18 +511,7 @@ export async function startElectronApp(metadata) {
       const target = BrowserWindow.fromWebContents(sender)
       if (!target || target.isDestroyed()) return undefined
       const applied = setWindowChromeTheme(target, theme)
-      if (target === mainWindow) {
-        syncCommunityWindowTheme(applied)
-      }
       return applied
-    },
-    claimStarPrompt: async () => {
-      try {
-        return await starPromptStore.claim(desktopVersion)
-      } catch (error) {
-        await logStore.append(`[star-prompt] failed to persist display state: ${error instanceof Error ? error.message : String(error)}`)
-        return false
-      }
     },
     getUpdateController: () => updateController,
     getSettingsWindowBounds: () => settingsWindowStateStore.load(),
@@ -585,81 +550,6 @@ export async function startElectronApp(metadata) {
       }
     },
   })
-
-  const syncSecondaryWindowTheme = (window, theme) => {
-    if (!window || window.isDestroyed()) return
-    setWindowChromeTheme(window, theme)
-    const script = `document.documentElement.dataset.dshDesktopTheme = ${JSON.stringify(theme)}; document.documentElement.dataset.dshDesktopChromeTheme = ${JSON.stringify(theme)}`
-    void window.webContents.executeJavaScript(script).catch(() => {})
-  }
-  const syncCommunityWindowTheme = (theme) => syncSecondaryWindowTheme(communityWindow, theme)
-  const createCommunityWindow = () => {
-    productMetrics.recordSurface('community')
-    if (communityWindowPromise) return communityWindowPromise
-    if (communityWindow && !communityWindow.isDestroyed()) {
-      communityWindow.show()
-      communityWindow.focus()
-      return Promise.resolve(communityWindow)
-    }
-    let createdWindow
-    let operation
-    operation = (async () => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        throw new Error('main window closed before the community window could open')
-      }
-      const chromeTheme = getWindowChromeTheme(mainWindow)
-      createdWindow = new BrowserWindow({
-        width: 580,
-        height: 740,
-        minWidth: 500,
-        minHeight: 680,
-        show: false,
-        parent: mainWindow,
-        title: '加入社群',
-        icon: appIcon,
-        backgroundColor: chromeTheme === 'dark' ? '#0a141b' : '#f7f8fa',
-        ...windowChromeBrowserOptions(chromeTheme),
-        webPreferences: secondaryWindowWebPreferences(),
-      })
-      communityWindow = createdWindow
-      const unregisterCommunitySurface = surfaceRegistry.register(
-        createdWindow.webContents,
-        DESKTOP_SURFACES.COMMUNITY,
-      )
-      applyWindowIcon(createdWindow, appIcon)
-      const removeCommunityWindowChrome = installWindowChrome({
-        browserWindow: createdWindow,
-        iconDataUrl: windowChromeIconDataUrl,
-        onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
-      })
-      installNavigationPolicy({
-        webContents: createdWindow.webContents,
-        getRuntimeOrigin: () => undefined,
-        openExternal: (url) => shell.openExternal(url),
-        onError: (error) => logStore.append(`[navigation] ${error instanceof Error ? error.message : String(error)}`),
-      })
-      createdWindow.webContents.session.setPermissionCheckHandler(() => false)
-      createdWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-      createdWindow.once('ready-to-show', () => {
-        if (!createdWindow.isDestroyed()) createdWindow.show()
-      })
-      createdWindow.on('closed', () => {
-        unregisterCommunitySurface()
-        removeCommunityWindowChrome()
-        if (communityWindow === createdWindow) communityWindow = undefined
-      })
-      await createdWindow.loadFile(COMMUNITY_PATH, { query: { theme: chromeTheme } })
-      return createdWindow
-    })().catch((error) => {
-      if (createdWindow && !createdWindow.isDestroyed()) createdWindow.destroy()
-      if (communityWindow === createdWindow) communityWindow = undefined
-      throw error
-    }).finally(() => {
-      if (communityWindowPromise === operation) communityWindowPromise = undefined
-    })
-    communityWindowPromise = operation
-    return operation
-  }
 
   dispatchDeepLink = async (link) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
@@ -717,7 +607,6 @@ export async function startElectronApp(metadata) {
   })
   void startup.runtimePromise?.catch(() => {})
   await startup.shellPromise
-  if (process.env.DSH_DESKTOP_OPEN_COMMUNITY === '1') await createCommunityWindow()
   if (!holdRuntime) {
     await logStore.append(`[startup] shell-ready=${Math.round(performance.now() - applicationStartedAt)}ms`)
   }
@@ -737,7 +626,6 @@ export async function startElectronApp(metadata) {
         () => updateController?.off('status', publishUpdateStatus),
         removeUpdateSurface,
         removeSettingsWindow,
-        removeStarPromptSurface,
         removeConversationSkills,
         removeConversationPolish,
         removeEditContextMenu,
@@ -910,7 +798,6 @@ export async function startElectronApp(metadata) {
     app,
     shell,
     controller: runtimeProvider,
-    openCommunity: () => createCommunityWindow(),
     openFeedback: () => {
       productMetrics.recordSurface('help')
       return shell.openExternal(GITHUB_FEEDBACK_URL)

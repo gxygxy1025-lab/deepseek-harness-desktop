@@ -86,6 +86,7 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   const cleanup = await readFile(join(desktopRoot, 'build', 'cleanup-stale-processes.ps1'), 'utf8')
 
   assert.match(config, /include: build\/installer\.nsh/u)
+  assert.match(config, /electronLanguages:\s*\n\s*- en-US\s*\n\s*- zh-CN/u)
   assert.match(config, /from: build\/update-shutdown-v1[\s\S]*to: update-shutdown-v1/u)
   assert.match(config, /from: build\/update-shutdown-v2[\s\S]*to: update-shutdown-v2/u)
   assert.match(config, /from: build\/installer-upgrade-v3[\s\S]*to: installer-upgrade-v3/u)
@@ -97,6 +98,8 @@ test('NSIS preflight cleans only stale processes owned by the previous install',
   assert.match(include, /-InstallRegistryKey "\$\{INSTALL_REGISTRY_KEY\}"/u)
   assert.match(include, /-UninstallRegistryKey "\$\{UNINSTALL_REGISTRY_KEY\}"/u)
   assert.match(include, /-PrepareExistingUpgrade/u)
+  assert.match(include, /IfFileExists "\$INSTDIR\\DeepSeek Harness Desktop\.exe" cleanup_existing/u)
+  assert.match(include, /IfFileExists "\$INSTDIR\\resources\\app\.asar" cleanup_existing cleanup_done/u)
   assert.match(include, /!ifdef BUILD_UNINSTALLER[\s\S]*!else[\s\S]*-PrepareExistingUpgrade/u)
   assert.match(cleanup, /DeepSeek Harness Desktop\.exe/u)
   assert.match(cleanup, /Registry::\$hive\\\$InstallRegistryKey/u)

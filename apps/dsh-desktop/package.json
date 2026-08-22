@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "Desktop shell for the official DeepSeek Harness runtime",
   "author": "DeepSeek Harness Desktop contributors",
@@ -10,10 +10,7 @@
   "scripts": {
     "dev": "electron src/main.mjs",
     "capture:startup": "node scripts/capture-startup.mjs",
-    "capture:community": "node scripts/capture-startup.mjs --community",
     "capture:update": "node scripts/capture-startup.mjs --update",
-    "capture:star": "node scripts/capture-startup.mjs --star-prompt",
-    "capture:star:burst": "node scripts/capture-startup.mjs --star-burst",
     "measure:profile": "node scripts/measure-profile.mjs",
     "measure:packaged-startup": "node scripts/measure-packaged-startup.mjs",
     "test:settings-window:e2e": "node scripts/verify-settings-window.mjs",
@@ -21,7 +18,6 @@
     "test:directory-picker:e2e": "node scripts/verify-directory-picker.mjs",
     "test:runtime-provider:e2e": "node scripts/verify-runtime-provider.mjs",
     "test:update-shutdown:e2e": "node scripts/verify-update-shutdown.mjs",
-    "test:star-prompt:e2e": "node scripts/verify-star-prompt.mjs",
     "test": "node --test test/*.test.mjs",
     "pack:dir": "electron-builder --dir",
     "pack:verify": "node scripts/verify-package.mjs",

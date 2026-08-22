@@ -6,6 +6,9 @@ asar: true
 asarUnpack:
   - node_modules/**
 compression: normal
+electronLanguages:
+  - en-US
+  - zh-CN
 afterPack: scripts/after-pack.cjs
 
 extraResources:

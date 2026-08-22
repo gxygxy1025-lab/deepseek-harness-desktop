@@ -7,8 +7,6 @@ import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
 import { _electron as electron } from 'playwright'
 
-import { STAR_PROMPT_VERSION } from '../src/star-prompt.mjs'
-
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packagedExecutable = process.env.DSH_DESKTOP_E2E_EXECUTABLE
 const runtimeReadyTimeoutMs = packagedExecutable || process.env.CI ? 120_000 : 60_000
@@ -23,10 +21,6 @@ try {
   await writeFile(
     resolve(dshHome, 'settings.yaml'),
     "ui-onboarding:\n  welcomeNoticeVersion: '2026-08-13.1'\n",
-  )
-  await writeFile(
-    resolve(userData, 'star-prompt-state.json'),
-    `${JSON.stringify({ schemaVersion: 1, shownVersions: [STAR_PROMPT_VERSION] }, null, 2)}\n`,
   )
   electronApp = await electron.launch({
     executablePath: packagedExecutable || electronPath,

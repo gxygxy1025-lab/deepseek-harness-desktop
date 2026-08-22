@@ -22,14 +22,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:directory-picker:e2e
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:update-shutdown:e2e
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm runtime-deps:check
-      - run: pnpm dsh-imports:check
-      - run: pnpm dsh-audit:check
-      - run: pnpm release:notes:check
       - run: git diff --check

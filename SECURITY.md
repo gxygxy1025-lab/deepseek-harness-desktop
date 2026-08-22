@@ -14,9 +14,8 @@ Do not open a public issue for credentials exposure, command execution, navigati
 - Renderer processes use sandboxing and context isolation with Node integration disabled.
 - Navigation is limited to the active loopback origin; external HTTP links open in the system browser.
 - Browser permissions are denied by default and downloads require an explicit destination.
-- IPC exposes fixed operations with validated package names, skill identifiers, and recovery actions.
-- Plugin changes run through pnpm without a shell, are serialized, and roll back on validation failure.
+- IPC exposes fixed operations with validated skill identifiers and recovery actions.
 - Skill imports reject symbolic links, overwrite attempts, bundles above 50 MiB, and more than 2,000 entries.
 - Runtime logs are bounded, rotated, and sanitized for common credential patterns.
 
-Community plugins and skills run with the authority granted by DSH. Review third-party code before installation.
+Skills and any extensions installed directly through the official DSH interface run with the authority granted by DSH. Review third-party code before installation.

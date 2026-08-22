@@ -26,3 +26,14 @@ test('patched DSH web app browser launcher hides the Windows launcher window', a
   assert.match(source, /function spawnBrowserLauncher\(url\)/u)
   assert.match(source, /env: scrubbedParentEnv\(\),\s*windowsHide: process\.platform === "win32",/u)
 })
+
+test('patched DSH subprocess runtime hides every Windows command window', async () => {
+  const dshEntry = require.resolve('@deepseek-ai/dsh/lib/bin.js')
+  const dshRequire = createRequire(dshEntry)
+  const baseEntry = dshRequire.resolve('@deepseek-ai/dsh-base')
+  const baseRequire = createRequire(baseEntry)
+  const subprocessEntry = baseRequire.resolve('@deepseek-ai/dsh-subprocess-local')
+  const source = await readFile(subprocessEntry, 'utf8')
+
+  assert.match(source, /detached: platform !== "win32",\s*windowsHide: platform === "win32"/u)
+})
