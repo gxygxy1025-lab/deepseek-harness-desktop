@@ -27,16 +27,12 @@ import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu, installEditContextMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { DesktopNotificationService } from './notifications.mjs'
-import { ProductMetricsRecorder } from './product-metrics.mjs'
 import { ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
 import { persistRuntimePort, selectPreferredRuntimePort } from './runtime-port.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
 import { installSettingsWindow } from './settings-window.mjs'
 import { exportStartupDiagnostics } from './startup-diagnostics.mjs'
 import { SettingsWindowStateStore } from './settings-window-state.mjs'
-import { ProductTelemetryClient } from './telemetry-client.mjs'
-import { resolveTelemetryEndpoint } from './telemetry-config.mjs'
-import { normalizeProductContext } from './telemetry-events.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
 import { DshRuntimeProvider, RUNTIME_PROVIDER_ID } from './runtime-provider.mjs'
 import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
@@ -207,7 +203,6 @@ export async function startElectronApp(metadata) {
     protocol: metadata.protocol,
     dispatch: (link) => dispatchDeepLink(link),
   })
-  const launchDetail = desktopDeepLinkFrom(process.argv, metadata.protocol) ? 'deep-link' : 'normal'
   const enqueueCommandLineIngress = (commandLine) => {
     const deepLink = desktopDeepLinkFrom(commandLine, metadata.protocol)
     if (deepLink) deepLinkRouter.enqueue(deepLink)
@@ -258,25 +253,6 @@ export async function startElectronApp(metadata) {
     appVersion: app.getVersion(),
     manifestPath: join(SOURCE_DIR, '..', 'package.json'),
   })
-  const telemetryEndpoint = await resolveTelemetryEndpoint({
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    testEndpoint: process.env.NODE_ENV === 'test'
-      ? process.env.DSH_DESKTOP_TELEMETRY_TEST_ENDPOINT
-      : undefined,
-  })
-  const productTelemetry = new ProductTelemetryClient({
-    endpoint: telemetryEndpoint,
-    context: normalizeProductContext({
-      version: desktopVersion,
-      platform: process.platform,
-      osRelease: osRelease(),
-      locale: app.getLocale(),
-    }),
-  })
-  const productMetrics = new ProductMetricsRecorder({ client: productTelemetry })
-  productMetrics.recordLaunch(launchDetail)
-
   const userData = app.getPath('userData')
   const logsDirectory = join(userData, 'logs')
   const logStore = new BoundedLogStore({ directory: logsDirectory })
@@ -498,10 +474,8 @@ export async function startElectronApp(metadata) {
     exitApp: () => app.quit(),
     handleHelpAction: (action) => {
       if (action === 'updates') {
-        productMetrics.recordSurface('updates')
         return updateController?.check({ manual: true })
       }
-      productMetrics.recordSurface('help')
       if (action === 'downloads') return shell.openExternal(GITHUB_DOWNLOADS_URL)
       if (action === 'feedback') return shell.openExternal(GITHUB_FEEDBACK_URL)
       if (action === 'project') return shell.openExternal(GITHUB_PROJECT_URL)
@@ -516,9 +490,6 @@ export async function startElectronApp(metadata) {
     getUpdateController: () => updateController,
     getSettingsWindowBounds: () => settingsWindowStateStore.load(),
     setSettingsWindowBounds: (bounds) => settingsWindowStateStore.save(bounds),
-    onRecoveryAction: (action) => productMetrics.recordRecovery(action),
-    onSettingsOpened: () => productMetrics.recordSurface('settings'),
-    onUpdateCheck: () => productMetrics.recordSurface('updates'),
     notificationService,
     shell,
     getRuntimeOrigin: () => activeOrigin,
@@ -558,10 +529,68 @@ export async function startElectronApp(metadata) {
     mainWindow.show()
     mainWindow.focus()
   }
-  const startupSurfaceReady = Promise.resolve()
   let runtimeStartedAt
+  let runtimeFailurePromptPromise
+  let lastRuntimeFailureFingerprint
+  const showRuntimeFailure = (status) => {
+    if (!mainWindow || mainWindow.isDestroyed() || updateShutdownRequested) return
+    const fingerprint = `${status.state}:${status.error ?? 'unknown'}`
+    if (runtimeFailurePromptPromise || lastRuntimeFailureFingerprint === fingerprint) return
+    lastRuntimeFailureFingerprint = fingerprint
+    runtimeFailurePromptPromise = (async () => {
+      mainWindow.show()
+      mainWindow.focus()
+      const result = await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'DeepSeek Harness Desktop 启动失败',
+        message: '本地 Harness 环境没有正常启动。',
+        detail: `${status.error ?? '未知 Runtime 错误'}\n\n可以重试、修复 Desktop Profile、打开日志或导出脱敏诊断信息。`,
+        buttons: ['重试', '修复并重试', '打开日志', '导出诊断', '退出'],
+        defaultId: 0,
+        cancelId: 4,
+        noLink: true,
+      })
+      lastRuntimeFailureFingerprint = undefined
+      if (result.response === 0) {
+        await runtimeProvider.restart()
+      } else if (result.response === 1) {
+        await runtimeProvider.stop()
+        await ensureProfile()
+        await runtimeProvider.start()
+      } else if (result.response === 2) {
+        await shell.openPath(logsDirectory)
+      } else if (result.response === 3) {
+        await exportStartupDiagnostics({
+          dialog,
+          getWindow: () => mainWindow,
+          downloadsDirectory: app.getPath('downloads'),
+          application: {
+            productName: metadata.productName,
+            version: desktopVersion,
+            platform: process.platform,
+            arch: process.arch,
+            osRelease: osRelease(),
+            runtimeVersion,
+          },
+          controller: runtimeProvider,
+          logStore,
+          redactionRoots: [
+            { path: profile.profileDir, replacement: '<desktop-profile>' },
+            { path: userData, replacement: '<desktop-user-data>' },
+            { path: dshHome, replacement: '<dsh-home>' },
+            { path: projectRoot, replacement: '<workspace>' },
+          ],
+        })
+      } else {
+        app.quit()
+      }
+    })().catch((error) => {
+      void logStore.append(`[startup-recovery] ${error instanceof Error ? error.message : String(error)}`)
+    }).finally(() => {
+      runtimeFailurePromptPromise = undefined
+    })
+  }
   const showRuntime = async (status, runtimeReadyAt) => {
-    await startupSurfaceReady
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (runtimeProvider.status.state !== 'ready' || runtimeProvider.status.url !== status.url) return
     activeOrigin = new URL(status.url).origin
@@ -580,7 +609,6 @@ export async function startElectronApp(metadata) {
     }
   }
   runtimeProvider.on('status', (status) => {
-    productMetrics.observeRuntimeStatus(status)
     void trayLifecycle?.refresh()
     if (status.state === 'starting') runtimeStartedAt = performance.now()
     if (!mainWindow || mainWindow.isDestroyed()) return
@@ -592,6 +620,7 @@ export async function startElectronApp(metadata) {
       void showRuntime(status, runtimeReadyAt)
     } else if (['crashed', 'stopping', 'restarting'].includes(status.state)) {
       deepLinkRouter.setReady(false)
+      if (status.state === 'crashed') showRuntimeFailure(status)
     }
   })
 
@@ -619,8 +648,6 @@ export async function startElectronApp(metadata) {
     startRuntime: () => runtimeProvider.start(),
     log: (message) => logStore.append(`[shutdown] ${message}`),
     disposeResources: async () => {
-      productMetrics.recordSessionEnd()
-      await productTelemetry.shutdown()
       const disposers = [
         () => updateController?.dispose(),
         () => updateController?.off('status', publishUpdateStatus),
@@ -741,8 +768,6 @@ export async function startElectronApp(metadata) {
       closeBehaviorController?.beginExplicitQuit()
       quitInProgress = true
       await shutdownLifecycle.stop()
-      productMetrics.recordSessionEnd()
-      await productTelemetry.shutdown()
     },
     onInstallFailure: async () => {
       quitInProgress = false
@@ -777,7 +802,6 @@ export async function startElectronApp(metadata) {
   })
   synchronizeBackgroundMode()
   const publishUpdateStatus = (status) => {
-    productMetrics.observeUpdateStatus(status)
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('desktop:update-status', publicUpdateStatus(status))
     }
@@ -799,20 +823,16 @@ export async function startElectronApp(metadata) {
     shell,
     controller: runtimeProvider,
     openFeedback: () => {
-      productMetrics.recordSurface('help')
       return shell.openExternal(GITHUB_FEEDBACK_URL)
     },
     openProject: () => {
-      productMetrics.recordSurface('help')
       return shell.openExternal(GITHUB_PROJECT_URL)
     },
     openPrivacy: () => {
-      productMetrics.recordSurface('help')
       return shell.openExternal(PRIVACY_POLICY_URL)
     },
     openLogs,
     checkForUpdates: (options) => {
-      productMetrics.recordSurface('updates')
       return updateController.check(options)
     },
     getCloseBehavior,

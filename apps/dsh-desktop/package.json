@@ -9,8 +9,6 @@
   "license": "BSD-3-Clause",
   "scripts": {
     "dev": "electron src/main.mjs",
-    "capture:startup": "node scripts/capture-startup.mjs",
-    "capture:update": "node scripts/capture-startup.mjs --update",
     "measure:profile": "node scripts/measure-profile.mjs",
     "measure:packaged-startup": "node scripts/measure-packaged-startup.mjs",
     "test:settings-window:e2e": "node scripts/verify-settings-window.mjs",

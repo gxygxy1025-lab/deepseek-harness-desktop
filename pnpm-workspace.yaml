@@ -1,8 +1,10 @@
 packages:
-  - 'apps/*'
+  - 'apps/dsh-desktop'
 
 autoInstallPeers: false
 minimumReleaseAge: 720
+overrides:
+  ws: 8.21.3
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': true

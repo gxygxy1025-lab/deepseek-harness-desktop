@@ -14,8 +14,6 @@ afterPack: scripts/after-pack.cjs
 extraResources:
   - from: build/icon.png
     to: app-icon.png
-  - from: build/telemetry-config.json
-    to: telemetry-config.json
   - from: build/update-shutdown-v1
     to: update-shutdown-v1
   - from: build/update-shutdown-v2

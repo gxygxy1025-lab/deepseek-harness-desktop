@@ -11,7 +11,7 @@ Do not open a public issue for credentials exposure, command execution, navigati
 ## Desktop security model
 
 - The official DSH server binds to a random loopback-only HTTP port.
-- Renderer processes use sandboxing and context isolation with Node integration disabled.
+- Renderer processes use context isolation, disabled Node integration, and web security. The main Windows renderer currently runs without Electron's renderer sandbox because the official Web Surface fails loopback navigation with `sandbox: true`; this is a tracked compatibility limitation, not a security guarantee. The macOS/Linux renderer remains sandboxed.
 - Navigation is limited to the active loopback origin; external HTTP links open in the system browser.
 - Browser permissions are denied by default and downloads require an explicit destination.
 - IPC exposes fixed operations with validated skill identifiers and recovery actions.

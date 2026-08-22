@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -59,10 +59,29 @@ test('official runtime packages resolve from the installed DSH tree', () => {
   assert.match(resolveDshCliPath(), /[\\/]lib[\\/]bin\.js$/u)
 })
 
-test('profile bootstrap writes a clean core profile and removes extension links', async () => {
+test('profile bootstrap removes stale extension links but preserves real directories', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-core-profile-'))
   try {
-    const result = await ensureDesktopProfile({ dshHome: root })
+    const sourceRoot = join(root, 'sources')
+    const coreSource = join(sourceRoot, 'core')
+    const staleSource = join(sourceRoot, 'stale')
+    await mkdir(coreSource, { recursive: true })
+    await mkdir(staleSource, { recursive: true })
+    const profileModules = join(root, 'profiles', 'desktop', 'node_modules')
+    const stalePackage = join(profileModules, '@linxin666', 'dsh-web-ui-all')
+    const staleUnscopedPackage = join(profileModules, 'dshmarket')
+    const ordinaryDirectory = join(profileModules, '@tencent-connect', 'local-data')
+    await mkdir(dirname(ordinaryDirectory), { recursive: true })
+    await mkdir(ordinaryDirectory)
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+    await mkdir(dirname(stalePackage), { recursive: true })
+    await symlink(staleSource, stalePackage, linkType)
+    await symlink(staleSource, staleUnscopedPackage, linkType)
+
+    const result = await ensureDesktopProfile({
+      dshHome: root,
+      packageRoots: new Map([['@deepseek-ai/dsh', coreSource]]),
+    })
     const manifest = JSON.parse(await readFile(join(result.profileDir, 'package.json'), 'utf8'))
     const patch = await readFile(join(result.profileDir, 'cordis.patch.yml'), 'utf8')
     assert.deepEqual(manifest.dsh.profile.bundles, CORE_BUNDLES)
@@ -70,7 +89,10 @@ test('profile bootstrap writes a clean core profile and removes extension links'
       assert.equal(manifest.dependencies[packageName], undefined, packageName)
     }
     assert.doesNotMatch(patch, /im-qqbot|dsh-market/u)
-    await assert.rejects(access(join(result.profileDir, 'node_modules', '@linxin666')), /ENOENT/u)
+    await assert.rejects(access(stalePackage), /ENOENT/u)
+    await assert.rejects(access(staleUnscopedPackage), /ENOENT/u)
+    await assert.doesNotReject(access(ordinaryDirectory))
+    await assert.doesNotReject(access(join(result.profileDir, 'node_modules', '@deepseek-ai', 'dsh')))
   } finally {
     await rm(root, { recursive: true, force: true })
   }

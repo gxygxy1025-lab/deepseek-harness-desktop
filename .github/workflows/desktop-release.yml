@@ -16,41 +16,25 @@ jobs:
       - name: Preserve repository line endings
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
+      - name: Verify release commit is on main
+        shell: pwsh
+        run: |
+          git fetch origin main --depth=50
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            throw "Release commit $env:GITHUB_SHA is not contained in origin/main."
+          }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod
       - run: pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
       - run: pnpm verify
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
-      - name: Configure optional anonymous product metrics
-        shell: pwsh
-        env:
-          DSH_TELEMETRY_ENDPOINT: ${{ vars.DSH_TELEMETRY_ENDPOINT }}
-        run: |
-          $endpointText = [string]$env:DSH_TELEMETRY_ENDPOINT
-          if ([string]::IsNullOrWhiteSpace($endpointText)) {
-            Set-Content -LiteralPath 'apps/dsh-desktop/build/telemetry-config.json' -Value '{"endpoint":""}' -Encoding utf8NoBOM
-            Write-Output 'DSH_TELEMETRY_ENDPOINT is not configured; product metrics remain disabled.'
-            exit 0
-          }
-          try {
-            $endpoint = [System.Uri]::new($endpointText.Trim(), [System.UriKind]::Absolute)
-          } catch {
-            throw 'DSH_TELEMETRY_ENDPOINT must be an absolute HTTPS URL.'
-          }
-          if ($endpoint.Scheme -ne 'https' -or
-              [string]::IsNullOrWhiteSpace($endpoint.Host) -or
-              $endpoint.AbsolutePath -ne '/v1/events' -or
-              $endpoint.Query -ne '' -or
-              $endpoint.Fragment -ne '' -or
-              $endpoint.UserInfo -ne '') {
-            throw 'DSH_TELEMETRY_ENDPOINT must be a credential-free HTTPS URL ending exactly in /v1/events.'
-          }
-          $configuration = [ordered]@{ endpoint = $endpoint.AbsoluteUri } | ConvertTo-Json -Compress
-          Set-Content -LiteralPath 'apps/dsh-desktop/build/telemetry-config.json' -Value $configuration -Encoding utf8NoBOM
       - run: pnpm desktop:pack
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

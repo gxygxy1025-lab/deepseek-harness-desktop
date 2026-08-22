@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { cp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
@@ -166,6 +166,52 @@ async function ensurePackageLink(profileDir, packageName, sourceDir) {
   return true
 }
 
+async function removeStalePackageLinks(profileDir, packageRoots) {
+  const nodeModulesRoot = join(profileDir, 'node_modules')
+  const allowedPackages = new Set([...packageRoots.keys()])
+  let changed = false
+  let entries
+  try {
+    entries = await readdir(nodeModulesRoot, { withFileTypes: true })
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+
+  const removeIfStaleLink = async (packageName, target) => {
+    if (allowedPackages.has(packageName)) return
+    let metadata
+    try {
+      metadata = await lstat(target)
+    } catch (error) {
+      if (error?.code === 'ENOENT') return
+      throw error
+    }
+    if (!metadata.isSymbolicLink()) return
+    await rm(target, { force: true })
+    changed = true
+  }
+
+  for (const entry of entries) {
+    const target = join(nodeModulesRoot, entry.name)
+    if (!entry.name.startsWith('@') || !entry.isDirectory()) {
+      await removeIfStaleLink(entry.name, target)
+      continue
+    }
+    let scopedEntries
+    try {
+      scopedEntries = await readdir(target, { withFileTypes: true })
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue
+      throw error
+    }
+    for (const scopedEntry of scopedEntries) {
+      await removeIfStaleLink(`${entry.name}/${scopedEntry.name}`, join(target, scopedEntry.name))
+    }
+  }
+  return changed
+}
+
 export async function ensureDesktopProfile({ dshHome, packageRoots = resolveRuntimePackages(), profileName = 'desktop' } = {}) {
   if (typeof dshHome !== 'string' || dshHome.length === 0) throw new TypeError('dshHome must be a non-empty path')
   const profileDir = join(dshHome, 'profiles', profileName)
@@ -180,7 +226,9 @@ export async function ensureDesktopProfile({ dshHome, packageRoots = resolveRunt
   changed = await writeIfChanged(join(profileDir, 'cordis.yml'), ROOT_CONFIG) || changed
   changed = await writeIfChanged(join(profileDir, 'cordis.patch.yml'), DESKTOP_PATCH_CONFIG) || changed
   changed = await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n') || changed
-  for (const [packageName, sourceDir] of new Map(packageRoots)) changed = await ensurePackageLink(profileDir, packageName, sourceDir) || changed
+  const resolvedPackageRoots = new Map(packageRoots)
+  changed = await removeStalePackageLinks(profileDir, resolvedPackageRoots) || changed
+  for (const [packageName, sourceDir] of resolvedPackageRoots) changed = await ensurePackageLink(profileDir, packageName, sourceDir) || changed
   return { changed, manifest, profileDir }
 }
 
