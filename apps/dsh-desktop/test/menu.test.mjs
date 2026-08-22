@@ -13,10 +13,10 @@ import { installEditContextMenu } from '../src/menu.mjs'
 
 test('community and feedback destinations are fixed secure URLs', () => {
   assert.equal(COMMUNITY_QQ_URL, 'https://qm.qq.com/q/vehlNjaeye')
-  assert.equal(GITHUB_DOWNLOADS_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/releases/latest')
-  assert.equal(GITHUB_FEEDBACK_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/issues/new/choose')
-  assert.equal(GITHUB_PROJECT_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop')
-  assert.equal(PRIVACY_POLICY_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/blob/release/core-1.0.0/PRIVACY.md')
+  assert.equal(GITHUB_DOWNLOADS_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/releases/latest')
+  assert.equal(GITHUB_FEEDBACK_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/issues/new/choose')
+  assert.equal(GITHUB_PROJECT_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop')
+  assert.equal(PRIVACY_POLICY_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/blob/release/core-1.0.0/PRIVACY.md')
 })
 
 test('Help menu exposes community and project actions', () => {

@@ -52,7 +52,7 @@ nsis:
 publish:
   provider: github
   owner: gxygxy1025-lab
-  repo: -deepseek-harness-desktop
+  repo: deepseek-harness-desktop
 
 protocols:
   - name: DeepSeek Harness Desktop
