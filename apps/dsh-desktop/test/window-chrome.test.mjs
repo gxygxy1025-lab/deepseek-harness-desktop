@@ -58,7 +58,6 @@ test('main window chrome exposes accessible Help dropdown with fixed actions', (
   assert.match(script, /"showHelpMenu":true/)
   assert.match(script, /帮助 \/ Help/)
   for (const [label, action] of [
-    ['加入社群', 'community'],
     ['提交建议', 'feedback'],
     ['GitHub 项目', 'project'],
     ['隐私政策', 'privacy'],

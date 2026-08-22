@@ -274,7 +274,7 @@ export function createUpdateSurfaceScript() {
     progress.append(progressFill);
     const fallback = document.createElement('p');
     fallback.className = 'dsh-update-fallback';
-    fallback.textContent = '如果 GitHub 下载速度较慢，可以加入用户交流群。群内会同步提供最新版本安装包，可直接下载安装。';
+    fallback.textContent = '如果 GitHub 下载速度较慢，请稍后重试或前往 GitHub 下载页面。';
     fallback.hidden = true;
     const actions = document.createElement('div');
     actions.className = 'dsh-update-actions';
@@ -292,7 +292,6 @@ export function createUpdateSurfaceScript() {
       return item;
     };
     const github = button('前往 GitHub 下载', 'github');
-    const community = button('加入用户群', 'community');
     const later = button('稍后更新', 'later');
     const recheck = button('重新检查', 'check');
     const install = button('重启并安装', 'install', true);
@@ -329,11 +328,11 @@ export function createUpdateSurfaceScript() {
         title.textContent = '正在后台下载';
         status.textContent = '新版本正在静默下载，你可以继续当前工作。已完成 ' + Math.round(percent) + '%。'
           + (value.source ? ' 下载源：' + value.source + '。' : '');
-        actions.append(github, community, later);
+        actions.append(github, later);
       } else if (phase === 'ready') {
         title.textContent = '新版本已准备就绪';
         status.textContent = '更新已经下载完成。重启前会安全停止本地 Harness 运行时。';
-        actions.append(github, community, later, install);
+        actions.append(github, later, install);
       } else if (phase === 'installing') {
         title.textContent = '正在启动更新程序';
         status.textContent = '正在安全停止本地 Harness 运行时并启动安装程序，请稍候。';
@@ -348,7 +347,7 @@ export function createUpdateSurfaceScript() {
       } else if (phase === 'error') {
         title.textContent = '更新没有完成';
         status.textContent = value.message || '请检查网络连接后重试。';
-        actions.append(github, community, later, recheck);
+        actions.append(github, later, recheck);
       } else {
         title.textContent = '桌面版更新';
         status.textContent = '点击检查以获取最新桌面版本。';
@@ -363,7 +362,6 @@ export function createUpdateSurfaceScript() {
     mask.addEventListener('click', hide);
     later.addEventListener('click', hide);
     github.addEventListener('click', () => { void api.helpAction('downloads').catch(() => {}); });
-    community.addEventListener('click', () => { void api.helpAction('community').catch(() => {}); });
     recheck.addEventListener('click', () => { void api.checkForUpdates().catch(() => {}); });
     install.addEventListener('click', () => { install.disabled = true; void api.installUpdate().catch(() => {}).finally(() => { install.disabled = false; }); });
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !root.hidden) hide(); });

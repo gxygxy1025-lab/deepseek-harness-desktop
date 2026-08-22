@@ -294,7 +294,6 @@ export function createWindowChromeScript({ showHelpMenu = false, showToolsMenu =
         kind: 'help',
         label: '帮助 / Help',
         entries: [
-          { label: '加入社群', action: 'community' },
           { label: '提交建议', action: 'feedback' },
           { label: 'GitHub 项目', action: 'project' },
           { label: '隐私政策', action: 'privacy' },

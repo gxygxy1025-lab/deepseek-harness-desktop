@@ -19,7 +19,7 @@ test('community and feedback destinations are fixed secure URLs', () => {
   assert.equal(PRIVACY_POLICY_URL, 'https://github.com/gxygxy1025-lab/deepseek-harness-desktop/blob/release/core-1.0.0/PRIVACY.md')
 })
 
-test('Help menu exposes community and project actions', () => {
+test('Help menu exposes feedback, project, and privacy actions without community entry', () => {
   const calls = []
   const template = createApplicationMenuTemplate({
     app: { getVersion: () => '0.1.8' },
@@ -33,17 +33,15 @@ test('Help menu exposes community and project actions', () => {
     checkForUpdates: (options) => calls.push(['updates', options]),
   })
   const help = template.find((entry) => entry.label === '帮助 / Help')
-  const community = help.submenu.find((entry) => entry.label === '加入社群 / Join QQ Group')
   const feedback = help.submenu.find((entry) => entry.label === '提建议 / Suggest an Idea')
   const project = help.submenu.find((entry) => entry.label === 'GitHub 项目')
   const privacy = help.submenu.find((entry) => entry.label === '隐私政策 / Privacy')
 
-  community.click()
+  assert.equal(help.submenu.some((entry) => entry.label === '加入社群 / Join QQ Group'), false)
   feedback.click()
   project.click()
   privacy.click()
   assert.deepEqual(calls, [
-    ['community'],
     ['feedback'],
     ['project', GITHUB_PROJECT_URL],
     ['privacy'],
