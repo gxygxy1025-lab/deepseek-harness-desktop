@@ -18,6 +18,7 @@ $shutdownReceiptMarkerValue = 'dsh-desktop-update-shutdown-receipt=2'
 $gracefulShutdownTimeoutMs = 7000
 $receiptShutdownTimeoutMs = 15000
 $receiptProcessExitTimeoutMs = 5000
+$preflightRetryAttempts = 50
 $forceAttempts = 12
 $retryDelayMs = 400
 $script:receiptProtocolFailed = $false
@@ -564,7 +565,9 @@ namespace DshInstaller
 
   function Complete-Preflight {
     $blockers = @()
-    for ($attempt = 0; $attempt -lt 10; $attempt += 1) {
+    # Windows can release an Electron executable lock shortly after the main
+    # process exits and after its helper processes have been reaped.
+    for ($attempt = 0; $attempt -lt $preflightRetryAttempts; $attempt += 1) {
       $blockers = @(Get-ReplacementFileBlockers)
       if ($blockers.Count -eq 0) {
         if ($PrepareExistingUpgrade) {
