@@ -1,0 +1,14 @@
+diff --git a/lib/plugin-9h8shc4d.js b/lib/plugin-9h8shc4d.js
+index 1d7b74d19fd0fc4d3d577b2254d5fabf6349eabc..6accd94d0a4a0db3a0820d54461d7c667aea4faa 100644
+--- a/lib/plugin-9h8shc4d.js
++++ b/lib/plugin-9h8shc4d.js
+@@ -108,7 +108,8 @@ function runPlugin(profile, args) {
+ 	const result = spawnSync("pnpm", args.map((argument) => anchorPathSpec(argument, process.cwd())), {
+ 		cwd: dir,
+ 		stdio: "inherit",
+-		shell: process.platform === "win32"
++		shell: process.platform === "win32",
++		windowsHide: process.platform === "win32"
+ 	});
+ 	if (result.error !== void 0) {
+ 		if (result.error.code === "ENOENT") {

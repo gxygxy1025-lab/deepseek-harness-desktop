@@ -16,3 +16,6 @@ allowBuilds:
   koffi: true
   node-pty: true
   protobufjs: true
+
+patchedDependencies:
+  '@deepseek-ai/dsh@0.1.1-rc.2': patches/@deepseek-ai__dsh@0.1.1-rc.2.patch

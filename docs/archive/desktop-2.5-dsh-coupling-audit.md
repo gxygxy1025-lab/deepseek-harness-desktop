@@ -1,10 +1,10 @@
 # Desktop 2.5 DSH coupling audit
 
-Authoritative Desktop version: 1.0.3.
+Authoritative Desktop version: 1.0.4.
 
 Stable DSH package version: 0.1.1-rc.2.
 
-Lockfile SHA-256: `ea7b85d328a9a06b28f65a863666af2319238f9da2209bcea5455b31b9ac9391`.
+Lockfile SHA-256: `8394847263b698a0a0a7c1432927131838b09d87c2f010a7cc6777bd14d07d67`.
 
 Capability discovery is compatibility evidence only. Renderer surface identity, channel allowlists, and argument validation remain the authorization boundary.
 
