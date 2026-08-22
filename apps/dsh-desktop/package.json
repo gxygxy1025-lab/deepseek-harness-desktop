@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Desktop shell for the official DeepSeek Harness runtime",
   "author": "DeepSeek Harness Desktop contributors",
