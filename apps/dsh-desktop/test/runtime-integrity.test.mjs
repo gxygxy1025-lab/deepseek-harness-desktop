@@ -32,12 +32,12 @@ test('runtime integrity includes the OpenTelemetry machine identifier reported m
 
 test('desktop directly declares the telemetry package required during bootstrap', async () => {
   const manifest = JSON.parse(await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
-  assert.equal(manifest.dependencies['@deepseek-ai/dsh-session-telemetry-otel'], '0.1.0-rc.7')
+  assert.equal(manifest.dependencies['@deepseek-ai/dsh-session-telemetry-otel'], '0.1.1-rc.2')
 })
 
 test('desktop directly declares the directory-picker host imported by the browse implementation', async () => {
   const manifest = JSON.parse(await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
-  assert.equal(manifest.dependencies['@deepseek-ai/dsh-host-directory-picker'], '0.1.0-rc.7')
+  assert.equal(manifest.dependencies['@deepseek-ai/dsh-host-directory-picker'], '0.1.1-rc.2')
 })
 
 test('runtime integrity reports an incomplete installation and recommends reinstalling', async () => {
@@ -68,7 +68,7 @@ test('package verification consumes the shared critical runtime file contract', 
   const source = await readFile(fileURLToPath(new URL('../scripts/verify-package.mjs', import.meta.url)), 'utf8')
   assert.match(source, /CRITICAL_RUNTIME_FILES/u)
   assert.match(source, /for \(const relativePath of CRITICAL_RUNTIME_FILES\)/u)
-  assert.match(source, /'@deepseek-ai\/dsh-host-directory-picker'/u)
-  assert.match(source, /packaged SSH client eagerly bundles xterm/u)
-  assert.match(source, /'@xterm', 'xterm', 'lib', 'xterm\.js'/u)
+  assert.match(source, /CORE_RUNTIME_PACKAGES/u)
+  assert.match(source, /removed extension package is still present/u)
+  assert.match(source, /'@linxin666'/u)
 })

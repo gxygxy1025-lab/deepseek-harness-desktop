@@ -13,9 +13,7 @@ export function createRetryableLazyLoader(load) {
     return pending
   }
 }
-
 const loadQrCode = createRetryableLazyLoader(() => import('qrcode'))
-const loadQqBotConnector = createRetryableLazyLoader(() => import('@tencent-connect/qqbot-connector'))
 
 export async function renderQrDataUrl(value, options) {
   const module = await loadQrCode()
@@ -24,9 +22,3 @@ export async function renderQrDataUrl(value, options) {
   return qrcode.toDataURL(value, options)
 }
 
-export async function startQqBotConnector(...args) {
-  const module = await loadQqBotConnector()
-  const start = module.startQrConnect ?? module.default?.startQrConnect
-  if (typeof start !== 'function') throw new TypeError('QQ Bot connector has no startQrConnect export')
-  return start(...args)
-}

@@ -61,11 +61,6 @@ try {
   const page = await electronApp.firstWindow()
   page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:/u, { timeout: runtimeReadyTimeoutMs })
-  await page.waitForSelector('style[data-plugin="@linxin666/dsh-client-ui-mode-switcher"]', {
-    state: 'attached',
-    timeout: runtimeReadyTimeoutMs,
-  })
-
   const starPrompt = page.locator('#dsh-desktop-star-prompt[data-open="true"]')
   if (await starPrompt.isVisible()) {
     await starPrompt.getByRole('button', { name: '先继续使用', exact: true }).click()

@@ -2,8 +2,6 @@ import { homedir, release as osRelease } from 'node:os'
 import { dirname, join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-
 import { applyWindowIcon, resolveAppIconPath } from './app-icon.mjs'
 import { ensureApiRetryPolicies } from './api-retry-policy.mjs'
 import { resolveDesktopVersion } from './app-version.mjs'
@@ -21,45 +19,17 @@ import {
   PRIVACY_POLICY_URL,
 } from './community-links.mjs'
 import { promptForDownloadDestination } from './download-destination.mjs'
-import { DeepLinkRouter, normalizeDeepLink, presetFileFrom } from './deep-links.mjs'
+import { DeepLinkRouter, normalizeDeepLink } from './deep-links.mjs'
 import { BoundedLogStore } from './log-store.mjs'
-import { registerExtensionIpc } from './extension-ipc.mjs'
-import { DESKTOP_SURFACES, desktopContractForSurface, DESKTOP_API_VERSION } from './desktop-contract.mjs'
+import { DESKTOP_SURFACES } from './desktop-contract.mjs'
 import { DesktopSurfaceRegistry } from './desktop-surfaces.mjs'
-import {
-  createHostCompatibilityProvider,
-  resolvePackageVersion,
-} from './extensions/plugin-compatibility.mjs'
-import { PluginManager, resolvePnpmCliPath } from './extensions/plugins.mjs'
 import { defaultSkillRoots, discoverSkills } from './extensions/skills.mjs'
-import {
-  QqBotBindingService,
-  QqBotCredentialStore,
-  setQqBotProfileEnabled,
-} from './extensions/qqbot.mjs'
 import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
-import { launchRequestsSafeMode } from './launch-safe-mode.mjs'
 import { installApplicationMenu, installEditContextMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { DesktopNotificationService } from './notifications.mjs'
-import { startQqBotConnector } from './optional-integrations.mjs'
-import {
-  DesktopPluginRecovery,
-  PluginRecoveryStore,
-  isPluginPackageInspectionFailure,
-  recoverProfileAfterPluginInspectionFailure,
-} from './plugin-recovery.mjs'
-import { DesktopProfileBaselineQuarantine } from './profile-baseline-quarantine.mjs'
 import { ProductMetricsRecorder } from './product-metrics.mjs'
-import {
-  BUILTIN_BUNDLES,
-  DESKTOP_PROFILE_BOOTSTRAP_ERROR,
-  ensureDesktopProfile,
-  resolveDshCliPath,
-  resolveRuntimePackages,
-} from './profile.mjs'
-import { WebProfileMigrationService } from './profile-migration.mjs'
-import { PresetService } from './presets/preset-service.mjs'
+import { ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
 import { persistRuntimePort, selectPreferredRuntimePort } from './runtime-port.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
 import { installSettingsWindow } from './settings-window.mjs'
@@ -84,9 +54,7 @@ import { attachWindowStatePersistence, loadWindowState } from './window-state.mj
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
 const MAIN_PRELOAD_PATH = join(SOURCE_DIR, 'preload-main.cjs')
-const EXTENSION_PRELOAD_PATH = join(SOURCE_DIR, 'preload-extension.cjs')
 const STARTUP_PATH = join(SOURCE_DIR, 'ui', 'startup.html')
-const EXTENSIONS_PATH = join(SOURCE_DIR, 'ui', 'extensions.html')
 const COMMUNITY_PATH = join(SOURCE_DIR, 'ui', 'community.html')
 
 export const SECONDARY_WINDOW_PARTITION = 'dsh-desktop-secondary'
@@ -127,112 +95,6 @@ export function desktopDeepLinkFrom(commandLine = [], protocol = 'dsh') {
     }
   }
   return undefined
-}
-
-export async function ensurePnpmCommandShim({ directory, executable, pnpmCli }) {
-  await mkdir(directory, { recursive: true })
-  const path = join(directory, process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm')
-  const content = process.platform === 'win32'
-    ? `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${executable}" "${pnpmCli}" %*\r\n`
-    : `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${executable}" "${pnpmCli}" "$@"\n`
-  const existing = await readFile(path, 'utf8').catch((error) => {
-    if (error?.code === 'ENOENT') return undefined
-    throw error
-  })
-  if (existing !== content) await writeFile(path, content, { encoding: 'utf8', mode: 0o755 })
-  return directory
-}
-
-/** Run independent filesystem and credential startup work in parallel. */
-export async function prepareDesktopRuntimeInputs({
-  prepareProfile,
-  migrateSettings,
-  loadCredentials,
-  onCredentialError = async () => {},
-}) {
-  const profilePromise = Promise.resolve().then(prepareProfile)
-  const settingsPromise = Promise.resolve().then(migrateSettings)
-  const credentialsPromise = Promise.resolve()
-    .then(loadCredentials)
-    .catch(async (error) => {
-      await onCredentialError(error)
-      return undefined
-    })
-  const [profile, , credentials] = await Promise.all([
-    profilePromise,
-    settingsPromise,
-    credentialsPromise,
-  ])
-  return { profile, credentials }
-}
-
-/**
- * Only profile bootstrap syntax/managed-section failures may be retried from a
- * clean Desktop baseline. Host, updater, permissions, and runtime failures
- * must retain their normal error path.
- */
-export function isRecoverableDesktopProfileBootstrapFailure(error) {
-  return error?.code === DESKTOP_PROFILE_BOOTSTRAP_ERROR
-}
-
-async function reconcileActiveDesktopBaseline(baselineQuarantine) {
-  if (
-    !baselineQuarantine
-    || typeof baselineQuarantine.getState !== 'function'
-    || typeof baselineQuarantine.hasUntrustedActivation !== 'function'
-    || typeof baselineQuarantine.quarantine !== 'function'
-  ) return false
-  const state = await baselineQuarantine.getState()
-  if (state?.available !== true || await baselineQuarantine.hasUntrustedActivation() !== true) return false
-  const result = await baselineQuarantine.quarantine()
-  if (result?.available !== true) throw new Error('private Desktop baseline recovery could not be reconciled')
-  return true
-}
-
-/**
- * Recover a broken user profile before a runtime controller exists. The
- * baseline archive is private; callers receive only the fact that recovery
- * happened and must not log source configuration bytes.
- */
-export async function prepareDesktopRuntimeInputsWithBaselineRecovery({
-  baselineQuarantine,
-  onBaselineRecovery = async () => {},
-  ...options
-} = {}) {
-  // An abrupt process exit can leave active.json durable before its raw
-  // profile/home loader inputs were reset. Reconcile that private archive
-  // before the very first ensureDesktopProfile()/compatibility pass; doing it
-  // later would let syntactically valid opaque loaders be merged and loaded.
-  const reconciledActiveBaseline = await reconcileActiveDesktopBaseline(baselineQuarantine)
-  try {
-    const prepared = await prepareDesktopRuntimeInputs(options)
-    if (reconciledActiveBaseline) {
-      try {
-        await onBaselineRecovery()
-      } catch {
-        // Progress diagnostics must not defeat a successfully reconciled
-        // startup baseline.
-      }
-    }
-    return Object.freeze({ ...prepared, baselineRecovered: reconciledActiveBaseline })
-  } catch (error) {
-    if (!isRecoverableDesktopProfileBootstrapFailure(error) || !baselineQuarantine) throw error
-    const result = await baselineQuarantine.quarantine()
-    if (result?.available !== true) throw error
-    try {
-      const prepared = await prepareDesktopRuntimeInputs(options)
-      try {
-        await onBaselineRecovery()
-      } catch {
-        // Progress diagnostics are never allowed to defeat a successful
-        // profile recovery before the runtime controller exists.
-      }
-      return Object.freeze({ ...prepared, baselineRecovered: result.changed === true })
-    } catch (retryError) {
-      if (result.changed === true) await baselineQuarantine.restore().catch(() => {})
-      throw retryError
-    }
-  }
 }
 
 /** Start the runtime without serializing it behind the local startup surface. */
@@ -351,7 +213,7 @@ export function createDesktopShutdownLifecycle({
 export async function startElectronApp(metadata) {
   const applicationStartedAt = performance.now()
   const electron = await import('electron')
-  const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, shell, Tray } = electron
+  const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, screen, shell, Tray } = electron
   if (process.env.DSH_DESKTOP_USER_DATA) app.setPath('userData', process.env.DSH_DESKTOP_USER_DATA)
   const initialUpdateShutdownRequest = parseUpdateShutdownRequest(process.argv)
   let updateShutdownRequest = initialUpdateShutdownRequest
@@ -359,8 +221,6 @@ export async function startElectronApp(metadata) {
   let requestUpdateShutdown
   let mainWindow
   let dispatchDeepLink
-  let dispatchPresetFile
-  const pendingPresetFiles = new Set()
   const deepLinkRouter = new DeepLinkRouter({
     protocol: metadata.protocol,
     dispatch: (link) => dispatchDeepLink(link),
@@ -369,10 +229,6 @@ export async function startElectronApp(metadata) {
   const enqueueCommandLineIngress = (commandLine) => {
     const deepLink = desktopDeepLinkFrom(commandLine, metadata.protocol)
     if (deepLink) deepLinkRouter.enqueue(deepLink)
-    const presetPath = presetFileFrom(commandLine)
-    if (!presetPath) return
-    if (dispatchPresetFile) void dispatchPresetFile(presetPath)
-    else if (pendingPresetFiles.size < 8) pendingPresetFiles.add(presetPath)
   }
   enqueueCommandLineIngress(process.argv)
   if (!app.requestSingleInstanceLock({
@@ -401,14 +257,6 @@ export async function startElectronApp(metadata) {
     const deepLink = desktopDeepLinkFrom([url], metadata.protocol)
     if (deepLink) deepLinkRouter.enqueue(deepLink)
   })
-  app.on('open-file', (event, path) => {
-    event.preventDefault()
-    const presetPath = presetFileFrom([path])
-    if (!presetPath) return
-    if (dispatchPresetFile) void dispatchPresetFile(presetPath)
-    else if (pendingPresetFiles.size < 8) pendingPresetFiles.add(presetPath)
-  })
-
   app.setName(metadata.productName)
   app.setAppUserModelId(metadata.appId)
   await app.whenReady()
@@ -457,7 +305,6 @@ export async function startElectronApp(metadata) {
   let closeBehaviorController
   let runtimeProvider
   let refreshApplicationMenu = () => {}
-  let pluginSafeModeActive = false
   const getCloseBehavior = () => closeBehavior
   const synchronizeBackgroundMode = () => {
     if (!trayLifecycle) return
@@ -480,16 +327,7 @@ export async function startElectronApp(metadata) {
     return closeBehavior
   }
   await logStore.append(`[startup] application-ready=${Math.round(applicationReadyAt - applicationStartedAt)}ms`)
-  const launchSafeModeRequested = await launchRequestsSafeMode()
-  if (launchSafeModeRequested) await logStore.append('[plugin-recovery] safe mode requested at launch')
   const dshHome = runtimeHome()
-  const desktopProfileDir = join(dshHome, 'profiles', 'desktop')
-  const pluginRecoveryStateDir = join(userData, 'plugin-recovery')
-  const baselineQuarantine = new DesktopProfileBaselineQuarantine({
-    dshHome,
-    profileDir: desktopProfileDir,
-    stateDir: pluginRecoveryStateDir,
-  })
   const packageResolutionStartedAt = performance.now()
   const runtimePackages = resolveRuntimePackages()
   const runtimeCriticalFiles = resolveRuntimeCriticalFiles()
@@ -497,11 +335,6 @@ export async function startElectronApp(metadata) {
     `[startup] package-resolution=${Math.round(performance.now() - packageResolutionStartedAt)}ms packages=${runtimePackages.size}`,
   )
   const profileStartedAt = performance.now()
-  let qqBotCredentials
-  const qqBotCredentialStore = new QqBotCredentialStore({
-    path: join(userData, 'qqbot-credentials.json'),
-    safeStorage,
-  })
   const ensureRetryPolicies = async () => {
     try {
       const result = await ensureApiRetryPolicies({ dshHome })
@@ -511,121 +344,20 @@ export async function startElectronApp(metadata) {
     }
   }
   const ensureProfile = async () => {
-    const [result] = await Promise.all([
-      ensureDesktopProfile({ dshHome, packageRoots: runtimePackages }),
-      ensureRetryPolicies(),
-    ])
-    await setQqBotProfileEnabled({ profileDir: result.profileDir, enabled: Boolean(qqBotCredentials) })
+    const result = await ensureDesktopProfile({ dshHome, packageRoots: runtimePackages })
+    await ensureRetryPolicies()
     return result
   }
-  const prepared = await prepareDesktopRuntimeInputsWithBaselineRecovery({
-    baselineQuarantine,
-    prepareProfile: () => ensureDesktopProfile({ dshHome, packageRoots: runtimePackages }),
-    migrateSettings: ensureRetryPolicies,
-    loadCredentials: () => qqBotCredentialStore.load(),
-    onCredentialError: (error) => logStore.append(
-      `[qqbot] failed to load credentials: ${error instanceof Error ? error.message : String(error)}`,
-    ),
-    onBaselineRecovery: () => logStore.append('[plugin-recovery] unreadable user profile configuration was isolated before runtime startup'),
-  })
-  const profile = prepared.profile
-  qqBotCredentials = prepared.credentials
-  await setQqBotProfileEnabled({ profileDir: profile.profileDir, enabled: Boolean(qqBotCredentials) })
+  const profile = await ensureProfile()
   await logStore.append(
     `[startup] profile-ready=${Math.round(performance.now() - profileStartedAt)}ms packages=${runtimePackages.size}`,
   )
-  const qqBotEnvironment = () => qqBotCredentials
-    ? { QQBOT_APPID: qqBotCredentials.appId, QQBOT_SECRET: qqBotCredentials.appSecret }
-    : { QQBOT_APPID: '', QQBOT_SECRET: '' }
   const desktopRuntimeEnvironment = () => ({
-    ...qqBotEnvironment(),
     DSH_DESKTOP_BACKGROUND_AUTOMATION: isBackgroundAutomationEnabled(closeBehavior) ? '1' : '0',
   })
   const projectRoot = runtimeWorkspace(app)
-  const runtimeBin = await ensurePnpmCommandShim({
-    directory: join(userData, 'runtime-bin'),
-    executable: process.execPath,
-    pnpmCli: resolvePnpmCliPath(),
-  })
-  const runtimeVersion = resolvePackageVersion('@deepseek-ai/dsh', {
-    profileDir: profile.profileDir,
-    anchors: [import.meta.url],
-  })
+  const runtimeVersion = profile.manifest?.dependencies?.['@deepseek-ai/dsh']
   if (runtimeVersion === undefined) throw new Error('the installed DSH runtime version is unavailable')
-  const desktopCapabilities = [...new Set(
-    Object.values(DESKTOP_SURFACES).flatMap((surface) => desktopContractForSurface(surface).capabilities),
-  )].toSorted()
-  const hostCompatibility = createHostCompatibilityProvider({
-    desktopVersion,
-    nodeVersion: process.versions.node,
-    runtimeVersion,
-    desktopApiVersion: DESKTOP_API_VERSION,
-    capabilities: desktopCapabilities,
-    surfaces: Object.values(DESKTOP_SURFACES),
-    runtimeEvidence: {
-      providerId: RUNTIME_PROVIDER_ID,
-      runtime: runtimeVersion,
-      desktop: desktopVersion,
-      matrixArtifact: 'runtime-support/supported-runtimes.json',
-    },
-    resolvePackageVersion: (name) => resolvePackageVersion(name, {
-      profileDir: profile.profileDir,
-      anchors: [import.meta.url],
-    }),
-  })
-  const pluginRecoveryStore = new PluginRecoveryStore({
-    profileDir: profile.profileDir,
-    stateDir: pluginRecoveryStateDir,
-    builtInBundles: BUILTIN_BUNDLES,
-  })
-  if (prepared.baselineRecovered) {
-    const incident = await pluginRecoveryStore.recordIncident({
-      identified: false,
-      reasonCode: 'untrusted-profile-bootstrap',
-      summary: '检测到无法读取的用户配置，已暂时切换到桌面基线以恢复启动',
-      technicalDetails: 'Desktop isolated unreadable user profile configuration before runtime startup',
-    })
-    await pluginRecoveryStore.setSafeMode(true)
-    await pluginRecoveryStore.resolveIncident(incident.id, 'baseline-quarantine-bootstrap')
-  }
-  const pluginManager = new PluginManager({
-    profileDir: profile.profileDir,
-    hostCompatibility,
-    beforeMutation: (event) => pluginRecoveryStore.captureSnapshot({
-      kind: 'before-mutation',
-      label: event?.name ? `${event.type}: ${event.name}` : event?.type ?? '插件变更前',
-    }),
-  })
-  const compatibilityStartedAt = performance.now()
-  let compatibilityReconciliation
-  try {
-    compatibilityReconciliation = await pluginManager.reconcileCompatibility()
-  } catch (error) {
-    if (!isPluginPackageInspectionFailure(error)) throw error
-    await logStore.append(`[plugin-recovery] community package inspection failed before runtime startup: ${error instanceof Error ? error.message : String(error)}`)
-    const recovered = await recoverProfileAfterPluginInspectionFailure({
-      pluginManager,
-      store: pluginRecoveryStore,
-      ensureProfile,
-      error,
-      log: (line) => logStore.append(line),
-    })
-    if (!recovered.recovered) throw error
-    compatibilityReconciliation = await pluginManager.reconcileCompatibility()
-  }
-  try {
-    await pluginManager.writeCompatibilityLock()
-  } catch (error) {
-    // This diagnostic is derived data. It must not turn a runnable Desktop
-    // profile into a permanent launch failure after recovery already succeeded.
-    await logStore.append(`[plugins] compatibility diagnostic refresh skipped: ${error instanceof Error ? error.message : String(error)}`)
-  }
-  await logStore.append(
-    `[startup] compatibility-ready=${Math.round(performance.now() - compatibilityStartedAt)}ms disabled=${compatibilityReconciliation.disabled.length}`,
-  )
-  for (const plugin of compatibilityReconciliation.disabled) {
-    await logStore.append(`[plugins] disabled incompatible community bundle: ${plugin.name}`)
-  }
 
   const runtimePortStatePath = join(profile.profileDir, '.dsh-desktop-runtime.json')
   const preferredRuntimePort = await selectPreferredRuntimePort(runtimePortStatePath).catch(async (error) => {
@@ -642,7 +374,6 @@ export async function startElectronApp(metadata) {
     logStore,
     autoRestart: false,
     startupTimeoutMs: DEFAULT_STARTUP_TIMEOUT_MS,
-    pathEntries: [runtimeBin],
     preferredPort: preferredRuntimePort,
     onReadyPort: (port) => persistRuntimePort(runtimePortStatePath, port),
     environmentProvider: desktopRuntimeEnvironment,
@@ -665,39 +396,6 @@ export async function startElectronApp(metadata) {
       source: 'package-and-lockfile',
     },
   })
-  const presetService = new PresetService({
-    dshHome,
-    desktopVersion,
-    runtimeVersion,
-    pluginManager,
-    runtimeProvider,
-  })
-  const migrationService = new WebProfileMigrationService({ dshHome, pluginManager })
-  const pluginRecovery = new DesktopPluginRecovery({
-    controller: runtimeProvider,
-    pluginManager,
-    store: pluginRecoveryStore,
-    ensureProfile,
-    builtInBundles: BUILTIN_BUNDLES,
-    log: (line) => logStore.append(line),
-    baselineQuarantine,
-  })
-  const initialRecoveryState = await pluginRecovery.initialize()
-  pluginSafeModeActive = initialRecoveryState.safeMode === true
-  const onPluginRecoveryStatus = (state) => {
-    pluginSafeModeActive = state?.safeMode === true
-    void trayLifecycle?.refresh()
-  }
-  pluginRecovery.on('status', onPluginRecoveryStatus)
-  const qqBotBinding = new QqBotBindingService({
-    initialCredentials: qqBotCredentials,
-    credentialStore: qqBotCredentialStore,
-    startQrConnect: startQqBotConnector,
-    setProfileEnabled: (enabled) => setQqBotProfileEnabled({ profileDir: profile.profileDir, enabled }),
-    setRuntimeCredentials: (credentials) => { qqBotCredentials = credentials },
-    restartRuntime: () => runtimeProvider.recover(),
-    onEventError: (error) => logStore.append(`[qqbot] event delivery failed: ${error instanceof Error ? error.message : String(error)}`),
-  })
 
   const statePath = join(userData, 'window-state.json')
   const settingsWindowStateStore = new SettingsWindowStateStore(join(userData, 'settings-window-state.json'))
@@ -715,7 +413,7 @@ export async function startElectronApp(metadata) {
     webPreferences: {
       preload: MAIN_PRELOAD_PATH,
       contextIsolation: true,
-      sandbox: true,
+      sandbox: process.platform !== 'win32',
       nodeIntegration: false,
       webSecurity: true,
       spellcheck: false,
@@ -728,7 +426,6 @@ export async function startElectronApp(metadata) {
     browserWindow: mainWindow,
     iconDataUrl: windowChromeIconDataUrl,
     showHelpMenu: true,
-    showToolsMenu: true,
     onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
   })
   const removeConversationPolish = installConversationPolish({
@@ -751,11 +448,9 @@ export async function startElectronApp(metadata) {
   if (state.maximized) mainWindow.maximize()
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
   let activeOrigin
-  let extensionWindow
   let communityWindow
   let communityWindowPromise
   let updateController
-  let safeModeNoticeShown = false
 
   installNavigationPolicy({
     webContents: mainWindow.webContents,
@@ -782,7 +477,7 @@ export async function startElectronApp(metadata) {
   })
 
   const notificationService = new DesktopNotificationService({
-    isForeground: () => Boolean(mainWindow?.isFocused?.() || extensionWindow?.isFocused?.()),
+    isForeground: () => Boolean(mainWindow?.isFocused?.()),
     routeDeepLink: async (link) => { deepLinkRouter.dispatchValidated(link) },
     showNative: ({ title, body, onClick }) => {
       if (!Notification?.isSupported?.()) return false
@@ -802,7 +497,6 @@ export async function startElectronApp(metadata) {
     metadata,
     version: desktopVersion,
     platform: process.platform,
-    pluginRecovery,
     ensureProfile,
     openLogs: () => shell.openPath(logsDirectory),
     exportDiagnostics: () => exportStartupDiagnostics({
@@ -818,8 +512,6 @@ export async function startElectronApp(metadata) {
         runtimeVersion,
       },
       controller: runtimeProvider,
-      pluginRecovery,
-      pluginManager,
       logStore,
       redactionRoots: [
         { path: profile.profileDir, replacement: '<desktop-profile>' },
@@ -841,14 +533,12 @@ export async function startElectronApp(metadata) {
       if (action === 'project') return shell.openExternal(GITHUB_PROJECT_URL)
       return shell.openExternal(PRIVACY_POLICY_URL)
     },
-    handleToolAction: () => createExtensionWindow(),
     setWindowChromeTheme: (sender, theme) => {
       const target = BrowserWindow.fromWebContents(sender)
       if (!target || target.isDestroyed()) return undefined
       const applied = setWindowChromeTheme(target, theme)
       if (target === mainWindow) {
         syncCommunityWindowTheme(applied)
-        syncExtensionWindowTheme(applied)
       }
       return applied
     },
@@ -898,54 +588,6 @@ export async function startElectronApp(metadata) {
     },
   })
 
-  const createExtensionWindow = async () => {
-    productMetrics.recordSurface('extensions')
-    if (extensionWindow && !extensionWindow.isDestroyed()) {
-      extensionWindow.show()
-      extensionWindow.focus()
-      return extensionWindow
-    }
-    const chromeTheme = mainWindow && !mainWindow.isDestroyed() ? getWindowChromeTheme(mainWindow) : 'dark'
-    extensionWindow = new BrowserWindow({
-      width: 1120,
-      height: 780,
-      minWidth: 760,
-      minHeight: 620,
-      show: false,
-      parent: mainWindow,
-      title: 'Extension Dock',
-      icon: appIcon,
-      backgroundColor: chromeTheme === 'dark' ? '#0a141b' : '#ffffff',
-      ...windowChromeBrowserOptions(chromeTheme),
-      webPreferences: secondaryWindowWebPreferences({ preload: EXTENSION_PRELOAD_PATH }),
-    })
-    const unregisterExtensionSurface = surfaceRegistry.register(
-      extensionWindow.webContents,
-      DESKTOP_SURFACES.EXTENSIONS,
-    )
-    applyWindowIcon(extensionWindow, appIcon)
-    const removeExtensionWindowChrome = installWindowChrome({
-      browserWindow: extensionWindow,
-      iconDataUrl: windowChromeIconDataUrl,
-      onError: (error) => void logStore.append(`[window-chrome] ${error.message}`),
-    })
-    installNavigationPolicy({
-      webContents: extensionWindow.webContents,
-      getRuntimeOrigin: () => undefined,
-      openExternal: (url) => shell.openExternal(url),
-      onError: (error) => logStore.append(`[navigation] ${error instanceof Error ? error.message : String(error)}`),
-    })
-    extensionWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-    extensionWindow.once('ready-to-show', () => extensionWindow?.show())
-    extensionWindow.on('closed', () => {
-      unregisterExtensionSurface()
-      removeExtensionWindowChrome()
-      extensionWindow = undefined
-    })
-    await extensionWindow.loadFile(EXTENSIONS_PATH, { query: { theme: chromeTheme } })
-    return extensionWindow
-  }
-
   const syncSecondaryWindowTheme = (window, theme) => {
     if (!window || window.isDestroyed()) return
     setWindowChromeTheme(window, theme)
@@ -953,8 +595,6 @@ export async function startElectronApp(metadata) {
     void window.webContents.executeJavaScript(script).catch(() => {})
   }
   const syncCommunityWindowTheme = (theme) => syncSecondaryWindowTheme(communityWindow, theme)
-  const syncExtensionWindowTheme = (theme) => syncSecondaryWindowTheme(extensionWindow, theme)
-
   const createCommunityWindow = () => {
     productMetrics.recordSurface('community')
     if (communityWindowPromise) return communityWindowPromise
@@ -1024,51 +664,13 @@ export async function startElectronApp(metadata) {
     return operation
   }
 
-  const unregisterExtensionIpc = registerExtensionIpc({
-    ipcMain,
-    surfaceRegistry,
-    dialog,
-    shell,
-    getWindow: () => extensionWindow ?? mainWindow,
-    pluginManager,
-    controller: runtimeProvider,
-    ensureProfile,
-    projectRoot,
-    dshHome,
-    agentsHome: process.env.DSH_AGENTS_HOME,
-    qqBotBinding,
-    pluginRecovery,
-    presetService,
-    migrationService,
-    notificationService,
-    trackProductOperation: (detail, operation) => productMetrics.trackExtensionOperation(detail, operation),
-  })
   dispatchDeepLink = async (link) => {
-    if (link.kind === 'extensions' || link.kind === 'preset-preview') {
-      const window = await createExtensionWindow()
-      window.webContents.send('extensions:navigate', {
-        tab: link.kind === 'preset-preview' ? 'presets' : 'plugins',
-      })
-      return
-    }
     if (!mainWindow || mainWindow.isDestroyed()) return
     mainWindow.webContents.send('desktop:deep-link', link)
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
   }
-  dispatchPresetFile = async (path) => {
-    try {
-      const plan = await presetService.previewFile(path)
-      const window = await createExtensionWindow()
-      window.webContents.send('extensions:navigate', { tab: 'presets' })
-      window.webContents.send('extensions:preset-preview', plan)
-    } catch (error) {
-      await logStore.append(`[preset] file preview rejected: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-  for (const path of pendingPresetFiles) void dispatchPresetFile(path)
-  pendingPresetFiles.clear()
   const loadStartup = async () => {
     activeOrigin = undefined
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1090,38 +692,6 @@ export async function startElectronApp(metadata) {
       const rendererLoadedAt = performance.now()
       void logStore.append(`[startup] renderer-loaded=${Math.round(rendererLoadedAt - runtimeReadyAt)}ms`)
       void logStore.append(`[startup] total-to-renderer=${Math.round(rendererLoadedAt - applicationStartedAt)}ms`)
-      try {
-        const recoveryState = await pluginRecovery.getState()
-        if (recoveryState.safeMode && !safeModeNoticeShown && process.env.DSH_DESKTOP_SMOKE_EXIT !== '1') {
-          safeModeNoticeShown = true
-          const baselineQuarantineActive = recoveryState.baselineQuarantineAvailable === true
-          const recoveryDetail = baselineQuarantineActive
-            ? '无法识别的用户加载配置已被暂时隔离。可在插件恢复中恢复原始配置。'
-            : `${recoveryState.disabledPlugins.length} plugin(s) are disabled. Review recovery details in Extension Dock.`
-          void notificationService.show({
-            category: 'plugin-recovery',
-            id: 'plugin-recovery:safe-mode:current',
-            title: 'DeepSeek Harness is in plugin safe mode',
-            body: recoveryDetail,
-            deepLink: 'dsh://extensions',
-          }).catch(() => {})
-          const notice = await dialog.showMessageBox(mainWindow, {
-            type: 'warning',
-            title: '插件安全模式',
-            message: '当前仅加载内置插件',
-            detail: baselineQuarantineActive
-              ? '无法识别的用户插件加载配置已被暂时隔离。你可以打开“插件恢复”恢复原始配置；聊天记录和个人设置不会受影响。'
-              : `有 ${recoveryState.disabledPlugins.length} 个插件处于停用状态。你可以打开“插件恢复”查看原因并一键恢复；聊天记录和个人设置不会受影响。`,
-            buttons: ['打开插件恢复', '稍后'],
-            defaultId: 0,
-            cancelId: 1,
-            noLink: true,
-          })
-          if (notice.response === 0) await createExtensionWindow()
-        }
-      } catch (error) {
-        void logStore.append(`[plugin-recovery] failed to show safe-mode notice: ${error instanceof Error ? error.message : String(error)}`)
-      }
       if (process.env.DSH_DESKTOP_SMOKE_EXIT === '1') {
         console.log(`desktop smoke ready: ${activeOrigin}`)
         app.quit()
@@ -1152,12 +722,6 @@ export async function startElectronApp(metadata) {
     if (!updateShutdownRequested) mainWindow.show()
   })
   mainWindow.on('closed', () => { mainWindow = undefined })
-  if (launchSafeModeRequested) {
-    await pluginRecovery.prepareSafeMode()
-    // The recovery service publishes asynchronously. Mark this synchronously
-    // so a close immediately after a safe-mode launch cannot hide the shell.
-    pluginSafeModeActive = true
-  }
   const holdRuntime = process.env.DSH_DESKTOP_HOLD_STARTUP === '1'
   const startup = beginDesktopStartup({
     loadShell: loadStartup,
@@ -1166,7 +730,6 @@ export async function startElectronApp(metadata) {
   })
   void startup.runtimePromise?.catch(() => {})
   await startup.shellPromise
-  if (process.env.DSH_DESKTOP_OPEN_EXTENSIONS === '1') await createExtensionWindow()
   if (process.env.DSH_DESKTOP_OPEN_COMMUNITY === '1') await createCommunityWindow()
   if (!holdRuntime) {
     await logStore.append(`[startup] shell-ready=${Math.round(performance.now() - applicationStartedAt)}ms`)
@@ -1175,10 +738,10 @@ export async function startElectronApp(metadata) {
 
   let quitInProgress = false
   const shutdownLifecycle = createDesktopShutdownLifecycle({
-    prepareStop: () => unregisterExtensionIpc.quiesce(),
+    prepareStop: async () => {},
     saveState: saveWindowState,
     stopRuntime: () => runtimeProvider.stop(),
-    resumeOperations: () => unregisterExtensionIpc.resume(),
+    resumeOperations: async () => {},
     startRuntime: () => runtimeProvider.start(),
     log: (message) => logStore.append(`[shutdown] ${message}`),
     disposeResources: async () => {
@@ -1196,11 +759,7 @@ export async function startElectronApp(metadata) {
         removeMainWindowChrome,
         unregisterMainSurface,
         unregisterIpc,
-        unregisterExtensionIpc,
         () => trayLifecycle?.dispose(),
-        () => pluginRecovery.off('status', onPluginRecoveryStatus),
-        () => pluginRecovery.dispose(),
-        () => qqBotBinding.dispose(),
       ]
       for (const dispose of disposers) {
         try {
@@ -1214,7 +773,6 @@ export async function startElectronApp(metadata) {
 
   const closeBypassReason = () => {
     if (quitInProgress || updateShutdownRequested) return 'quit-in-progress'
-    if (pluginSafeModeActive) return 'safe-mode'
     if (runtimeProvider.status?.state === 'crashed') return 'runtime-crashed'
     return undefined
   }
@@ -1328,7 +886,6 @@ export async function startElectronApp(metadata) {
     nativeImage,
     icon: appIcon,
     getWindow: () => mainWindow,
-    openExtensions: () => createExtensionWindow(),
     openTaskStatus: () => restoreDesktopWindow(mainWindow),
     checkForUpdates: (options) => updateController.check(options),
     requestQuit: () => {
@@ -1368,7 +925,6 @@ export async function startElectronApp(metadata) {
     app,
     shell,
     controller: runtimeProvider,
-    openExtensions: () => createExtensionWindow(),
     openCommunity: () => createCommunityWindow(),
     openFeedback: () => {
       productMetrics.recordSurface('help')

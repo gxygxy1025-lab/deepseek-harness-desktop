@@ -50,7 +50,6 @@ function createHarness({ Tray = FakeTray, icon = { isEmpty: () => false }, getTa
     nativeImage: { createEmpty: () => ({ isEmpty: () => false, fallback: true }) },
     icon,
     getWindow: () => window,
-    openExtensions: () => calls.push('extensions'),
     openTaskStatus: () => calls.push('task-status'),
     checkForUpdates: (options) => calls.push(['updates', options]),
     requestQuit: () => calls.push('quit'),
@@ -82,7 +81,6 @@ test('tray provides all background actions, restores on click/double-click, and 
     [
       '打开 / Open',
       '任务状态 / Task status: 运行中 1，排队 2 / Active 1, queued 2',
-      '扩展坞 / Extension Dock',
       '检查更新 / Check for Updates',
       '退出 / Quit',
     ],
@@ -91,15 +89,13 @@ test('tray provides all background actions, restores on click/double-click, and 
   tray.emit('double-click')
   template[1].click()
   template[3].click()
-  template[4].click()
-  template[6].click()
+  template[5].click()
   await tick()
   assert.equal(window.restored, 1)
   assert.equal(window.shown, 2)
   assert.equal(window.focused, 2)
   assert.deepEqual(calls, [
     'task-status',
-    'extensions',
     ['updates', { manual: true }],
     'quit',
   ])

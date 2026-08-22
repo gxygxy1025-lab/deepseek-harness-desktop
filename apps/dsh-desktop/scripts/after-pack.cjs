@@ -20,7 +20,6 @@ const REQUIRED_PACKAGED_PEERS = Object.freeze([
 const SOURCE_ROOTS = new Map([
   ['@anthropic-ai/sdk', ['src']],
   ['@mistralai/mistralai', ['packages', 'src']],
-  ['@xterm/xterm', ['src']],
   ['ajv', ['lib']],
   ['openai', ['src']],
   ['zod', ['src']],
@@ -35,14 +34,6 @@ const DEVELOPMENT_DIRECTORIES = new Set([
   'tests',
 ])
 
-const FIRST_PARTY_SOURCE_DIRECTORIES = new Set([
-  'artwork',
-  'docs',
-  'src',
-])
-
-const FIRST_PARTY_BUILD_FILES = /^(?:tsconfig(?:\.[^.]+)?\.json|tsdown\.config\.[cm]?[jt]s|vitest\.config\.[cm]?[jt]s)$/u
-
 function splitPackagePath(relativePath) {
   const parts = relativePath.split(/[\\/]/u)
   if (parts[0]?.startsWith('@')) {
@@ -54,20 +45,12 @@ function splitPackagePath(relativePath) {
 function classifyPrunableFile(relativePath) {
   const normalized = relativePath.replaceAll('\\', '/')
   const { packageName, packageParts } = splitPackagePath(normalized)
-  const fileName = packageParts.at(-1) ?? ''
-
-  if (/\.d\.(?:ts|mts|cts)$/u.test(fileName)) return 'type-declaration'
+  if (/\.d\.(?:ts|mts|cts)$/u.test(packageParts.at(-1) ?? '')) return 'type-declaration'
   if (packageParts.some((part) => DEVELOPMENT_DIRECTORIES.has(part))) return 'development-material'
 
   // Workspace packages arrive through pnpm links, so electron-builder sees
   // files that npm's package `files` allowlist would omit. Runtime entry
   // points live in lib/; preview images and manifests deliberately remain.
-  if (packageName.startsWith('@linxin666/')) {
-    if (FIRST_PARTY_SOURCE_DIRECTORIES.has(packageParts[0])) return 'first-party-source'
-    if (fileName.endsWith('.map')) return 'source-map'
-    if (FIRST_PARTY_BUILD_FILES.test(fileName)) return 'development-material'
-  }
-
   const sourceRoots = SOURCE_ROOTS.get(packageName) ?? []
   if (sourceRoots.includes(packageParts[0])) return 'published-source'
 
@@ -75,12 +58,6 @@ function classifyPrunableFile(relativePath) {
     const packagePath = packageParts.join('/')
     if (/^prebuilds\/(?:darwin-|win32-arm64)/u.test(packagePath)) return 'foreign-native-binary'
     if (/^third_party\/conpty\/[^/]+\/win10-arm64\//u.test(packagePath)) return 'foreign-native-binary'
-  }
-
-  if (packageName === 'pnpm') {
-    const packagePath = packageParts.join('/')
-    if (packageParts[0] === 'artifacts') return 'duplicate-runtime-artifact'
-    if (packagePath === 'dist/vendor/fastlist-0.3.0-x86.exe') return 'foreign-native-binary'
   }
 
   return undefined

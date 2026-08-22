@@ -7,9 +7,8 @@ import {
 import { normalizeDesktopNotification } from './notifications.mjs'
 import { openWorkspaceFile } from './workspace-files.mjs'
 
-const ACTIONS = new Set(['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'export-diagnostics', 'exit'])
+const ACTIONS = new Set(['retry', 'repair', 'open-logs', 'export-diagnostics', 'exit'])
 const HELP_ACTIONS = new Set(['community', 'downloads', 'feedback', 'project', 'privacy', 'updates'])
-const TOOL_ACTIONS = new Set(['extensions'])
 const WINDOW_CHROME_THEMES = new Set(['light', 'dark'])
 const UPDATE_PHASES = new Set(['idle', 'checking', 'downloading', 'installing', 'current', 'ready', 'unavailable', 'error'])
 
@@ -34,12 +33,6 @@ export function normalizeHelpAction(value) {
   return value
 }
 
-export function normalizeToolAction(value) {
-  if (typeof value !== 'string' || !TOOL_ACTIONS.has(value)) {
-    throw new TypeError(`invalid Tools action: ${JSON.stringify(value)}`)
-  }
-  return value
-}
 
 export function normalizeNotification(value) {
   return normalizeDesktopNotification(value)
@@ -125,13 +118,11 @@ export function registerDesktopIpc({
   metadata,
   version,
   platform,
-  pluginRecovery,
   ensureProfile,
   openLogs,
   exportDiagnostics = async () => { throw new Error('diagnostic export is unavailable') },
   exitApp,
   handleHelpAction,
-  handleToolAction,
   setWindowChromeTheme,
   claimStarPrompt,
   getUpdateController,
@@ -158,7 +149,6 @@ export function registerDesktopIpc({
     'desktop:status',
     'desktop:action',
     'desktop:help-action',
-    'desktop:tool-action',
     'desktop:window-chrome-theme',
     'desktop:star-prompt-claim',
     'desktop:update-status',
@@ -186,14 +176,13 @@ export function registerDesktopIpc({
     })
   }
   const main = DESKTOP_SURFACES.MAIN
-  const extensions = DESKTOP_SURFACES.EXTENSIONS
-  const registered = [main, extensions, DESKTOP_SURFACES.COMMUNITY]
+  const registered = [main, DESKTOP_SURFACES.COMMUNITY]
 
   handle('desktop:contract', registered, (_event, surface) => desktopContractForSurface(
     surface,
     typeof runtimeProvider?.probe === 'function' ? { runtimeProvider } : undefined,
   ))
-  handle('desktop:info', [main, extensions], () => ({
+  handle('desktop:info', main, () => ({
     appId: metadata.appId,
     productName: metadata.productName,
     version,
@@ -202,12 +191,12 @@ export function registerDesktopIpc({
   const getPublicStatus = async (status = controller.status) => {
     let background
     try { background = getBackgroundStatus() } catch {}
-    return publicRuntimeStatus(status, await pluginRecovery?.getState?.(), background)
+    return publicRuntimeStatus(status, undefined, background)
   }
-  handle('desktop:status', [main, extensions], () => getPublicStatus())
+  handle('desktop:status', main, () => getPublicStatus())
   handle('desktop:action', main, async (_event, _surface, rawAction) => {
     const action = normalizeDesktopAction(rawAction)
-    if (['retry', 'repair', 'disable-plugin', 'safe-mode'].includes(action)) {
+    if (['retry', 'repair'].includes(action)) {
       try { onRecoveryAction(action) } catch {}
     }
     if (action === 'retry') return controller.restart()
@@ -216,25 +205,18 @@ export function registerDesktopIpc({
       await ensureProfile()
       return controller.start()
     }
-    if (action === 'disable-plugin') return pluginRecovery?.disableCurrentAndRestart?.()
-    if (action === 'safe-mode') return pluginRecovery?.enterSafeModeAndRestart?.()
     if (action === 'open-logs') return openLogs()
     if (action === 'export-diagnostics') return exportDiagnostics()
     exitApp()
     return undefined
   })
-  handle('desktop:window-chrome-theme', [main, extensions], (event, _surface, rawTheme) => {
+  handle('desktop:window-chrome-theme', main, (event, _surface, rawTheme) => {
     const theme = normalizeWindowChromeTheme(rawTheme)
     return setWindowChromeTheme?.(event.sender, theme)
   })
   handle('desktop:help-action', main, async (_event, _surface, rawAction) => {
     const action = normalizeHelpAction(rawAction)
     await handleHelpAction(action)
-    return true
-  })
-  handle('desktop:tool-action', main, async (_event, _surface, rawAction) => {
-    const action = normalizeToolAction(rawAction)
-    await handleToolAction(action)
     return true
   })
   handle('desktop:star-prompt-claim', main, async () => await claimStarPrompt?.() === true)
@@ -251,7 +233,7 @@ export function registerDesktopIpc({
     return true
   })
   handle('desktop:skills-list', main, () => listSkills())
-  handle('desktop:notification-show', [main, extensions], (_event, _surface, value) => {
+  handle('desktop:notification-show', main, (_event, _surface, value) => {
     if (typeof notificationService?.show === 'function') return notificationService.show(value)
     return showNotification(normalizeNotification(value))
   })
@@ -269,10 +251,8 @@ export function registerDesktopIpc({
   }
   const publishStatusSafely = (status) => { void publishStatus(status).catch(() => {}) }
   controller.on('status', publishStatusSafely)
-  pluginRecovery?.on?.('status', publishStatusSafely)
   return () => {
     controller.off('status', publishStatusSafely)
-    pluginRecovery?.off?.('status', publishStatusSafely)
     for (const channel of channels) ipcMain.removeHandler(channel)
   }
 }

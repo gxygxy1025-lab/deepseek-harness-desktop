@@ -43,15 +43,8 @@
           <p class="diagnostic-export-status" id="diagnostic-export-status" role="status" aria-live="polite" hidden></p>
         </div>
 
-        <section class="recovery-summary" id="recovery-summary" hidden>
-          <h2 id="recovery-title">检测到插件导致启动失败</h2>
-          <p id="recovery-reason"></p>
-          <p class="data-safety">停用插件不会删除聊天记录、模型设置、账号信息和个人配置。</p>
-        </section>
         <pre id="error-log" hidden></pre>
         <div class="actions" id="actions" hidden>
-          <button type="button" id="disable-plugin" data-action="disable-plugin" hidden>一键停用并重启</button>
-          <button type="button" id="safe-mode" data-action="safe-mode">进入安全模式</button>
           <button type="button" id="retry" data-action="retry">重新尝试</button>
           <button type="button" id="repair" data-action="repair">修复 Profile</button>
           <button type="button" class="quiet" id="technical-details">查看技术详情</button>

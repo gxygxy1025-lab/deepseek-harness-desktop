@@ -39,7 +39,7 @@ test('startup diagnostic redaction removes credentials and account paths from te
   assert.match(value.nested.path, /<dsh-home>/u)
 })
 
-test('startup diagnostic package combines runtime, startup log, recovery, and plugin inventory without raw private data', async () => {
+test('startup diagnostic package combines runtime and startup log without raw private data', async () => {
   const diagnostics = await collectStartupDiagnostics({
     application: {
       productName: 'DeepSeek Harness Desktop',
@@ -55,26 +55,6 @@ test('startup diagnostic package combines runtime, startup log, recovery, and pl
         url: 'http://127.0.0.1:43125/',
       },
     },
-    pluginRecovery: {
-      getDiagnostics: async () => ({
-        recovery: { safeMode: false },
-        profile: {
-          dependencies: {
-            '@community/broken': `file:${aliceDshHome}\\plugins\\broken`,
-          },
-          enabledBundles: ['@community/broken'],
-        },
-      }),
-    },
-    pluginManager: {
-      inventory: async () => [{
-        name: '@community/broken',
-        requested: `file:${aliceDshHome}\\plugins\\broken`,
-        version: '1.0.0',
-        enabled: true,
-        compatibility: { status: 'unknown', token: 'plugin-token' },
-      }],
-    },
     logStore: {
       tail: async () => `runtime line Authorization: Bearer log-secret ${aliceDshHome}\\logs\\runtime.log`,
     },
@@ -86,24 +66,11 @@ test('startup diagnostic package combines runtime, startup log, recovery, and pl
   assert.equal(diagnostics.generatedAt, '2026-08-20T01:02:03.000Z')
   assert.equal(diagnostics.runtime.state, 'starting')
   assert.equal(diagnostics.runtime.restartAttempt, 2)
-  assert.equal(diagnostics.plugins[0].name, '@community/broken')
+  assert.equal(diagnostics.plugins, undefined)
   assert.match(diagnostics.startup.recentRuntimeLog, /Authorization: Bearer \[redacted\]/u)
   const serialized = JSON.stringify(diagnostics)
   assert.doesNotMatch(serialized, /openai-secret|plugin-token|log-secret|Alice|43125/u)
   assert.match(serialized, /<dsh-home>/u)
-})
-
-test('a stalled recovery or inventory collector is recorded instead of blocking startup diagnostic export', async () => {
-  const diagnostics = await collectStartupDiagnostics({
-    controller: { status: { state: 'starting' } },
-    pluginRecovery: { getDiagnostics: async () => await new Promise(() => {}) },
-    pluginManager: { inventory: async () => [{ name: '@community/available' }] },
-    logStore: { tail: async () => '[startup] shell-ready=10ms' },
-    collectionTimeoutMs: 5,
-  })
-  assert.equal(diagnostics.runtime.state, 'starting')
-  assert.equal(diagnostics.plugins[0].name, '@community/available')
-  assert.ok(diagnostics.collectionIssues.some((item) => item.source === 'plugin-recovery' && /timed out/u.test(item.message)))
 })
 
 test('export asks for a user destination and writes an atomic shareable package without exposing its path to the renderer', async () => {

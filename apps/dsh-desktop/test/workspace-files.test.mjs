@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_HEADER } from '@linxin666/dsh-desktop-compat/workspace-file-open-policy'
+import { DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_HEADER } from '../src/workspace-file-open-policy.mjs'
 import {
   isSafeWorkspaceFileOpenTarget,
   normalizeWorkspaceFileOpenRequest,

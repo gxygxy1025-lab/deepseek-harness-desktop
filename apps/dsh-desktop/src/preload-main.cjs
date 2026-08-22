@@ -26,7 +26,6 @@ const api = Object.freeze({
   ...baseApi,
   action: (action) => ipcRenderer.invoke('desktop:action', action),
   helpAction: (action) => ipcRenderer.invoke('desktop:help-action', action),
-  toolAction: (action) => ipcRenderer.invoke('desktop:tool-action', action),
   claimStarPrompt: () => ipcRenderer.invoke('desktop:star-prompt-claim'),
   getUpdateStatus: () => ipcRenderer.invoke('desktop:update-status'),
   checkForUpdates: () => ipcRenderer.invoke('desktop:update-check'),

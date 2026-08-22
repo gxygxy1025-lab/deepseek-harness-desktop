@@ -52,7 +52,6 @@ export class DesktopTrayLifecycle {
     nativeImage,
     icon,
     getWindow,
-    openExtensions = () => {},
     openTaskStatus = () => {},
     checkForUpdates = () => {},
     requestQuit = () => {},
@@ -68,7 +67,6 @@ export class DesktopTrayLifecycle {
     this.nativeImage = nativeImage
     this.icon = icon
     this.getWindow = getWindow
-    this.openExtensions = openExtensions
     this.openTaskStatus = openTaskStatus
     this.checkForUpdates = checkForUpdates
     this.requestQuit = requestQuit
@@ -108,7 +106,6 @@ export class DesktopTrayLifecycle {
         click: action(() => this.openTaskStatus()),
       },
       { type: 'separator' },
-      { label: '扩展坞 / Extension Dock', click: action(() => this.openExtensions()) },
       { label: '检查更新 / Check for Updates', click: action(() => this.checkForUpdates({ manual: true })) },
       { type: 'separator' },
       { label: '退出 / Quit', click: action(() => this.requestQuit()) },

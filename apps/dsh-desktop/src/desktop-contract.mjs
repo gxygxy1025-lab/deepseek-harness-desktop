@@ -2,7 +2,6 @@ export const DESKTOP_API_VERSION = '1.2.0'
 
 export const DESKTOP_SURFACES = Object.freeze({
   MAIN: 'main',
-  EXTENSIONS: 'extensions',
   COMMUNITY: 'community',
 })
 
@@ -16,9 +15,7 @@ export const DESKTOP_CAPABILITIES = Object.freeze({
   RUNTIME_READ: 'runtime.read',
   UPDATES_READ: 'updates.read',
   UPDATES_INSTALL: 'updates.install',
-  EXTENSIONS_MANAGE: 'extensions.manage',
   SKILLS_READ: 'skills.read',
-  SKILLS_IMPORT: 'skills.import',
   NOTIFICATIONS_SHOW: 'notifications.show',
   DEEP_LINKS_SUBSCRIBE: 'deep-links.subscribe',
   WORKSPACE_FILES_OPEN: 'workspace-files.open',
@@ -33,12 +30,6 @@ const CAPABILITIES_BY_SURFACE = Object.freeze({
     DESKTOP_CAPABILITIES.NOTIFICATIONS_SHOW,
     DESKTOP_CAPABILITIES.DEEP_LINKS_SUBSCRIBE,
     DESKTOP_CAPABILITIES.WORKSPACE_FILES_OPEN,
-  ]),
-  [DESKTOP_SURFACES.EXTENSIONS]: Object.freeze([
-    DESKTOP_CAPABILITIES.RUNTIME_READ,
-    DESKTOP_CAPABILITIES.EXTENSIONS_MANAGE,
-    DESKTOP_CAPABILITIES.SKILLS_IMPORT,
-    DESKTOP_CAPABILITIES.NOTIFICATIONS_SHOW,
   ]),
   [DESKTOP_SURFACES.COMMUNITY]: Object.freeze([]),
 })

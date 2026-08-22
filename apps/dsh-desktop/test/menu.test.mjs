@@ -14,10 +14,10 @@ import { installEditContextMenu } from '../src/menu.mjs'
 
 test('community and feedback destinations are fixed secure URLs', () => {
   assert.equal(COMMUNITY_QQ_URL, 'https://qm.qq.com/q/vehlNjaeye')
-  assert.equal(GITHUB_DOWNLOADS_URL, 'https://github.com/ningbainb/deepseek-harness-desktop/releases/latest')
-  assert.equal(GITHUB_FEEDBACK_URL, 'https://github.com/ningbainb/deepseek-harness-desktop/issues/new/choose')
-  assert.equal(GITHUB_PROJECT_URL, 'https://github.com/ningbainb/deepseek-harness-desktop')
-  assert.equal(PRIVACY_POLICY_URL, 'https://ningbainb.github.io/deepseek-harness-desktop/privacy.html')
+  assert.equal(GITHUB_DOWNLOADS_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/releases/latest')
+  assert.equal(GITHUB_FEEDBACK_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/issues/new/choose')
+  assert.equal(GITHUB_PROJECT_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop')
+  assert.equal(PRIVACY_POLICY_URL, 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/blob/main/PRIVACY.md')
 })
 
 test('community QR is generated from the fixed join destination', async () => {
@@ -26,7 +26,7 @@ test('community QR is generated from the fixed join destination', async () => {
   assert.ok(image.length > 500)
 })
 
-test('Tools and Help menus expose Extension Dock and community actions', () => {
+test('Help menu exposes community and project actions', () => {
   const calls = []
   const template = createApplicationMenuTemplate({
     app: { getVersion: () => '0.1.8' },
@@ -34,28 +34,22 @@ test('Tools and Help menus expose Extension Dock and community actions', () => {
     controller: { restart: () => calls.push(['restart']) },
     openCommunity: () => calls.push(['community']),
     openFeedback: () => calls.push(['feedback']),
-    openExtensions: () => calls.push(['extensions']),
     openLogs: () => calls.push(['logs']),
     openPrivacy: () => calls.push(['privacy']),
     openProject: () => calls.push(['project', GITHUB_PROJECT_URL]),
     checkForUpdates: (options) => calls.push(['updates', options]),
   })
-  const tools = template.find((entry) => entry.label === '工具 / Tools')
-  const extensions = tools.submenu.find((entry) => entry.label === '扩展坞 / Extension Dock')
   const help = template.find((entry) => entry.label === '帮助 / Help')
   const community = help.submenu.find((entry) => entry.label === '加入社群 / Join QQ Group')
   const feedback = help.submenu.find((entry) => entry.label === '提建议 / Suggest an Idea')
   const project = help.submenu.find((entry) => entry.label === 'GitHub 项目')
   const privacy = help.submenu.find((entry) => entry.label === '隐私政策 / Privacy')
 
-  assert.equal(extensions.accelerator, 'CmdOrCtrl+Shift+X')
-  extensions.click()
   community.click()
   feedback.click()
   project.click()
   privacy.click()
   assert.deepEqual(calls, [
-    ['extensions'],
     ['community'],
     ['feedback'],
     ['project', GITHUB_PROJECT_URL],
@@ -71,7 +65,6 @@ test('App menu exposes all persisted close choices and makes background automati
     controller: { restart: () => {} },
     openCommunity: () => {},
     openFeedback: () => {},
-    openExtensions: () => {},
     openLogs: () => {},
     checkForUpdates: () => {},
     getCloseBehavior: () => 'ask',

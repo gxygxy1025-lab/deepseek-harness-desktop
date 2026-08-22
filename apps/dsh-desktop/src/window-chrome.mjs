@@ -290,12 +290,6 @@ export function createWindowChromeScript({ showHelpMenu = false, showToolsMenu =
         root.append(button, menu);
         menus.append(root);
       };
-      if (canShowTools) addMenu({
-        kind: 'tools',
-        label: '工具 / Tools',
-        entries: [{ label: '扩展坞 / Extension Dock', action: 'extensions', shortcut: 'Ctrl+Shift+X' }],
-        invoke: (action) => window.dshDesktop.toolAction(action),
-      });
       if (canShowHelp) addMenu({
         kind: 'help',
         label: '帮助 / Help',

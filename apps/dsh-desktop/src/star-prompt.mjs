@@ -482,7 +482,7 @@ export function createStarPromptSurfaceScript({ forceVisible = false, showDelayM
     const repoDot = document.createElement('i');
     repoDot.setAttribute('aria-hidden', 'true');
     const repoName = document.createElement('span');
-    repoName.textContent = 'ningbainb / deepseek-harness-desktop';
+    repoName.textContent = 'gxygxy1025-lab / -deepseek-harness-desktop';
     repo.append(repoDot, repoName);
 
     const actions = document.createElement('div');

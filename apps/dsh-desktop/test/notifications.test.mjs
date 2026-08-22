@@ -56,13 +56,13 @@ test('notification clicks route only the already validated structured deep link'
     routeDeepLink: async (link) => { routed.push(link) },
   })
   await service.show({
-    category: 'preset',
-    id: 'preset:portable:complete',
-    title: 'Preset imported',
-    body: 'Portable is ready.',
-    deepLink: 'dsh://extensions',
+    category: 'update',
+    id: 'update:ready',
+    title: 'Update ready',
+    body: 'A new version is ready.',
+    deepLink: 'dsh://updates',
   })
   click()
   await new Promise((resolve) => setImmediate(resolve))
-  assert.deepEqual(routed, [{ kind: 'extensions', href: 'dsh://extensions' }])
+  assert.deepEqual(routed, [{ kind: 'updates', href: 'dsh://updates' }])
 })

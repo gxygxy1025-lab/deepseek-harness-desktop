@@ -11,7 +11,7 @@ import {
   rewriteGitHubReleaseUrl,
 } from '../src/update-mirrors.mjs'
 
-const OFFICIAL_ASSET = 'https://github.com/ningbainb/deepseek-harness-desktop/releases/download/v2.1.0/DeepSeek-Harness-Desktop-Setup-2.1.0-x64.exe'
+const OFFICIAL_ASSET = 'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/releases/download/v2.1.0/DeepSeek-Harness-Desktop-Setup-2.1.0-x64.exe'
 
 test('mirror configuration is HTTPS-only and can be disabled', () => {
   assert.deepEqual(DEFAULT_UPDATE_MIRRORS, [])
@@ -32,8 +32,8 @@ test('only public GitHub Release asset URLs are rewritten', () => {
     `https://ghproxy.net/${OFFICIAL_ASSET}`,
   )
   assert.equal(
-    rewriteGitHubReleaseUrl('https://github.com/ningbainb/deepseek-harness-desktop/archive/main.zip', mirror).href,
-    'https://github.com/ningbainb/deepseek-harness-desktop/archive/main.zip',
+    rewriteGitHubReleaseUrl('https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/archive/main.zip', mirror).href,
+    'https://github.com/gxygxy1025-lab/-deepseek-harness-desktop/archive/main.zip',
   )
   assert.equal(
     rewriteGitHubReleaseUrl('https://example.com/releases/download/v2.1.0/app.exe', mirror).href,

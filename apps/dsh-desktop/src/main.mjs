@@ -43,5 +43,10 @@ export async function terminateDesktopAfterBootstrapFailure(error, {
 }
 
 if (process.versions.electron) {
+  const { app } = await import('electron')
+  app.commandLine.appendSwitch('disable-gpu')
+  app.commandLine.appendSwitch('disable-gpu-compositing')
+  app.commandLine.appendSwitch('in-process-gpu')
+  app.disableHardwareAcceleration()
   bootstrapDesktopApp().catch((error) => void terminateDesktopAfterBootstrapFailure(error))
 }

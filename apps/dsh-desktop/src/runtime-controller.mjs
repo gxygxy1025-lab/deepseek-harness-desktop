@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import {
   DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV,
   isDesktopWorkspaceFileOpenToken,
-} from '@linxin666/dsh-desktop-compat/workspace-file-open-policy'
+} from './workspace-file-open-policy.mjs'
 import { emitBestEffort } from './best-effort-events.mjs'
 
 const READY_LINE = /^dsh web:\s+(http:\/\/\S+)/u
@@ -371,8 +371,6 @@ export class DshRuntimeController extends EventEmitter {
       ...additionalEnvironment,
       DSH_HOME: this.dshHome,
       DSH_PROFILE: DESKTOP_PROFILE_NAME,
-      DSH_SKIN_PROFILE: DESKTOP_PROFILE_NAME,
-      DSH_SKINS_DIR: join(this.dshHome, 'profiles', DESKTOP_PROFILE_NAME, 'node_modules', '@linxin666'),
       // Override an ambient parent value. The token is new for every Host
       // spawn and never appears in argv, diagnostics, or public status.
       [DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV]: workspaceFileOpenToken,

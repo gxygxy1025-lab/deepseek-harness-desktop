@@ -51,17 +51,10 @@ nsis:
 
 publish:
   provider: github
-  owner: ningbainb
-  repo: deepseek-harness-desktop
+  owner: gxygxy1025-lab
+  repo: -deepseek-harness-desktop
 
 protocols:
   - name: DeepSeek Harness Desktop
     schemes:
       - dsh
-
-fileAssociations:
-  - ext: dshpreset
-    name: DeepSeek Harness Desktop Preset
-    description: Reviewable DeepSeek Harness Desktop environment preset
-    icon: build/icon.ico
-    role: Editor

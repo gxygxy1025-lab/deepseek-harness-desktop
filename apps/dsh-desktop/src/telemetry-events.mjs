@@ -22,22 +22,17 @@ const EVENT_POLICY = Object.freeze({
   }),
   runtime_recovery_action: Object.freeze({
     outcomes: new Set(['requested']),
-    details: new Set(['retry', 'repair', 'safe-mode', 'disable-plugin']),
+    details: new Set(['retry', 'repair']),
     buckets: new Set(['none']),
   }),
   surface_opened: Object.freeze({
     outcomes: new Set(['opened']),
-    details: new Set(['settings', 'extensions', 'community', 'updates', 'help']),
+    details: new Set(['settings', 'community', 'updates', 'help']),
     buckets: new Set(['none']),
   }),
   update_result: Object.freeze({
     outcomes: new Set(['current', 'available', 'downloaded', 'install-requested', 'error']),
     details: new Set(['automatic', 'manual', 'none']),
-    buckets: new Set(['none']),
-  }),
-  extension_operation: Object.freeze({
-    outcomes: new Set(['success', 'failure']),
-    details: new Set(['install', 'update', 'remove', 'enable', 'disable']),
     buckets: new Set(['none']),
   }),
   app_session_end: Object.freeze({

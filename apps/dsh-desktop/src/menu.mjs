@@ -7,7 +7,6 @@ export function createApplicationMenuTemplate({
   controller,
   openCommunity,
   openFeedback,
-  openExtensions,
   openLogs,
   openPrivacy = () => shell.openExternal(PRIVACY_POLICY_URL),
   openProject = () => shell.openExternal(GITHUB_PROJECT_URL),
@@ -69,12 +68,6 @@ export function createApplicationMenuTemplate({
         { role: 'zoomOut', label: '缩小 / Zoom Out' },
         { type: 'separator' },
         { role: 'togglefullscreen', label: '全屏 / Full Screen' },
-      ],
-    },
-    {
-      label: '工具 / Tools',
-      submenu: [
-        { label: '扩展坞 / Extension Dock', accelerator: 'CmdOrCtrl+Shift+X', click: action(openExtensions) },
       ],
     },
     {

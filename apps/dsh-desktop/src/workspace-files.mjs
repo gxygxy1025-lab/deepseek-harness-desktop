@@ -2,7 +2,7 @@ import {
   DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_HEADER,
   isDesktopWorkspaceFileOpenToken,
   isSafeDesktopWorkspaceFileOpenPath,
-} from '@linxin666/dsh-desktop-compat/workspace-file-open-policy'
+} from './workspace-file-open-policy.mjs'
 
 const MAX_ROOT_LENGTH = 32_767
 const MAX_RELATIVE_PATH_LENGTH = 4_096

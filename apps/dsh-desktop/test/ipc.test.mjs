@@ -5,7 +5,6 @@ import test from 'node:test'
 import {
   normalizeDesktopAction,
   normalizeHelpAction,
-  normalizeToolAction,
   normalizeWindowChromeTheme,
   publicBackgroundStatus,
   publicRuntimeStatus,
@@ -16,7 +15,7 @@ import { DESKTOP_ERROR_CODES } from '../src/desktop-contract.mjs'
 import { DesktopSurfaceRegistry } from '../src/desktop-surfaces.mjs'
 
 test('desktop action validation exposes only fixed recovery and diagnostic operations', () => {
-  for (const action of ['retry', 'repair', 'disable-plugin', 'safe-mode', 'open-logs', 'export-diagnostics', 'exit']) {
+  for (const action of ['retry', 'repair', 'open-logs', 'export-diagnostics', 'exit']) {
     assert.equal(normalizeDesktopAction(action), action)
   }
   for (const action of ['run-command', '../repair', '', 42]) {
@@ -38,13 +37,6 @@ test('window chrome Help IPC accepts only fixed application actions', () => {
   }
   for (const action of ['open-url', 'https://example.com', '', 42]) {
     assert.throws(() => normalizeHelpAction(action), /Help action/)
-  }
-})
-
-test('window chrome Tools IPC exposes only the Extension Dock action', () => {
-  assert.equal(normalizeToolAction('extensions'), 'extensions')
-  for (const action of ['run-command', 'open-url', '', 42]) {
-    assert.throws(() => normalizeToolAction(action), /Tools action/)
   }
 })
 
@@ -84,10 +76,6 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
       handled.push(action)
       return browserWindow
     },
-    handleToolAction: async (action) => {
-      handled.push(action)
-      return browserWindow
-    },
     setWindowChromeTheme: () => {},
     claimStarPrompt: async () => true,
     getUpdateController: () => undefined,
@@ -97,7 +85,6 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
   })
 
   assert.equal(await handlers.get('desktop:help-action')({ sender }, 'community'), true)
-  assert.equal(await handlers.get('desktop:tool-action')({ sender }, 'extensions'), true)
   assert.equal(await handlers.get('desktop:star-prompt-claim')({ sender }), true)
   await handlers.get('desktop:action')({ sender }, 'retry')
   assert.deepEqual(
@@ -109,7 +96,7 @@ test('window action IPC returns a clone-safe acknowledgement instead of BrowserW
   assert.equal(handlers.has('desktop:background-status'), false)
   assert.equal(handlers.has('desktop:close-behavior-get'), false)
   assert.equal(handlers.has('desktop:close-behavior-set'), false)
-  assert.deepEqual(handled, ['community', 'extensions'])
+  assert.deepEqual(handled, ['community'])
   assert.deepEqual(exported, ['startup-diagnostics'])
   assert.deepEqual(observed, [['recovery', 'retry'], ['settings'], ['updates']])
   unregister()
@@ -125,9 +112,9 @@ test('desktop IPC rejects unregistered and wrong-surface senders with stable cod
   controller.status = { state: 'ready' }
   const surfaceRegistry = new DesktopSurfaceRegistry()
   const mainSender = {}
-  const extensionSender = {}
+  const communitySender = {}
   surfaceRegistry.register(mainSender, 'main')
-  surfaceRegistry.register(extensionSender, 'extensions')
+  surfaceRegistry.register(communitySender, 'community')
   const unregister = registerDesktopIpc({
     ipcMain,
     surfaceRegistry,
@@ -140,17 +127,16 @@ test('desktop IPC rejects unregistered and wrong-surface senders with stable cod
     openLogs: async () => {},
     exitApp: () => {},
     handleHelpAction: async () => {},
-    handleToolAction: async () => {},
     setWindowChromeTheme: () => {},
     getUpdateController: () => undefined,
   })
 
   await assert.rejects(
-    handlers.get('desktop:update-install')({ sender: extensionSender }),
+    handlers.get('desktop:update-install')({ sender: communitySender }),
     (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
   )
   await assert.rejects(
-    handlers.get('desktop:action')({ sender: extensionSender }, 'export-diagnostics'),
+    handlers.get('desktop:action')({ sender: communitySender }, 'export-diagnostics'),
     (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
   )
   await assert.rejects(
@@ -174,9 +160,9 @@ test('workspace-file IPC is main-surface-only and delegates the native-open auth
   controller.status = { state: 'ready', url: 'http://127.0.0.1:43125/' }
   const surfaceRegistry = new DesktopSurfaceRegistry()
   const mainSender = {}
-  const extensionSender = {}
+  const communitySender = {}
   surfaceRegistry.register(mainSender, 'main')
-  surfaceRegistry.register(extensionSender, 'extensions')
+  surfaceRegistry.register(communitySender, 'community')
   const calls = []
   const shell = {
     openPath: async () => {
@@ -199,7 +185,6 @@ test('workspace-file IPC is main-surface-only and delegates the native-open auth
     },
     exitApp: () => {},
     handleHelpAction: async () => {},
-    handleToolAction: async () => {},
     setWindowChromeTheme: () => {},
     getUpdateController: () => undefined,
     shell,
@@ -223,7 +208,7 @@ test('workspace-file IPC is main-surface-only and delegates the native-open auth
     assert.equal(calls[0].getWorkspaceFileOpenToken(), 'a'.repeat(43))
 
     await assert.rejects(
-      handlers.get('desktop:workspace-file-open')({ sender: extensionSender }, request),
+      handlers.get('desktop:workspace-file-open')({ sender: communitySender }, request),
       (error) => error.code === DESKTOP_ERROR_CODES.CAPABILITY_DENIED,
     )
     await assert.rejects(

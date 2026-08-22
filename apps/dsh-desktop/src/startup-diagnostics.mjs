@@ -193,8 +193,6 @@ function boundedTimeout(operation, source, {
 export async function collectStartupDiagnostics({
   application = {},
   controller,
-  pluginRecovery,
-  pluginManager,
   logStore,
   now = () => new Date(),
   redactionRoots = [],
@@ -207,19 +205,7 @@ export async function collectStartupDiagnostics({
     : DEFAULT_COLLECTION_TIMEOUT_MS
   const redactionOptions = { redactionRoots }
   const collectionIssues = []
-  const [recovery, inventory, recentRuntimeLog] = await Promise.all([
-    boundedTimeout(
-      typeof pluginRecovery?.getDiagnostics === 'function'
-        ? () => pluginRecovery.getDiagnostics({ runtime: currentRuntimeSummary(controller) })
-        : undefined,
-      'plugin-recovery',
-      { timeoutMs, schedule, cancelSchedule, issues: collectionIssues, redactionOptions },
-    ),
-    boundedTimeout(
-      typeof pluginManager?.inventory === 'function' ? () => pluginManager.inventory() : undefined,
-      'plugin-inventory',
-      { timeoutMs, schedule, cancelSchedule, issues: collectionIssues, redactionOptions },
-    ),
+  const [recentRuntimeLog] = await Promise.all([
     boundedTimeout(
       typeof logStore?.tail === 'function' ? () => logStore.tail(600) : undefined,
       'runtime-log',
@@ -246,8 +232,6 @@ export async function collectStartupDiagnostics({
         ? redactDiagnosticText(recentRuntimeLog, { ...redactionOptions, limit: MAX_LOG_LENGTH })
         : undefined,
     },
-    recovery,
-    plugins: inventory,
     collectionIssues,
   }
   const redacted = redactDiagnosticValue(document, redactionOptions)

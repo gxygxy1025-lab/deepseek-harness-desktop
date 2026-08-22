@@ -23,16 +23,6 @@ test('Desktop Contract v1 capability snapshots stay exact', () => {
       'workspace-files.open',
     ],
   })
-  assert.deepEqual(desktopContractForSurface('extensions'), {
-    apiVersion: '1.2.0',
-    surface: 'extensions',
-    capabilities: [
-      'runtime.read',
-      'extensions.manage',
-      'skills.import',
-      'notifications.show',
-    ],
-  })
   assert.deepEqual(desktopContractForSurface('community'), {
     apiVersion: '1.2.0',
     surface: 'community',

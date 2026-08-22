@@ -1,8 +1,5 @@
-import { isAbsolute, normalize } from 'node:path'
-
 const SAFE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/u
 const FIXED_ROUTES = new Map([
-  ['extensions', 'extensions'],
   ['updates', 'updates'],
 ])
 const ID_ROUTES = new Map([
@@ -32,9 +29,6 @@ export function normalizeDeepLink(value, protocol = 'dsh') {
   if (fixed !== undefined && (url.pathname === '' || url.pathname === '/')) {
     return Object.freeze({ kind: fixed, href: `${protocol}://${host}` })
   }
-  if (host === 'preset' && url.pathname === '/preview') {
-    return Object.freeze({ kind: 'preset-preview', href: `${protocol}://preset/preview` })
-  }
   const idKind = ID_ROUTES.get(host)
   if (idKind !== undefined) {
     const rawId = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname
@@ -42,15 +36,6 @@ export function normalizeDeepLink(value, protocol = 'dsh') {
     return Object.freeze({ kind: idKind, id: rawId, href: `${protocol}://${host}/${rawId}` })
   }
   throw new TypeError('deep link route is not allowlisted')
-}
-
-export function presetFileFrom(commandLine = []) {
-  for (const value of commandLine) {
-    if (typeof value !== 'string' || value.length === 0 || value.length > 32_767 || value.includes('\0')) continue
-    if (!/\.dshpreset$/iu.test(value) || !isAbsolute(value)) continue
-    return normalize(value)
-  }
-  return undefined
 }
 
 export class DeepLinkRouter {

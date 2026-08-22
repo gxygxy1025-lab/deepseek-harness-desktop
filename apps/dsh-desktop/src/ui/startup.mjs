@@ -17,11 +17,6 @@ const progressValue = document.querySelector('#progress-value')
 const meterTip = document.querySelector('.meter-tip')
 meterTip.innerHTML = `<svg viewBox="0 0 50 50" focusable="false"><path d="${OFFICIAL_WHALE_PATH}"/></svg>`
 const whaleCanvas = document.querySelector('#whale-canvas')
-const recoverySummary = document.querySelector('#recovery-summary')
-const recoveryTitle = document.querySelector('#recovery-title')
-const recoveryReason = document.querySelector('#recovery-reason')
-const disablePlugin = document.querySelector('#disable-plugin')
-const safeMode = document.querySelector('#safe-mode')
 const retry = document.querySelector('#retry')
 const repair = document.querySelector('#repair')
 const technicalDetails = document.querySelector('#technical-details')
@@ -100,40 +95,21 @@ function render(status) {
   updateStartupStall(state, stateChanged)
   document.body.dataset.state = state
   title.textContent = heading
-  const recovery = status?.recovery
-  const incident = recovery?.currentIncident
   const stalled = startupStalled && startingState(state)
-  detail.textContent = recovery?.safeMode
-    ? recovery?.baselineQuarantineAvailable
-      ? '桌面版正在使用基线恢复模式，无法识别的用户加载配置已被暂时隔离'
-      : '桌面版正在使用只加载内置插件的安全模式'
-    : status?.restartBlocked === 'repeated-crash'
+  detail.textContent = status?.restartBlocked === 'repeated-crash'
     ? '已停止自动重启，避免反复崩溃；请打开日志查看底层错误'
     : stalled
-    ? '启动耗时较长；可导出诊断日志，或进入安全模式（临时停用用户插件，保留聊天和模型设置）'
+    ? '启动耗时较长；可导出诊断日志，或重新尝试启动'
     : message
 
   const failed = state === 'crashed'
-  const identifiedPlugin = failed && incident?.identified && incident?.pluginName
-  recoverySummary.hidden = !failed && !stalled
-  if (failed && incident) {
-    recoveryTitle.textContent = identifiedPlugin
-      ? `检测到插件 ${incident.pluginName} 导致启动失败`
-      : '插件恢复中心已接管本次启动失败'
-    recoveryReason.textContent = incident.summary || '未能可靠定位故障插件，请进入安全模式。'
-  } else if (stalled) {
-    recoveryTitle.textContent = '启动耗时较长'
-    recoveryReason.textContent = '可先导出诊断日志；进入安全模式会临时停用用户安装的插件，保留聊天和模型设置；可随后在扩展中心逐一恢复。'
-  }
   errorLog.hidden = true
   actions.hidden = !failed && !stalled
   errorLog.textContent = failed
     ? (incident?.technicalDetails || status?.error || 'Unknown runtime error')
     : ''
-  disablePlugin.hidden = !identifiedPlugin
-  safeMode.hidden = !failed && !stalled
-  retry.hidden = !failed || Boolean(incident)
-  repair.hidden = !failed || Boolean(incident)
+  retry.hidden = !failed
+  repair.hidden = !failed
   technicalDetails.hidden = !failed
   technicalDetails.textContent = '查看技术详情'
 

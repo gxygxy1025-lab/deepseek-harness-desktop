@@ -53,14 +53,9 @@ test('window chrome script keeps child-window caption areas visually quiet', () 
   assert.doesNotMatch(script, /LOCAL SURFACE|dsh-window-chrome-title|dsh-window-chrome-context/)
 })
 
-test('main window chrome exposes accessible Tools and Help dropdowns with fixed actions', () => {
+test('main window chrome exposes accessible Help dropdown with fixed actions', () => {
   const script = createWindowChromeScript({ showHelpMenu: true, showToolsMenu: true })
   assert.match(script, /"showHelpMenu":true/)
-  assert.match(script, /"showToolsMenu":true/)
-  assert.match(script, /工具 \/ Tools/)
-  assert.match(script, /扩展坞 \/ Extension Dock/)
-  assert.match(script, /action: 'extensions'/)
-  assert.match(script, /window\.dshDesktop\.toolAction/)
   assert.match(script, /帮助 \/ Help/)
   for (const [label, action] of [
     ['加入社群', 'community'],

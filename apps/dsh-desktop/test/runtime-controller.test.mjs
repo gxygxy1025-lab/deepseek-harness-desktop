@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import {
   DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV,
   isDesktopWorkspaceFileOpenToken,
-} from '@linxin666/dsh-desktop-compat/workspace-file-open-policy'
+} from '../src/workspace-file-open-policy.mjs'
 import {
   DEFAULT_STARTUP_TIMEOUT_MS,
   DESKTOP_PROFILE_NAME,
@@ -214,7 +214,7 @@ test('controller reaches ready state from streamed output and stops cleanly', as
     probeReady: async () => {},
     startupTimeoutMs: 2_000,
     pathEntries: ['C:\\desktop-runtime-bin'],
-    environmentProvider: () => ({ QQBOT_APPID: 'desktop-app', QQBOT_SECRET: 'runtime-only' }),
+    environmentProvider: () => ({}),
     platform: 'linux',
     preferredPort: 43_124,
     onReadyPort: (port) => readyPorts.push(port),
@@ -228,16 +228,9 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   assert.deepEqual(states.slice(0, 2), ['starting', 'ready'])
   assert.ok(logLines.some((line) => line.includes('booting')))
   assert.equal(childEnvironment.DSH_PROFILE, DESKTOP_PROFILE_NAME)
-  assert.equal(childEnvironment.DSH_SKIN_PROFILE, DESKTOP_PROFILE_NAME)
   assert.equal(childArguments[childArguments.indexOf('--profile') + 1], DESKTOP_PROFILE_NAME)
   assert.equal(childArguments[childArguments.indexOf('--port') + 1], '43124')
   assert.deepEqual(readyPorts, [43_125])
-  assert.equal(
-    childEnvironment.DSH_SKINS_DIR,
-    join('C:\\isolated-home', 'profiles', DESKTOP_PROFILE_NAME, 'node_modules', '@linxin666'),
-  )
-  assert.equal(childEnvironment.QQBOT_APPID, 'desktop-app')
-  assert.equal(childEnvironment.QQBOT_SECRET, 'runtime-only')
   assert.equal(isDesktopWorkspaceFileOpenToken(childEnvironment[DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV]), true)
   assert.equal(controller.getWorkspaceFileOpenToken(), childEnvironment[DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV])
   assert.equal(logLines.some((line) => line.includes(childEnvironment[DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV])), false)
