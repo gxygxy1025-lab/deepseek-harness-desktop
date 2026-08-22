@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { access, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -24,7 +24,7 @@ const REMOVED_EXTENSIONS = [
   'reasoning-slider',
 ]
 
-test('core profile contains only the official DSH bundles', () => {
+test('desktop profile defaults to official bundles and preserves explicit user bundles', () => {
   assert.deepEqual(BUILTIN_BUNDLES, CORE_BUNDLES)
   assert.deepEqual(
     createDesktopProfileManifest({
@@ -37,10 +37,47 @@ test('core profile contains only the official DSH bundles', () => {
     {
       name: 'dsh-profile-desktop',
       private: true,
-      dependencies: {},
-      dsh: { profile: { bundles: [...CORE_BUNDLES] } },
+      dependencies: {
+        '@community/example': '1.2.3',
+        '@linxin666/dsh-web-ui-all': '0.2.3',
+      },
+      dsh: { profile: { bundles: [...CORE_BUNDLES, '@linxin666/dsh-web-ui-all', '@community/example'] } },
     },
   )
+})
+
+test('profile bootstrap preserves official plugin-managed dependencies and user files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-profile-'))
+  try {
+    const profileDir = join(root, 'profiles', 'desktop')
+    await mkdir(join(root, 'sources', 'dsh'), { recursive: true })
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), `${JSON.stringify({
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: { 'dsh-cost-meter': '1.5.36' },
+      dsh: { profile: { bundles: [...CORE_BUNDLES, 'dsh-cost-meter'] } },
+    }, null, 2)}\n`)
+    await writeFile(join(profileDir, 'cordis.patch.yml'), '- id: user-setting\n  config: {}\n')
+    await writeFile(join(profileDir, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nallowBuilds:\n  dsh-cost-meter: true\n')
+
+    const result = await ensureDesktopProfile({
+      dshHome: root,
+      packageRoots: new Map([['@deepseek-ai/dsh', join(root, 'sources', 'dsh')]]),
+    })
+    const manifest = JSON.parse(await readFile(join(result.profileDir, 'package.json'), 'utf8'))
+    const patch = await readFile(join(result.profileDir, 'cordis.patch.yml'), 'utf8')
+    const desktopPatch = await readFile(result.desktopPatchPath, 'utf8')
+    const workspace = await readFile(join(result.profileDir, 'pnpm-workspace.yaml'), 'utf8')
+
+    assert.equal(manifest.dependencies['dsh-cost-meter'], '1.5.36')
+    assert.deepEqual(manifest.dsh.profile.bundles, [...CORE_BUNDLES, 'dsh-cost-meter'])
+    assert.equal(patch, '- id: user-setting\n  config: {}\n')
+    assert.equal(desktopPatch, DESKTOP_PATCH_CONFIG)
+    assert.match(workspace, /allowBuilds/u)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('removed extensions are not part of the managed runtime', () => {

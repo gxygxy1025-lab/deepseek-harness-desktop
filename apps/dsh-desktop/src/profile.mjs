@@ -13,7 +13,9 @@ export const BUILTIN_BUNDLES = Object.freeze([
 export const DESKTOP_PROFILE_BOOTSTRAP_ERROR = 'desktop-profile-bootstrap-invalid'
 export const DESKTOP_PATCH_START = '# --- dsh-desktop managed (auto-generated; do not edit) ---'
 export const DESKTOP_PATCH_END = '# --- end dsh-desktop managed ---'
+export const DESKTOP_PATCH_FILE = 'dsh-desktop.cordis.patch.yml'
 const ROOT_CONFIG = '[]\n'
+const PROFILE_WORKSPACE_CONFIG = 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n'
 
 const DESKTOP_PATCH_BODY = `- id: directory-picker
   name: '@deepseek-ai/dsh-host-directory-picker-auto'
@@ -84,10 +86,20 @@ export function materializeFilesystemPath(path) {
   return path.replace(/([\\/])app\.asar([\\/])/u, '$1app.asar.unpacked$2')
 }
 
-export function createDesktopProfileManifest() {
+export function createDesktopProfileManifest(existing = {}) {
+  const dependencies = existing?.dependencies && typeof existing.dependencies === 'object'
+    && !Array.isArray(existing.dependencies)
+    ? { ...existing.dependencies }
+    : {}
+  const installedBundles = Array.isArray(existing?.dsh?.profile?.bundles)
+    ? existing.dsh.profile.bundles.filter((name) => typeof name === 'string' && dependencies[name] !== undefined)
+    : []
   return {
-    name: 'dsh-profile-desktop', private: true, dependencies: {},
-    dsh: { profile: { bundles: [...BUILTIN_BUNDLES] } },
+    name: 'dsh-profile-desktop', private: true, dependencies,
+    dsh: { profile: { bundles: [
+      ...BUILTIN_BUNDLES,
+      ...installedBundles.filter((name) => !BUILTIN_BUNDLES.includes(name)),
+    ] } },
   }
 }
 
@@ -98,6 +110,18 @@ export function mergeDesktopPatch() {
 async function writeIfChanged(path, content) {
   try {
     if (await readFile(path, 'utf8') === content) return false
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, content, 'utf8')
+  return true
+}
+
+async function ensureFile(path, content) {
+  try {
+    await readFile(path, 'utf8')
+    return false
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error
   }
@@ -216,20 +240,36 @@ export async function ensureDesktopProfile({ dshHome, packageRoots = resolveRunt
   if (typeof dshHome !== 'string' || dshHome.length === 0) throw new TypeError('dshHome must be a non-empty path')
   const profileDir = join(dshHome, 'profiles', profileName)
   await mkdir(profileDir, { recursive: true })
-  const manifest = createDesktopProfileManifest()
+  const manifestPath = join(profileDir, 'package.json')
+  const existingManifest = readJson(manifestPath) ?? {}
+  const manifest = createDesktopProfileManifest(existingManifest)
   for (const [packageName, sourceDir] of new Map(packageRoots)) {
     manifest.dependencies[packageName] = `link:${sourceDir.replaceAll('\\', '/')}`
   }
   manifest.dependencies = Object.fromEntries(Object.entries(manifest.dependencies).toSorted(([a], [b]) => a.localeCompare(b)))
   let changed = false
-  changed = await writeIfChanged(join(profileDir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`) || changed
-  changed = await writeIfChanged(join(profileDir, 'cordis.yml'), ROOT_CONFIG) || changed
-  changed = await writeIfChanged(join(profileDir, 'cordis.patch.yml'), DESKTOP_PATCH_CONFIG) || changed
-  changed = await writeIfChanged(join(profileDir, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n') || changed
+  changed = await writeIfChanged(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`) || changed
+  changed = await ensureFile(join(profileDir, 'cordis.yml'), ROOT_CONFIG) || changed
+  const profilePatchPath = join(profileDir, 'cordis.patch.yml')
+  const desktopPatchPath = join(profileDir, DESKTOP_PATCH_FILE)
+  let profilePatch
+  try {
+    profilePatch = await readFile(profilePatchPath, 'utf8')
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  const desktopPatch = profilePatch?.includes(DESKTOP_PATCH_START) ? '[]\n' : DESKTOP_PATCH_CONFIG
+  changed = await ensureFile(profilePatchPath, '[]\n') || changed
+  changed = await writeIfChanged(desktopPatchPath, desktopPatch) || changed
+  changed = await ensureFile(join(profileDir, 'pnpm-workspace.yaml'), PROFILE_WORKSPACE_CONFIG) || changed
   const resolvedPackageRoots = new Map(packageRoots)
-  changed = await removeStalePackageLinks(profileDir, resolvedPackageRoots) || changed
+  const allowedPackageNames = new Set([
+    ...resolvedPackageRoots.keys(),
+    ...Object.keys(manifest.dependencies),
+  ])
+  changed = await removeStalePackageLinks(profileDir, allowedPackageNames) || changed
   for (const [packageName, sourceDir] of resolvedPackageRoots) changed = await ensurePackageLink(profileDir, packageName, sourceDir) || changed
-  return { changed, manifest, profileDir }
+  return { changed, manifest, profileDir, desktopPatchPath }
 }
 
 export function resolveDshCliPath(initialAnchor = import.meta.url) {

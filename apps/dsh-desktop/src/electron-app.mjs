@@ -325,6 +325,7 @@ export async function startElectronApp(metadata) {
   const dshCliPath = resolveDshCliPath()
   const rawRuntimeController = new DshRuntimeController({
     cliPath: dshCliPath,
+    patchPath: profile.desktopPatchPath,
     cwd: projectRoot,
     dshHome,
     executable: process.execPath,

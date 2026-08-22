@@ -24,13 +24,14 @@ function createWorkspaceFileOpenCapabilityToken() {
   return randomBytes(32).toString('base64url')
 }
 
-function runtimeArguments(cliPath, preferredPort, consolePreloadPath) {
+function runtimeArguments(cliPath, preferredPort, consolePreloadPath, patchPath) {
   return [
     '--expose-internals',
     ...(consolePreloadPath ? ['--require', consolePreloadPath] : []),
     cliPath,
     '--profile',
     DESKTOP_PROFILE_NAME,
+    ...(patchPath ? ['--patch', patchPath] : []),
     '--port',
     String(preferredPort),
     '--no-open',
@@ -44,6 +45,7 @@ function quotePowerShellLiteral(value) {
 export function createRuntimeInvocation({
   executable,
   cliPath,
+  patchPath,
   preferredPort = 0,
   platform = process.platform,
   systemRoot = process.env.SystemRoot,
@@ -54,10 +56,13 @@ export function createRuntimeInvocation({
   if (typeof cliPath !== 'string' || cliPath.length === 0) {
     throw new TypeError('runtime CLI path must be a non-empty path')
   }
+  if (patchPath !== undefined && (typeof patchPath !== 'string' || patchPath.length === 0)) {
+    throw new TypeError('runtime patch path must be a non-empty path when provided')
+  }
   if (!Number.isInteger(preferredPort) || preferredPort < 0 || preferredPort > 65_535) {
     throw new TypeError('preferred runtime port must be an integer from 0 to 65535')
   }
-  const args = runtimeArguments(cliPath, preferredPort, platform === 'win32' ? WINDOWS_CONSOLE_PRELOAD_PATH : undefined)
+  const args = runtimeArguments(cliPath, preferredPort, platform === 'win32' ? WINDOWS_CONSOLE_PRELOAD_PATH : undefined, patchPath)
   if (platform !== 'win32') return { executable, args }
 
   // Electron is a GUI-subsystem executable and therefore gives its Node-mode
@@ -187,6 +192,7 @@ function createLineReader(onLine) {
 export class DshRuntimeController extends EventEmitter {
   constructor({
     cliPath,
+    patchPath,
     cwd,
     dshHome,
     executable = process.execPath,
@@ -211,7 +217,11 @@ export class DshRuntimeController extends EventEmitter {
   }) {
     super()
     if (!cliPath || !cwd || !dshHome) throw new TypeError('cliPath, cwd, and dshHome are required')
+    if (patchPath !== undefined && (typeof patchPath !== 'string' || patchPath.length === 0)) {
+      throw new TypeError('runtime patch path must be a non-empty path when provided')
+    }
     this.cliPath = cliPath
+    this.patchPath = patchPath
     this.cwd = cwd
     this.dshHome = dshHome
     this.executable = executable
@@ -382,6 +392,7 @@ export class DshRuntimeController extends EventEmitter {
       const invocation = createRuntimeInvocation({
         executable: this.executable,
         cliPath: this.cliPath,
+        patchPath: this.patchPath,
         platform: this.platform,
         systemRoot: this.systemRoot,
         preferredPort: this.preferredPort,

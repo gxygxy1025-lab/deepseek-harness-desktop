@@ -4,6 +4,8 @@
 
 DeepSeek Harness Desktop 是一个面向 Windows 10/11 x64 的社区桌面封装。它在受控 Electron 窗口中启动并加载官方 DeepSeek Harness Runtime，不包含插件市场、QQ Bot、皮肤中心、任务看板或第三方扩展集合。
 
+发布包不会预装第三方插件，但保留官方 DSH Profile 插件机制。用户通过 DSH 官方的 `dsh plugin --profile desktop add <package>` 或 `remove <package>` 安装、删除插件后，重启桌面应用即可加载或卸载对应 Bundle；桌面壳不会覆盖用户的 Profile 依赖、Bundle、锁文件或自定义 patch。
+
 ## 下载与安装
 
 从 [GitHub Releases](https://github.com/gxygxy1025-lab/deepseek-harness-desktop/releases/latest) 下载 `DeepSeek-Harness-Desktop-Setup-<version>-x64.exe`，关闭旧版后运行安装程序。安装包内置运行所需的 Node.js/Electron 环境，不要求用户单独安装开发工具。

@@ -132,6 +132,29 @@ test('non-Windows runtime launch remains a direct argv spawn', () => {
   })
 })
 
+test('runtime launch applies the desktop patch after the user profile layer', () => {
+  assert.deepEqual(createRuntimeInvocation({
+    platform: 'linux',
+    executable: '/opt/deepseek-harness',
+    cliPath: '/opt/dsh/bin.js',
+    patchPath: '/home/user/.dsh/profiles/desktop/dsh-desktop.cordis.patch.yml',
+    preferredPort: 43_125,
+  }), {
+    executable: '/opt/deepseek-harness',
+    args: [
+      '--expose-internals',
+      '/opt/dsh/bin.js',
+      '--profile',
+      'desktop',
+      '--patch',
+      '/home/user/.dsh/profiles/desktop/dsh-desktop.cordis.patch.yml',
+      '--port',
+      '43125',
+      '--no-open',
+    ],
+  })
+})
+
 test('hidden Windows runtime wrapper preserves runtime output and exit status', {
   skip: process.platform !== 'win32',
 }, () => {
