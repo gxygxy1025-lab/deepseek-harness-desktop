@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
 
 import { CORE_RUNTIME_PACKAGES, packagePathSegments } from '../src/profile.mjs'
+import { requiredArchitectures } from './package-architecture.mjs'
 
 const execFileAsync = promisify(execFile)
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -67,23 +68,8 @@ async function architectures(path) {
   return new Set(stdout.trim().split(/\s+/u).filter(Boolean))
 }
 
-function architectureHint(path) {
-  const normalized = path.replaceAll('\\', '/').toLowerCase()
-  if (/(?:^|[-_/])(?:arm64|aarch64)(?:[-_/]|$)/u.test(normalized)) return 'arm64'
-  if (/(?:^|[-_/])(?:x64|x86_64)(?:[-_/]|$)/u.test(normalized)) return 'x86_64'
-  return undefined
-}
-
-function requiredArchitectures(path) {
-  const hint = architectureHint(path)
-  if (expectedArchitecture === 'universal') return hint ? [hint] : ['x86_64', 'arm64']
-  if (expectedArchitecture === 'x64') return hint === 'arm64' ? [] : ['x86_64']
-  if (expectedArchitecture === 'arm64') return hint === 'x86_64' ? [] : ['arm64']
-  throw new Error(`unsupported expected architecture: ${expectedArchitecture}`)
-}
-
 async function verifyArchitectures(path) {
-  const required = requiredArchitectures(path)
+  const required = requiredArchitectures(path, expectedArchitecture)
   if (required.length === 0) return
   const actual = await architectures(path)
   for (const architecture of required) {
