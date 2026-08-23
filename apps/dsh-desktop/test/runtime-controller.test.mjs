@@ -74,7 +74,7 @@ test('Windows shutdown terminates the complete runtime process tree', async () =
     },
   })
   assert.deepEqual(calls, [{
-    executable: 'C:\\Windows\\System32\\taskkill.exe',
+    executable: join('C:\\Windows', 'System32', 'taskkill.exe'),
     args: ['/PID', '43125', '/T', '/F'],
     options: { windowsHide: true, timeout: 5_000 },
   }])
@@ -400,8 +400,8 @@ test('identical runtime crashes stop automatic restart after one retry', async (
   const firstReady = controller.start()
   children[0].stdout.write('dsh web: http://127.0.0.1:43125\r\n')
   await firstReady
-  children[0].exitCode = 4_294_930_438
-  children[0].emit('exit', 4_294_930_438, null)
+  children[0].exitCode = 1
+  children[0].emit('exit', 1, null)
   assert.equal(controller.status.state, 'restarting')
 
   const firstRestart = scheduled.find((timer) => timer.delay === 500 && !cancelled.has(timer))
@@ -412,12 +412,12 @@ test('identical runtime crashes stop automatic restart after one retry', async (
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(controller.status.state, 'ready')
 
-  children[1].exitCode = 4_294_930_438
-  children[1].emit('exit', 4_294_930_438, null)
+  children[1].exitCode = 1
+  children[1].emit('exit', 1, null)
   assert.equal(controller.status.state, 'crashed')
   assert.equal(controller.status.restartBlocked, 'repeated-crash')
   assert.match(controller.status.error, /automatic restart stopped/iu)
-  assert.match(controller.status.error, /0xFFFF7006/u)
+  assert.match(controller.status.error, /code 1/u)
   assert.equal(spawns, 2)
   assert.equal(scheduled.filter((timer) => timer.delay === 1_500 && !cancelled.has(timer)).length, 0)
 })

@@ -69,6 +69,6 @@ test('package verification consumes the shared critical runtime file contract', 
   assert.match(source, /CRITICAL_RUNTIME_FILES/u)
   assert.match(source, /for \(const relativePath of CRITICAL_RUNTIME_FILES\)/u)
   assert.match(source, /CORE_RUNTIME_PACKAGES/u)
-  assert.match(source, /removed extension package is still present/u)
+  assert.match(source, /forbidden package files are still present/u)
   assert.match(source, /'@linxin666'/u)
 })

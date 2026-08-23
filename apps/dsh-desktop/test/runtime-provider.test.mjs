@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -8,6 +9,9 @@ import {
   RUNTIME_PROVIDER_ERROR_CODES,
   RuntimeProviderError,
 } from '../src/runtime-provider.mjs'
+
+const DSH_HOME = resolve('test-runtime-home')
+const PROFILE_DIR = join(DSH_HOME, 'profiles', 'desktop')
 
 class FakeController extends EventEmitter {
   constructor() {
@@ -44,9 +48,9 @@ function createProvider(overrides = {}) {
     controller,
     ensureProfile: overrides.ensureProfile ?? (async () => {
       profileCalls.push('ensure')
-      return { changed: false, profileDir: 'C:\\dsh-home\\profiles\\desktop' }
+      return { changed: false, profileDir: PROFILE_DIR }
     }),
-    dshHome: 'C:\\dsh-home',
+    dshHome: DSH_HOME,
     profileName: 'desktop',
     upstreamVersion: '0.1.0-rc.7',
     desktopVersion: '2.5.0',
@@ -109,15 +113,15 @@ test('provider preserves current lifecycle results, status, and status subscript
 test('profile methods expose only normalized Desktop-owned paths', async () => {
   const { profileCalls, provider } = createProvider()
   assert.deepEqual(provider.resolveProfilePaths(), {
-    homeDir: 'C:\\dsh-home',
+    homeDir: DSH_HOME,
     profileName: 'desktop',
-    profileDir: 'C:\\dsh-home\\profiles\\desktop',
-    manifestPath: 'C:\\dsh-home\\profiles\\desktop\\package.json',
-    lockfilePath: 'C:\\dsh-home\\profiles\\desktop\\pnpm-lock.yaml',
-    stateDir: 'C:\\dsh-home\\profiles\\desktop\\state',
-    skillsDir: 'C:\\dsh-home\\skills',
+    profileDir: PROFILE_DIR,
+    manifestPath: join(PROFILE_DIR, 'package.json'),
+    lockfilePath: join(PROFILE_DIR, 'pnpm-lock.yaml'),
+    stateDir: join(PROFILE_DIR, 'state'),
+    skillsDir: join(DSH_HOME, 'skills'),
   })
-  assert.equal((await provider.ensureProfile()).profileDir, 'C:\\dsh-home\\profiles\\desktop')
+  assert.equal((await provider.ensureProfile()).profileDir, PROFILE_DIR)
   assert.deepEqual(profileCalls, ['ensure'])
 })
 
