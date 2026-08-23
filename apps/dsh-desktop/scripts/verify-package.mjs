@@ -16,12 +16,21 @@ const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
 const requiredPackages = [
   ...CORE_RUNTIME_PACKAGES,
   'electron-updater',
+  'pnpm',
 ]
 
+const packagedManifests = new Map()
 for (const packageName of requiredPackages) {
   const manifestPath = join(unpackedModules, ...packagePathSegments(packageName), 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
   if (manifest.name !== packageName) throw new Error(`packaged manifest mismatch for ${packageName}`)
+  packagedManifests.set(packageName, manifest)
+}
+if (packagedManifests.get('@deepseek-ai/dsh')?.version !== '0.1.1-rc.2') {
+  throw new Error('packaged official DSH runtime version is not 0.1.1-rc.2')
+}
+if (packagedManifests.get('pnpm')?.version !== '11.22.0') {
+  throw new Error('packaged pnpm version is not 11.22.0')
 }
 
 for (const forbidden of [
@@ -32,7 +41,6 @@ for (const forbidden of [
   'dsh-codex-connect',
   'ssh2',
   '@xterm',
-  'pnpm',
 ]) {
   try {
     await access(join(unpackedModules, forbidden))
@@ -43,6 +51,18 @@ for (const forbidden of [
 }
 
 await access(join(unpackedModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
+await access(join(unpackedModules, 'pnpm', 'bin', 'pnpm.cjs'))
+const dshLib = join(unpackedModules, '@deepseek-ai', 'dsh', 'lib')
+const pluginFiles = (await readdir(dshLib)).filter((name) => /^plugin-.*\.js$/u.test(name))
+if (pluginFiles.length !== 1) throw new Error(`packaged DSH plugin entry count is ${pluginFiles.length}`)
+const pluginSource = await readFile(join(dshLib, pluginFiles[0]), 'utf8')
+for (const pattern of [
+  /process\.env\.DSH_PNPM_CLI_PATH/u,
+  /forwardedArguments = pnpmCliPath === void 0 \? pnpmArguments : \[pnpmCliPath, \.\.\.pnpmArguments\]/u,
+  /shell: false,\s*windowsHide: process\.platform === "win32"/u,
+]) {
+  if (!pattern.test(pluginSource)) throw new Error(`packaged DSH plugin forwarding check failed: ${pattern}`)
+}
 for (const relativePath of CRITICAL_RUNTIME_FILES) {
   await access(join(unpackedModules, ...relativePath.split('/')))
 }

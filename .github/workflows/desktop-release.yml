@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Preserve repository line endings
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Verify release commit is on main
         shell: pwsh
         run: |
@@ -25,8 +25,36 @@ jobs:
           if ($exitCode -ne 0) {
             throw "Release commit $env:GITHUB_SHA is not contained in origin/main."
           }
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - name: Verify release tag and public signing prerequisites
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^desktop-v(?<version>\d+\.\d+\.\d+)$') {
+            throw "Release tag must match desktop-vX.Y.Z, received $env:GITHUB_REF_NAME."
+          }
+          $expectedVersion = $Matches.version
+          $rootVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $desktopVersion = (Get-Content -Raw apps/dsh-desktop/package.json | ConvertFrom-Json).version
+          if ($rootVersion -ne $expectedVersion -or $desktopVersion -ne $expectedVersion) {
+            throw "Release tag $expectedVersion does not match package versions root=$rootVersion desktop=$desktopVersion."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            throw 'Configure WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD GitHub secrets before publishing.'
+          }
+          $headers = @{
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $repository = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
+          if ($repository.visibility -ne 'public') {
+            throw "The update channel repository must be public for external users; current visibility is $($repository.visibility)."
+          }
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: pnpm
@@ -37,7 +65,24 @@ jobs:
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
       - run: pnpm desktop:pack
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+      - name: Verify version metadata and Authenticode signature
+        shell: pwsh
+        run: |
+          $expectedVersion = $env:GITHUB_REF_NAME.Substring('desktop-v'.Length)
+          $installers = @(Get-Item apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe)
+          if ($installers.Count -ne 1 -or $installers[0].Name -notmatch [regex]::Escape("DeepSeek-Harness-Desktop-Setup-$expectedVersion-x64.exe")) {
+            throw "Expected exactly one x64 installer for version $expectedVersion."
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installers[0].FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Installer Authenticode signature is $($signature.Status), expected Valid."
+          }
+          $latest = Get-Content -Raw apps/dsh-desktop/dist/latest.yml
+          if ($latest -notmatch "(?m)^version:\s*$([regex]::Escape($expectedVersion))\s*$") {
+            throw "latest.yml does not declare version $expectedVersion."
+          }
       - name: Verify packaged directory picker
         shell: pwsh
         run: |
@@ -56,7 +101,7 @@ jobs:
           $installer = Get-Item apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe
           $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLowerInvariant()
           "$hash  $($installer.Name)" | Set-Content -Encoding ascii apps/dsh-desktop/dist/SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           body_path: docs/launch/release-notes.md
           overwrite_files: false

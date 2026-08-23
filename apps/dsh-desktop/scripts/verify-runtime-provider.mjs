@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -10,6 +10,8 @@ const temporaryRoot = await mkdtemp(join(tmpdir(), 'dsh-runtime-provider-'))
 const dshHome = join(temporaryRoot, 'dsh-home')
 const repositoryRoot = resolve(import.meta.dirname, '..', '..', '..')
 const runtimePackages = resolveRuntimePackages()
+const runtimeManifest = JSON.parse(await readFile(join(runtimePackages.get('@deepseek-ai/dsh'), 'package.json'), 'utf8'))
+const desktopManifest = JSON.parse(await readFile(join(repositoryRoot, 'apps', 'dsh-desktop', 'package.json'), 'utf8'))
 const ensureProfile = () => ensureDesktopProfile({ dshHome, packageRoots: runtimePackages })
 
 try {
@@ -28,8 +30,8 @@ try {
     controller,
     ensureProfile,
     dshHome,
-    upstreamVersion: process.env.DSH_CANDIDATE_VERSION ?? '0.1.0-rc.7',
-    desktopVersion: '2.5.0',
+    upstreamVersion: process.env.DSH_CANDIDATE_VERSION ?? runtimeManifest.version,
+    desktopVersion: desktopManifest.version,
     runtimeIdentity: { packageName: '@deepseek-ai/dsh', cliRelativePath: 'lib/bin.js' },
   })
   const firstUrl = await provider.start()

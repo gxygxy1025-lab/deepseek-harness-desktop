@@ -1,13 +1,21 @@
 diff --git a/lib/plugin-9h8shc4d.js b/lib/plugin-9h8shc4d.js
-index 1d7b74d19fd0fc4d3d577b2254d5fabf6349eabc..6accd94d0a4a0db3a0820d54461d7c667aea4faa 100644
+index 1d7b74d19fd0fc4d3d577b2254d5fabf6349eabc..6cb95b031f92fd8452d8b8db2cb2aad0f6ce5098 100644
 --- a/lib/plugin-9h8shc4d.js
 +++ b/lib/plugin-9h8shc4d.js
-@@ -108,7 +108,8 @@ function runPlugin(profile, args) {
- 	const result = spawnSync("pnpm", args.map((argument) => anchorPathSpec(argument, process.cwd())), {
+@@ -105,10 +105,15 @@ function runPlugin(profile, args) {
+ 		process.stderr.write(`${NAME}: initialized profile ${profile} at ${dir}\n`);
+ 	}
+ 	const before = readProfileManifest(NAME, dir);
+-	const result = spawnSync("pnpm", args.map((argument) => anchorPathSpec(argument, process.cwd())), {
++	const pnpmCliPath = process.env.DSH_PNPM_CLI_PATH;
++	const pnpmExecutable = pnpmCliPath === void 0 ? "pnpm" : process.execPath;
++	const pnpmArguments = args.map((argument) => anchorPathSpec(argument, process.cwd()));
++	const forwardedArguments = pnpmCliPath === void 0 ? pnpmArguments : [pnpmCliPath, ...pnpmArguments];
++	const result = spawnSync(pnpmExecutable, forwardedArguments, {
  		cwd: dir,
  		stdio: "inherit",
 -		shell: process.platform === "win32"
-+		shell: process.platform === "win32",
++		shell: false,
 +		windowsHide: process.platform === "win32"
  	});
  	if (result.error !== void 0) {

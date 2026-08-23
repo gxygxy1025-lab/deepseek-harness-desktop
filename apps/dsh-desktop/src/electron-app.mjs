@@ -27,9 +27,16 @@ import { publicUpdateStatus, registerDesktopIpc } from './ipc.mjs'
 import { installApplicationMenu, installEditContextMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { DesktopNotificationService } from './notifications.mjs'
-import { ensureDesktopProfile, resolveDshCliPath, resolveRuntimePackages } from './profile.mjs'
+import {
+  ensureDesktopProfile,
+  resolveDshCliPath,
+  resolveDshRuntimeVersion,
+  resolvePnpmCliPath,
+  resolveRuntimePackages,
+} from './profile.mjs'
 import { persistRuntimePort, selectPreferredRuntimePort } from './runtime-port.mjs'
 import { installRendererPermissions } from './renderer-permissions.mjs'
+import { installRendererSecurityHeaders } from './renderer-security.mjs'
 import { installSettingsWindow } from './settings-window.mjs'
 import { exportStartupDiagnostics } from './startup-diagnostics.mjs'
 import { SettingsWindowStateStore } from './settings-window-state.mjs'
@@ -311,10 +318,10 @@ export async function startElectronApp(metadata) {
   )
   const desktopRuntimeEnvironment = () => ({
     DSH_DESKTOP_BACKGROUND_AUTOMATION: isBackgroundAutomationEnabled(closeBehavior) ? '1' : '0',
+    DSH_PNPM_CLI_PATH: pnpmCliPath,
   })
   const projectRoot = runtimeWorkspace(app)
-  const runtimeVersion = profile.manifest?.dependencies?.['@deepseek-ai/dsh']
-  if (runtimeVersion === undefined) throw new Error('the installed DSH runtime version is unavailable')
+  const runtimeVersion = resolveDshRuntimeVersion()
 
   const runtimePortStatePath = join(profile.profileDir, '.dsh-desktop-runtime.json')
   const preferredRuntimePort = await selectPreferredRuntimePort(runtimePortStatePath).catch(async (error) => {
@@ -323,6 +330,7 @@ export async function startElectronApp(metadata) {
   })
 
   const dshCliPath = resolveDshCliPath()
+  const pnpmCliPath = resolvePnpmCliPath()
   const rawRuntimeController = new DshRuntimeController({
     cliPath: dshCliPath,
     patchPath: profile.desktopPatchPath,
@@ -403,6 +411,10 @@ export async function startElectronApp(metadata) {
   const saveWindowState = attachWindowStatePersistence(mainWindow, statePath)
   let activeOrigin
   let updateController
+  const removeRendererSecurityHeaders = installRendererSecurityHeaders({
+    session: mainWindow.webContents.session,
+    getActiveOrigin: () => activeOrigin,
+  })
 
   installNavigationPolicy({
     webContents: mainWindow.webContents,
@@ -653,6 +665,7 @@ export async function startElectronApp(metadata) {
         () => updateController?.dispose(),
         () => updateController?.off('status', publishUpdateStatus),
         removeUpdateSurface,
+        removeRendererSecurityHeaders,
         removeSettingsWindow,
         removeConversationSkills,
         removeConversationPolish,

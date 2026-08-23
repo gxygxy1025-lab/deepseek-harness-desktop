@@ -4,13 +4,13 @@
 
 DeepSeek Harness Desktop is a community-maintained Windows 10/11 x64 wrapper for the official DeepSeek Harness Runtime. It does not bundle a plugin marketplace, QQ Bot, skin center, task board, or third-party extension collection.
 
-The release package does not preinstall third-party plugins, but it preserves the official DSH profile plugin mechanism. After a user runs `dsh plugin --profile desktop add <package>` or `remove <package>`, restarting the desktop app loads or removes the bundle; the desktop shell does not overwrite user profile dependencies, bundles, lockfiles, or custom patches.
+The release package does not preinstall third-party plugins, but it preserves the official DSH profile plugin mechanism. Users can install or remove plugins from the official Harness plugin-management surface; restarting the desktop app loads or removes the bundle. The desktop shell does not overwrite user profile dependencies, bundles, lockfiles, or custom patches. The desktop runtime bundles a matching pnpm version, so plugin operations do not require a global pnpm installation or open a Windows console window.
 
 ## Download and install
 
 Download `DeepSeek-Harness-Desktop-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/gxygxy1025-lab/deepseek-harness-desktop/releases/latest), close the previous version, and run the installer. The package includes its required Node.js and Electron runtime.
 
-The current application version is `1.0.7`, with `@deepseek-ai/dsh@0.1.1-rc.2` pinned exactly. Updates are discovered through the GitHub Release `latest.yml` metadata and installed only after user confirmation.
+The current application version is `1.0.9`, with `@deepseek-ai/dsh@0.1.1-rc.2` pinned exactly. Updates are discovered through the GitHub Release `latest.yml` metadata and installed only after user confirmation.
 
 ## Core scope
 

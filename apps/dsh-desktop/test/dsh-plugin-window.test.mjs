@@ -13,8 +13,9 @@ test('patched DSH plugin forwarding hides the Windows package-manager window', a
 
   assert.equal(pluginFiles.length, 1)
   const source = await readFile(join(libDirectory, pluginFiles[0]), 'utf8')
-  assert.match(source, /spawnSync\("pnpm"/u)
-  assert.match(source, /shell: process\.platform === "win32",\s*windowsHide: process\.platform === "win32"/u)
+  assert.match(source, /process\.env\.DSH_PNPM_CLI_PATH/u)
+  assert.match(source, /forwardedArguments = pnpmCliPath === void 0 \? pnpmArguments : \[pnpmCliPath, \.\.\.pnpmArguments\]/u)
+  assert.match(source, /shell: false,\s*windowsHide: process\.platform === "win32"/u)
 })
 
 test('patched DSH web app browser launcher hides the Windows launcher window', async () => {

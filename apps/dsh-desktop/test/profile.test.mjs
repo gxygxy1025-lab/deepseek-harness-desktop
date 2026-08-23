@@ -8,11 +8,15 @@ import {
   BUILTIN_BUNDLES,
   CORE_RUNTIME_PACKAGES,
   DESKTOP_PATCH_CONFIG,
+  DESKTOP_PATCH_END,
   createDesktopProfileManifest,
   ensureDesktopProfile,
   materializeFilesystemPath,
   packagePathSegments,
+  removeManagedDesktopPatch,
   resolveDshCliPath,
+  resolveDshRuntimeVersion,
+  resolvePnpmCliPath,
   resolveRuntimePackages,
 } from '../src/profile.mjs'
 
@@ -46,6 +50,32 @@ test('desktop profile defaults to official bundles and preserves explicit user b
   )
 })
 
+test('desktop profile preserves unknown manifest fields while updating managed fields', () => {
+  assert.deepEqual(
+    createDesktopProfileManifest({
+      scripts: { postinstall: 'custom-script' },
+      dependencies: { '@community/example': '1.2.3' },
+      dsh: { custom: { enabled: true }, profile: { extra: true, bundles: ['@community/example'] } },
+    }),
+    {
+      scripts: { postinstall: 'custom-script' },
+      name: 'dsh-profile-desktop',
+      private: true,
+      dependencies: { '@community/example': '1.2.3' },
+      dsh: {
+        custom: { enabled: true },
+        profile: { extra: true, bundles: [...CORE_BUNDLES, '@community/example'] },
+      },
+    },
+  )
+})
+
+test('desktop profile rejects valid JSON with an invalid manifest shape', () => {
+  assert.throws(() => createDesktopProfileManifest([]), /must be a JSON object/u)
+  assert.throws(() => createDesktopProfileManifest({ dependencies: [] }), /dependencies must be a JSON object/u)
+  assert.throws(() => createDesktopProfileManifest({ dsh: { profile: { bundles: {} } } }), /bundles must be an array/u)
+})
+
 test('profile bootstrap preserves official plugin-managed dependencies and user files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-plugin-profile-'))
   try {
@@ -66,11 +96,13 @@ test('profile bootstrap preserves official plugin-managed dependencies and user 
       packageRoots: new Map([['@deepseek-ai/dsh', join(root, 'sources', 'dsh')]]),
     })
     const manifest = JSON.parse(await readFile(join(result.profileDir, 'package.json'), 'utf8'))
+    const manifestBackup = JSON.parse(await readFile(join(result.profileDir, 'package.json.bak'), 'utf8'))
     const patch = await readFile(join(result.profileDir, 'cordis.patch.yml'), 'utf8')
     const desktopPatch = await readFile(result.desktopPatchPath, 'utf8')
     const workspace = await readFile(join(result.profileDir, 'pnpm-workspace.yaml'), 'utf8')
 
     assert.equal(manifest.dependencies['dsh-cost-meter'], '1.5.36')
+    assert.equal(manifestBackup.dependencies['dsh-cost-meter'], '1.5.36')
     assert.deepEqual(manifest.dsh.profile.bundles, [...CORE_BUNDLES, 'dsh-cost-meter'])
     assert.equal(patch, '- id: user-setting\n  config: {}\n')
     assert.equal(desktopPatch, DESKTOP_PATCH_CONFIG)
@@ -78,6 +110,59 @@ test('profile bootstrap preserves official plugin-managed dependencies and user 
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('profile bootstrap refuses to overwrite a malformed manifest', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-invalid-profile-'))
+  try {
+    const profileDir = join(root, 'profiles', 'desktop')
+    const manifestPath = join(profileDir, 'package.json')
+    await mkdir(profileDir, { recursive: true })
+    const malformed = '{"dependencies":'
+    await writeFile(manifestPath, malformed)
+
+    await assert.rejects(
+      ensureDesktopProfile({
+        dshHome: root,
+        packageRoots: new Map(),
+      }),
+      (error) => error?.code === 'desktop-profile-bootstrap-invalid',
+    )
+    assert.equal(await readFile(manifestPath, 'utf8'), malformed)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('profile bootstrap identifies a valid JSON manifest with an invalid schema', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-invalid-schema-'))
+  try {
+    const manifestPath = join(root, 'profiles', 'desktop', 'package.json')
+    await mkdir(dirname(manifestPath), { recursive: true })
+    await writeFile(manifestPath, '{"dependencies":[]}\n')
+
+    await assert.rejects(
+      ensureDesktopProfile({ dshHome: root, packageRoots: new Map() }),
+      (error) => error?.code === 'desktop-profile-bootstrap-invalid'
+        && /invalid schema/u.test(error.message),
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('legacy desktop patch blocks migrate without deleting user patch content', () => {
+  const source = `- id: before\n  config: {}\n${DESKTOP_PATCH_CONFIG}- id: after\n  config: {}\n`
+  assert.equal(
+    removeManagedDesktopPatch(source),
+    '- id: before\n  config: {}\n- id: after\n  config: {}\n',
+  )
+  assert.throws(
+    () => removeManagedDesktopPatch(DESKTOP_PATCH_CONFIG.replace(DESKTOP_PATCH_END, '')),
+    (error) => error?.code === 'desktop-profile-bootstrap-invalid',
+  )
+  const multiple = `${DESKTOP_PATCH_CONFIG}- id: user\n  config: {}\n${DESKTOP_PATCH_CONFIG}`
+  assert.equal(removeManagedDesktopPatch(multiple), '- id: user\n  config: {}\n')
 })
 
 test('removed extensions are not part of the managed runtime', () => {
@@ -94,6 +179,8 @@ test('official runtime packages resolve from the installed DSH tree', () => {
     assert.equal(resolved.has(packageName), true, `missing ${packageName}`)
   }
   assert.match(resolveDshCliPath(), /[\\/]lib[\\/]bin\.js$/u)
+  assert.match(resolveDshRuntimeVersion(), /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u)
+  assert.match(resolvePnpmCliPath(), /[\\/]pnpm[\\/]bin[\\/]pnpm\.cjs$/u)
 })
 
 test('profile bootstrap removes stale extension links but preserves real directories', async () => {
