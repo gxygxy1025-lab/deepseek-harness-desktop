@@ -68,6 +68,29 @@ function classifyPrunableFile(relativePath) {
   return undefined
 }
 
+function classifyMacPrunableFile(relativePath) {
+  const normalized = relativePath.replaceAll('\\', '/')
+  const { packageName, packageParts } = splitPackagePath(normalized)
+  if (/\.d\.(?:ts|mts|cts)$/u.test(packageParts.at(-1) ?? '')) return 'type-declaration'
+  if (packageParts.some((part) => DEVELOPMENT_DIRECTORIES.has(part))) return 'development-material'
+
+  const sourceRoots = SOURCE_ROOTS.get(packageName) ?? []
+  if (sourceRoots.includes(packageParts[0])) return 'published-source'
+
+  if (/(?:^|[-/])(?:win32|linux|freebsd|openbsd|android)-/u.test(packageName)) {
+    return 'foreign-native-binary'
+  }
+
+  const packagePath = packageParts.join('/')
+  if (/\.(?:dll|exe)$/iu.test(packagePath)) return 'foreign-native-binary'
+  if (packageName === 'node-pty') {
+    if (/^prebuilds\/(?:win32|linux)-/u.test(packagePath)) return 'foreign-native-binary'
+    if (/^third_party\/conpty\//u.test(packagePath)) return 'foreign-native-binary'
+  }
+
+  return undefined
+}
+
 async function listFiles(root) {
   const pending = [root]
   const files = []
@@ -83,7 +106,7 @@ async function listFiles(root) {
   return files
 }
 
-async function prunePackagedRuntime(nodeModulesRoot) {
+async function prunePackagedRuntime(nodeModulesRoot, classifier = classifyPrunableFile) {
   const files = await listFiles(nodeModulesRoot)
   const report = {
     removedBytes: 0,
@@ -93,7 +116,7 @@ async function prunePackagedRuntime(nodeModulesRoot) {
 
   for (const path of files) {
     const relativePath = relative(nodeModulesRoot, path)
-    const category = classifyPrunableFile(relativePath)
+    const category = classifier(relativePath)
     if (category === undefined) continue
     const metadata = await stat(path)
     await rm(path, { force: true })
@@ -142,8 +165,13 @@ function resolvePackagedNodeModulesRoot(context) {
 async function afterPack(context) {
   const nodeModulesRoot = resolvePackagedNodeModulesRoot(context)
   const restoredPeers = await restoreRequiredPackagedPeers(nodeModulesRoot)
-  const report = context.electronPlatformName === 'win32'
-    ? await prunePackagedRuntime(nodeModulesRoot)
+  const classifier = context.electronPlatformName === 'win32'
+    ? classifyPrunableFile
+    : context.electronPlatformName === 'darwin'
+      ? classifyMacPrunableFile
+      : undefined
+  const report = classifier
+    ? await prunePackagedRuntime(nodeModulesRoot, classifier)
     : { removedBytes: 0, removedFiles: 0, categories: {} }
   report.restoredPeers = restoredPeers
   report.platform = context.electronPlatformName
@@ -155,6 +183,7 @@ async function afterPack(context) {
 }
 
 module.exports = afterPack
+module.exports.classifyMacPrunableFile = classifyMacPrunableFile
 module.exports.classifyPrunableFile = classifyPrunableFile
 module.exports.prunePackagedRuntime = prunePackagedRuntime
 module.exports.resolvePackagedNodeModulesRoot = resolvePackagedNodeModulesRoot

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { access, readdir, readFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import { execFile } from 'node:child_process'
@@ -159,9 +159,21 @@ for (const forbidden of [
 }
 
 const packagedFiles = await listFiles(contents)
-const powershellFiles = packagedFiles.filter((path) => path.toLowerCase().endsWith('.ps1'))
-if (powershellFiles.length > 0) {
-  throw new Error(`macOS package contains PowerShell files: ${powershellFiles.map((path) => relative(appBundle, path)).join(', ')}`)
+const windowsCleanupScripts = packagedFiles.filter(
+  (path) => basename(path).toLowerCase() === 'cleanup-stale-processes.ps1',
+)
+if (windowsCleanupScripts.length > 0) {
+  throw new Error(`macOS package contains Desktop Windows cleanup scripts: ${windowsCleanupScripts.map((path) => relative(appBundle, path)).join(', ')}`)
+}
+
+const foreignNativeFiles = packagedFiles.filter((path) => {
+  const normalized = path.replaceAll('\\', '/').toLowerCase()
+  if (/\.(?:dll|exe)$/u.test(normalized)) return true
+  if (!/(?:win32|linux|freebsd|openbsd|android)-/u.test(normalized)) return false
+  return normalized.endsWith('.node') || normalized.endsWith('/bin/rg')
+})
+if (foreignNativeFiles.length > 0) {
+  throw new Error(`macOS package contains foreign native files: ${foreignNativeFiles.map((path) => relative(appBundle, path)).join(', ')}`)
 }
 
 const macNativeFiles = packagedFiles.filter((path) => {
