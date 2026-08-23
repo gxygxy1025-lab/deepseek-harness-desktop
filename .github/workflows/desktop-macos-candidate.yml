@@ -1,0 +1,91 @@
+name: Desktop macOS Candidate
+
+on:
+  push:
+    branches:
+      - release/macos-*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-macos-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-test:
+    name: Native ${{ matrix.arch }} validation
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            app-directory: mac-arm64
+          - runner: macos-15-intel
+            arch: x64
+            app-directory: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod
+      - run: pnpm verify
+      - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
+      - name: Build native directory package
+        run: pnpm --filter @deepseek-ai/dsh-desktop exec electron-builder --mac dir --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify native directory package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:verify:mac --
+          --allow-missing-artifacts
+          --arch=${{ matrix.arch }}
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app"
+      - name: Smoke test native directory package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+
+  universal-candidate:
+    name: Unsigned Universal candidate
+    needs: native-test
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build unsigned Universal DMG and ZIP
+        run: pnpm desktop:pack:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: pnpm --filter @deepseek-ai/dsh-desktop pack:verify:mac
+      - name: Smoke test Universal package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
+          "${{ github.workspace }}/apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+      - name: Write candidate checksums
+        working-directory: apps/dsh-desktop/dist
+        run: shasum -a 256 DeepSeek-Harness-Desktop-*.dmg DeepSeek-Harness-Desktop-*.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: DeepSeek-Harness-Desktop-${{ github.ref_name }}-macOS-unsigned-candidate
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.dmg
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.zip
+            apps/dsh-desktop/dist/latest-mac.yml
+            apps/dsh-desktop/dist/SHA256SUMS.txt

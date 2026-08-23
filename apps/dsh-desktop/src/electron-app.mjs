@@ -28,6 +28,11 @@ import { installApplicationMenu, installEditContextMenu } from './menu.mjs'
 import { installNavigationPolicy } from './navigation-policy.mjs'
 import { DesktopNotificationService } from './notifications.mjs'
 import {
+  keepsApplicationActiveWithoutWindows,
+  shouldHideMainWindowOnClose,
+  supportsPackagedUpdater,
+} from './platform-lifecycle.mjs'
+import {
   ensureDesktopProfile,
   resolveDshCliPath,
   resolveDshRuntimeVersion,
@@ -720,7 +725,18 @@ export async function startElectronApp(metadata) {
     getBypassReason: closeBypassReason,
     log: (error) => logStore.append(`[close-behavior] ${error.message}`),
   })
-  mainWindow.on('close', (event) => closeBehaviorController?.handleWindowClose(event))
+  mainWindow.on('close', (event) => {
+    if (shouldHideMainWindowOnClose({
+      platform: process.platform,
+      explicitQuit: closeBehaviorController?.explicitQuit === true,
+      shutdownRequested: quitInProgress || updateShutdownRequested,
+    })) {
+      event.preventDefault()
+      mainWindow?.hide()
+      return
+    }
+    closeBehaviorController?.handleWindowClose(event)
+  })
 
   requestUpdateShutdown = (request = updateShutdownRequest) => {
     if (quitInProgress) return
@@ -753,7 +769,11 @@ export async function startElectronApp(metadata) {
   if (updateShutdownRequested) requestUpdateShutdown(updateShutdownRequest)
 
   let autoUpdater
-  if (app.isPackaged && process.platform === 'win32' && process.env.DSH_DESKTOP_DISABLE_UPDATES !== '1') {
+  if (supportsPackagedUpdater({
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    disabled: process.env.DSH_DESKTOP_DISABLE_UPDATES === '1',
+  })) {
     try {
       autoUpdater = await loadElectronAutoUpdater()
     } catch (error) {
@@ -871,5 +891,8 @@ export async function startElectronApp(metadata) {
       })
   })
   app.on('will-quit', () => closeBehaviorController?.beginExplicitQuit())
-  app.on('window-all-closed', () => app.quit())
+  app.on('activate', () => restoreDesktopWindow(mainWindow))
+  app.on('window-all-closed', () => {
+    if (!keepsApplicationActiveWithoutWindows(process.platform)) app.quit()
+  })
 }

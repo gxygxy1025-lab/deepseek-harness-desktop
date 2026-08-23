@@ -1,3 +1,11 @@
+# DeepSeek Harness Desktop 1.0.10
+
+This release adds the macOS packaging and validation path for macOS 13 or later. GitHub Actions validates native Apple Silicon and Intel directory packages before building a Universal DMG and ZIP. A public release is created only after Windows signing, Developer ID signing, Apple notarization, stapling, architecture checks, and packaged smoke tests all pass.
+
+On macOS, closing the main window keeps the application active and clicking the Dock icon restores it. Choosing Quit still stops the Harness Runtime and background resources before the process exits. The macOS package excludes Windows installer markers and retains the official user-managed DSH plugin profile.
+
+The official macOS assets are `DeepSeek-Harness-Desktop-1.0.10-universal.dmg`, `DeepSeek-Harness-Desktop-1.0.10-universal.zip`, and `latest-mac.yml`. Unsigned candidate artifacts are for CI diagnosis only and are not a distributable release.
+
 # DeepSeek Harness Desktop 1.0.9
 
 This release keeps the desktop package limited to the official DeepSeek Harness runtime. Third-party plugins are not bundled, but users can install or remove them with the official `dsh plugin --profile desktop add/remove` commands. The desktop shell now preserves user plugin dependencies, bundle entries, workspace settings, lockfiles, and custom patches across restart, so installed plugins can load normally without becoming part of the published installer.

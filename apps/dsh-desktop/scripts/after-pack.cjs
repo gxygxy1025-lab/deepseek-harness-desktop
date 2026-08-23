@@ -54,6 +54,11 @@ function classifyPrunableFile(relativePath) {
   const sourceRoots = SOURCE_ROOTS.get(packageName) ?? []
   if (sourceRoots.includes(packageParts[0])) return 'published-source'
 
+  if (
+    /^@(?:img|koromix|vscode)\/(?:sharp|sharp-libvips|koffi|ripgrep)-(?:darwin-|win32-(?:arm64|ia32)$)/u.test(packageName)
+    || /^node-addon-require-builtin-(?:darwin-|win32-(?:arm64|ia32)(?:-msvc)?$)/u.test(packageName)
+  ) return 'foreign-native-binary'
+
   if (packageName === 'node-pty') {
     const packagePath = packageParts.join('/')
     if (/^prebuilds\/(?:darwin-|win32-arm64)/u.test(packagePath)) return 'foreign-native-binary'
@@ -118,17 +123,30 @@ async function restoreRequiredPackagedPeers(nodeModulesRoot) {
   return restored
 }
 
+function resolvePackagedNodeModulesRoot(context) {
+  if (context.electronPlatformName === 'darwin') {
+    const productFilename = context.packager?.appInfo?.productFilename
+    if (!productFilename) throw new Error('macOS package product filename is unavailable')
+    return join(
+      context.appOutDir,
+      `${productFilename}.app`,
+      'Contents',
+      'Resources',
+      'app.asar.unpacked',
+      'node_modules',
+    )
+  }
+  return join(context.appOutDir, 'resources', 'app.asar.unpacked', 'node_modules')
+}
+
 async function afterPack(context) {
-  if (context.electronPlatformName !== 'win32') return
-  const nodeModulesRoot = join(
-    context.appOutDir,
-    'resources',
-    'app.asar.unpacked',
-    'node_modules',
-  )
+  const nodeModulesRoot = resolvePackagedNodeModulesRoot(context)
   const restoredPeers = await restoreRequiredPackagedPeers(nodeModulesRoot)
-  const report = await prunePackagedRuntime(nodeModulesRoot)
+  const report = context.electronPlatformName === 'win32'
+    ? await prunePackagedRuntime(nodeModulesRoot)
+    : { removedBytes: 0, removedFiles: 0, categories: {} }
   report.restoredPeers = restoredPeers
+  report.platform = context.electronPlatformName
   const outputPath = join(context.outDir, 'runtime-prune-report.json')
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`)
   process.stdout.write(
@@ -139,4 +157,5 @@ async function afterPack(context) {
 module.exports = afterPack
 module.exports.classifyPrunableFile = classifyPrunableFile
 module.exports.prunePackagedRuntime = prunePackagedRuntime
+module.exports.resolvePackagedNodeModulesRoot = resolvePackagedNodeModulesRoot
 module.exports.restoreRequiredPackagedPeers = restoreRequiredPackagedPeers

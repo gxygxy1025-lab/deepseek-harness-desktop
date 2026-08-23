@@ -34,3 +34,45 @@ jobs:
           pnpm --filter @deepseek-ai/dsh-desktop test:directory-picker:e2e
           pnpm --filter @deepseek-ai/dsh-desktop test:update-shutdown:e2e
       - run: git diff --check
+
+  mac-test:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            app-directory: mac-arm64
+          - runner: macos-15-intel
+            arch: x64
+            app-directory: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
+      - name: Build native macOS directory package
+        run: pnpm --filter @deepseek-ai/dsh-desktop exec electron-builder --mac dir --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify native macOS directory package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:verify:mac --
+          --allow-missing-artifacts
+          --arch=${{ matrix.arch }}
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app"
+      - name: Smoke test native macOS directory package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+      - run: git diff --check

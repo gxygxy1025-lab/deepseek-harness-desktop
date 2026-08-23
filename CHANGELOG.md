@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.10 - 2026-08-23
+
+- 增加 macOS 13 及以上的 arm64、x64 原生目录包验证和 Universal DMG/ZIP 候选构建。
+- 增加 Developer ID 签名、Apple 公证、stapling、`latest-mac.yml` 与双平台统一发布门禁。
+- Mac 关闭窗口时保留应用进程，通过 Dock 激活恢复窗口；菜单退出仍安全停止 Runtime。
+- Mac 包排除 Windows 安装升级标记，并验证官方 Runtime、原生架构、版本和更新哈希。
+- 正式 macOS 发布仍需 Apple 凭据、公开更新仓库和两种架构真机验收。
+
 ## 1.0.9 - 2026-08-23
 
 - Profile Manifest 损坏时拒绝覆盖，并使用原子写入和备份保护用户插件配置。

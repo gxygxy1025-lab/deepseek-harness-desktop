@@ -3,6 +3,14 @@ packages:
 
 autoInstallPeers: false
 minimumReleaseAge: 720
+supportedArchitectures:
+  os:
+    - current
+    - darwin
+  cpu:
+    - current
+    - x64
+    - arm64
 overrides:
   ws: 8.21.3
 allowBuilds:

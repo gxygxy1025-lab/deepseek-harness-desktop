@@ -14,12 +14,6 @@ afterPack: scripts/after-pack.cjs
 extraResources:
   - from: build/icon.png
     to: app-icon.png
-  - from: build/update-shutdown-v1
-    to: update-shutdown-v1
-  - from: build/update-shutdown-v2
-    to: update-shutdown-v2
-  - from: build/installer-upgrade-v3
-    to: installer-upgrade-v3
 
 directories:
   output: dist
@@ -33,11 +27,39 @@ files:
 
 win:
   icon: build/icon.ico
+  extraResources:
+    - from: build/update-shutdown-v1
+      to: update-shutdown-v1
+    - from: build/update-shutdown-v2
+      to: update-shutdown-v2
+    - from: build/installer-upgrade-v3
+      to: installer-upgrade-v3
   target:
     - target: nsis
       arch:
         - x64
   requestedExecutionLevel: asInvoker
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+  minimumSystemVersion: '13.0'
+  hardenedRuntime: true
+  notarize: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  target:
+    - target: dmg
+      arch:
+        - universal
+    - target: zip
+      arch:
+        - universal
+  artifactName: DeepSeek-Harness-Desktop-${version}-${arch}.${ext}
+
+dmg:
+  title: DeepSeek Harness Desktop ${version}
+  artifactName: DeepSeek-Harness-Desktop-${version}-${arch}.${ext}
 
 nsis:
   include: build/installer.nsh

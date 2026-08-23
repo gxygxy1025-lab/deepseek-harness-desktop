@@ -33,6 +33,25 @@ if (packagedManifests.get('pnpm')?.version !== '11.22.0') {
   throw new Error('packaged pnpm version is not 11.22.0')
 }
 
+async function containsPackagedFiles(root) {
+  const pending = [root]
+  while (pending.length > 0) {
+    const directory = pending.pop()
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue
+      throw error
+    }
+    for (const entry of entries) {
+      if (entry.isFile() || entry.isSymbolicLink()) return true
+      if (entry.isDirectory()) pending.push(join(directory, entry.name))
+    }
+  }
+  return false
+}
+
 for (const forbidden of [
   '@linxin666',
   '@tencent-connect',
@@ -41,12 +60,19 @@ for (const forbidden of [
   'dsh-codex-connect',
   'ssh2',
   '@xterm',
+  '@img/sharp-darwin-arm64',
+  '@img/sharp-darwin-x64',
+  '@koromix/koffi-darwin-arm64',
+  '@koromix/koffi-darwin-x64',
+  '@vscode/ripgrep-darwin-arm64',
+  '@vscode/ripgrep-darwin-x64',
+  '@vscode/ripgrep-win32-arm64',
+  'node-addon-require-builtin-darwin-arm64',
+  'node-addon-require-builtin-darwin-x64',
+  'node-addon-require-builtin-win32-arm64-msvc',
 ]) {
-  try {
-    await access(join(unpackedModules, forbidden))
-    throw new Error(`removed extension package is still present: ${forbidden}`)
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error
+  if (await containsPackagedFiles(join(unpackedModules, forbidden))) {
+    throw new Error(`forbidden package files are still present: ${forbidden}`)
   }
 }
 

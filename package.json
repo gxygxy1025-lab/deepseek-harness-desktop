@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-desktop",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": true,
   "description": "DeepSeek Harness Desktop core release workspace",
   "scripts": {
@@ -9,6 +9,8 @@
     "desktop:dev": "pnpm --filter @deepseek-ai/dsh-desktop dev",
     "desktop:test": "pnpm --filter @deepseek-ai/dsh-desktop test",
     "desktop:pack": "pnpm --filter @deepseek-ai/dsh-desktop pack:win",
+    "desktop:pack:win": "pnpm --filter @deepseek-ai/dsh-desktop pack:win",
+    "desktop:pack:mac": "pnpm --filter @deepseek-ai/dsh-desktop pack:mac",
     "verify": "pnpm typecheck && pnpm test"
   },
   "engines": {

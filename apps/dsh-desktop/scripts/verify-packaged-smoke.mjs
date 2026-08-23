@@ -4,7 +4,10 @@ import { join, resolve } from 'node:path'
 
 import { runPackagedDesktop } from './packaged-smoke-runner.mjs'
 
-const appPath = resolve('dist', 'win-unpacked', 'DeepSeek Harness Desktop.exe')
+const executableArgument = process.argv.slice(2).find((argument) => !argument.startsWith('--'))
+const appPath = executableArgument
+  ? resolve(executableArgument)
+  : resolve('dist', 'win-unpacked', 'DeepSeek Harness Desktop.exe')
 const userData = await mkdtemp(join(tmpdir(), 'dsh-packaged-smoke-'))
 
 try {

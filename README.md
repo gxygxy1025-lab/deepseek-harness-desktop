@@ -2,20 +2,20 @@
 
 [English](README.en.md)
 
-DeepSeek Harness Desktop 是一个面向 Windows 10/11 x64 的社区桌面封装。它在受控 Electron 窗口中启动并加载官方 DeepSeek Harness Runtime，不包含插件市场、QQ Bot、皮肤中心、任务看板或第三方扩展集合。
+DeepSeek Harness Desktop 是一个面向 Windows 10/11 x64 与 macOS 13 及以上的社区桌面封装。它在受控 Electron 窗口中启动并加载官方 DeepSeek Harness Runtime，不包含插件市场、QQ Bot、皮肤中心、任务看板或第三方扩展集合。
 
 发布包不会预装第三方插件，但保留官方 DSH Profile 插件机制。用户通过 Harness 官方插件管理界面安装或删除插件，重启桌面应用后即可加载或卸载对应 Bundle；桌面壳不会覆盖用户的 Profile 依赖、Bundle、锁文件或自定义 patch。桌面运行时内置匹配版本的 pnpm，不要求用户全局安装 pnpm，也不会为插件操作弹出 Windows 控制台窗口。
 
 ## 下载与安装
 
-从 [GitHub Releases](https://github.com/gxygxy1025-lab/deepseek-harness-desktop/releases/latest) 下载 `DeepSeek-Harness-Desktop-Setup-<version>-x64.exe`，关闭旧版后运行安装程序。安装包内置运行所需的 Node.js/Electron 环境，不要求用户单独安装开发工具。
+从 [GitHub Releases](https://github.com/gxygxy1025-lab/deepseek-harness-desktop/releases/latest) 下载 Windows 的 `DeepSeek-Harness-Desktop-Setup-<version>-x64.exe`。macOS 正式发布后下载 `DeepSeek-Harness-Desktop-<version>-universal.dmg`；Actions 中标记为 unsigned candidate 的文件仅用于开发验证，不能对外分发。
 
-当前应用版本为 `1.0.9`，官方 Runtime 精确固定为 `@deepseek-ai/dsh@0.1.1-rc.2`。应用通过 GitHub Release 的 `latest.yml` 检查更新，下载完成后由用户确认安装。
+当前应用版本为 `1.0.10`，官方 Runtime 精确固定为 `@deepseek-ai/dsh@0.1.1-rc.2`。Windows 使用 `latest.yml`，macOS 使用 `latest-mac.yml` 检查签名更新。
 
 ## 核心能力
 
 - 官方 Harness 对话、模型设置、工作区和文件操作。
-- Windows 桌面窗口、系统托盘、启动诊断和自动更新。
+- Windows/macOS 桌面窗口、启动诊断和自动更新；Windows 提供系统托盘后台模式。
 - Skills 发现与工作区文件安全打开。
 - 隔离的 desktop profile，不修改其他 DSH profile。
 
@@ -36,6 +36,13 @@ pnpm desktop:dev
 $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
 pnpm desktop:pack
 pnpm --filter @deepseek-ai/dsh-desktop pack:verify
+```
+
+Universal Mac 包必须在 macOS 上构建：
+
+```bash
+pnpm desktop:pack:mac
+pnpm --filter @deepseek-ai/dsh-desktop pack:verify:mac
 ```
 
 安装包输出到 `apps/dsh-desktop/dist/`。

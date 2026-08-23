@@ -9,50 +9,63 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify release commit, tag, versions, repository, and signing prerequisites
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=50
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if [[ "$GITHUB_REF_NAME" =~ ^desktop-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+          else
+            echo "Release tag must match desktop-vX.Y.Z, received $GITHUB_REF_NAME." >&2
+            exit 1
+          fi
+          root_version="$(node -p "require('./package.json').version")"
+          desktop_version="$(node -p "require('./apps/dsh-desktop/package.json').version")"
+          if [[ "$root_version" != "$version" || "$desktop_version" != "$version" ]]; then
+            echo "Release tag $version does not match package versions root=$root_version desktop=$desktop_version." >&2
+            exit 1
+          fi
+          for name in WINDOWS_CSC_LINK WINDOWS_CSC_KEY_PASSWORD MAC_CSC_LINK MAC_CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_TEAM_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Configure the $name GitHub Actions secret before publishing." >&2
+              exit 1
+            fi
+          done
+          visibility="$(gh api "repos/$GITHUB_REPOSITORY" --jq .visibility)"
+          if [[ "$visibility" != public ]]; then
+            echo "The update channel repository must be public; current visibility is $visibility." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: validate
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
       - name: Preserve repository line endings
         run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Verify release commit is on main
-        shell: pwsh
-        run: |
-          git fetch origin main --depth=50
-          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 0) {
-            throw "Release commit $env:GITHUB_SHA is not contained in origin/main."
-          }
-      - name: Verify release tag and public signing prerequisites
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-        run: |
-          if ($env:GITHUB_REF_NAME -notmatch '^desktop-v(?<version>\d+\.\d+\.\d+)$') {
-            throw "Release tag must match desktop-vX.Y.Z, received $env:GITHUB_REF_NAME."
-          }
-          $expectedVersion = $Matches.version
-          $rootVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
-          $desktopVersion = (Get-Content -Raw apps/dsh-desktop/package.json | ConvertFrom-Json).version
-          if ($rootVersion -ne $expectedVersion -or $desktopVersion -ne $expectedVersion) {
-            throw "Release tag $expectedVersion does not match package versions root=$rootVersion desktop=$desktopVersion."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
-            throw 'Configure WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD GitHub secrets before publishing.'
-          }
-          $headers = @{
-            Authorization = "Bearer $env:GITHUB_TOKEN"
-            Accept = 'application/vnd.github+json'
-            'X-GitHub-Api-Version' = '2022-11-28'
-          }
-          $repository = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
-          if ($repository.visibility -ne 'public') {
-            throw "The update channel repository must be public for external users; current visibility is $($repository.visibility)."
-          }
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -63,16 +76,16 @@ jobs:
       - run: pnpm --filter @deepseek-ai/dsh-desktop exec playwright install chromium
       - run: pnpm verify
       - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
-      - run: pnpm desktop:pack
+      - run: pnpm desktop:pack:win
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
       - name: Verify version metadata and Authenticode signature
         shell: pwsh
         run: |
-          $expectedVersion = $env:GITHUB_REF_NAME.Substring('desktop-v'.Length)
+          $expectedVersion = '${{ needs.validate.outputs.version }}'
           $installers = @(Get-Item apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe)
-          if ($installers.Count -ne 1 -or $installers[0].Name -notmatch [regex]::Escape("DeepSeek-Harness-Desktop-Setup-$expectedVersion-x64.exe")) {
+          if ($installers.Count -ne 1 -or $installers[0].Name -ne "DeepSeek-Harness-Desktop-Setup-$expectedVersion-x64.exe") {
             throw "Expected exactly one x64 installer for version $expectedVersion."
           }
           $signature = Get-AuthenticodeSignature -LiteralPath $installers[0].FullName
@@ -83,30 +96,156 @@ jobs:
           if ($latest -notmatch "(?m)^version:\s*$([regex]::Escape($expectedVersion))\s*$") {
             throw "latest.yml does not declare version $expectedVersion."
           }
-      - name: Verify packaged directory picker
+      - name: Verify packaged Windows behavior
         shell: pwsh
         run: |
           $env:DSH_DESKTOP_E2E_EXECUTABLE = (Resolve-Path 'apps/dsh-desktop/dist/win-unpacked/DeepSeek Harness Desktop.exe').Path
           pnpm --filter @deepseek-ai/dsh-desktop test:directory-picker:e2e
-      - name: Verify packaged update shutdown receipt
-        shell: pwsh
-        run: |
-          $env:DSH_DESKTOP_E2E_EXECUTABLE = (Resolve-Path 'apps/dsh-desktop/dist/win-unpacked/DeepSeek Harness Desktop.exe').Path
           pnpm --filter @deepseek-ai/dsh-desktop test:update-shutdown:e2e
-      - run: pnpm --filter @deepseek-ai/dsh-desktop pack:verify
-      - run: pnpm --filter @deepseek-ai/dsh-desktop pack:smoke
-      - name: Write checksums
+          pnpm --filter @deepseek-ai/dsh-desktop pack:verify
+          pnpm --filter @deepseek-ai/dsh-desktop pack:smoke
+      - name: Write Windows checksum
         shell: pwsh
         run: |
           $installer = Get-Item apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe
           $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLowerInvariant()
-          "$hash  $($installer.Name)" | Set-Content -Encoding ascii apps/dsh-desktop/dist/SHA256SUMS.txt
+          "$hash  $($installer.Name)" | Set-Content -Encoding ascii apps/dsh-desktop/dist/SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-windows-release
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe.blockmap
+            apps/dsh-desktop/dist/latest.yml
+            apps/dsh-desktop/dist/SHA256SUMS-windows.txt
+
+  mac-native-test:
+    needs: validate
+    name: macOS ${{ matrix.arch }} release validation
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            app-directory: mac-arm64
+          - runner: macos-15-intel
+            arch: x64
+            app-directory: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod
+      - run: pnpm verify
+      - run: pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
+      - name: Build native directory package
+        run: pnpm --filter @deepseek-ai/dsh-desktop exec electron-builder --mac dir --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify native directory package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:verify:mac --
+          --allow-missing-artifacts
+          --arch=${{ matrix.arch }}
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app"
+      - name: Smoke test native directory package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+
+  mac-universal:
+    needs: [validate, mac-native-test]
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare App Store Connect API key
+        shell: bash
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8"
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key_path"
+          chmod 600 "$key_path"
+          echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
+      - name: Build, sign, and notarize Universal DMG and ZIP
+        run: pnpm desktop:pack:mac
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - run: pnpm --filter @deepseek-ai/dsh-desktop pack:verify:mac
+      - name: Verify Developer ID signature, Gatekeeper, and notarization ticket
+        run: |
+          codesign --verify --deep --strict --verbose=2 "apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app"
+          spctl --assess --type execute --verbose=4 "apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app"
+          xcrun stapler validate "apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-universal.dmg"
+      - name: Smoke test signed Universal package
+        run: >-
+          pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
+          "${{ github.workspace }}/apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+      - name: Write macOS checksums
+        working-directory: apps/dsh-desktop/dist
+        run: shasum -a 256 DeepSeek-Harness-Desktop-*.dmg DeepSeek-Harness-Desktop-*.zip > SHA256SUMS-macos.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-macos-release
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.dmg
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.zip
+            apps/dsh-desktop/dist/latest-mac.yml
+            apps/dsh-desktop/dist/SHA256SUMS-macos.txt
+
+  publish:
+    needs: [validate, windows, mac-universal]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: desktop-*-release
+          path: release-assets
+          merge-multiple: true
+      - name: Verify and combine release checksums
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          test -f "DeepSeek-Harness-Desktop-Setup-${{ needs.validate.outputs.version }}-x64.exe"
+          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-universal.dmg"
+          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-universal.zip"
+          test -f latest.yml
+          test -f latest-mac.yml
+          cat SHA256SUMS-windows.txt SHA256SUMS-macos.txt | sort > SHA256SUMS.txt
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           body_path: docs/launch/release-notes.md
           overwrite_files: false
           files: |
-            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe
-            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-Setup-*.exe.blockmap
-            apps/dsh-desktop/dist/latest.yml
-            apps/dsh-desktop/dist/SHA256SUMS.txt
+            release-assets/DeepSeek-Harness-Desktop-Setup-*.exe
+            release-assets/DeepSeek-Harness-Desktop-Setup-*.exe.blockmap
+            release-assets/DeepSeek-Harness-Desktop-*.dmg
+            release-assets/DeepSeek-Harness-Desktop-*.zip
+            release-assets/latest.yml
+            release-assets/latest-mac.yml
+            release-assets/SHA256SUMS.txt
