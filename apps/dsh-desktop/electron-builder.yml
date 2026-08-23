@@ -48,6 +48,7 @@ mac:
   notarize: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
+  x64ArchFiles: '**/{*-darwin-*,darwin-*}/**'
   target:
     - target: dmg
       arch:
