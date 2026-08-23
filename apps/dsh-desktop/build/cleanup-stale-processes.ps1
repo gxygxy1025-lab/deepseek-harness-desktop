@@ -20,6 +20,7 @@ $receiptShutdownTimeoutMs = 15000
 $receiptProcessExitTimeoutMs = 5000
 $receiptProcessTreeExitTimeoutMs = 10000
 $preflightRetryAttempts = 50
+$preflightRetryDelayMs = 250
 $forceAttempts = 12
 $retryDelayMs = 400
 $script:receiptProtocolFailed = $false
@@ -579,8 +580,8 @@ namespace DshInstaller
       if ($blockers | Where-Object { $_.Kind -eq 'permission' } | Select-Object -First 1) {
         break
       }
-      if ($attempt + 1 -lt 10) {
-        Start-Sleep -Milliseconds 200
+      if ($attempt + 1 -lt $preflightRetryAttempts) {
+        Start-Sleep -Milliseconds $preflightRetryDelayMs
       }
     }
     foreach ($blocker in $blockers) {
