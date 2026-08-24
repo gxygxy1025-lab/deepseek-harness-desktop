@@ -162,25 +162,14 @@ function resolvePackagedNodeModulesRoot(context) {
   return join(context.appOutDir, 'resources', 'app.asar.unpacked', 'node_modules')
 }
 
-function isUniversalMacTemporaryPackage(context) {
-  if (context.electronPlatformName !== 'darwin') return false
-  const normalizedAppOutDir = context.appOutDir.replaceAll('\\', '/')
-  return /-universal-(?:x64|arm64)-temp$/u.test(normalizedAppOutDir)
-}
-
 async function afterPack(context) {
   const nodeModulesRoot = resolvePackagedNodeModulesRoot(context)
   const restoredPeers = await restoreRequiredPackagedPeers(nodeModulesRoot)
-  // electron-universal reads every unpacked ASAR entry while merging. Defer
-  // pruning its temporary apps until electron-builder calls afterPack again
-  // for the combined Universal app.
-  const classifier = isUniversalMacTemporaryPackage(context)
-    ? undefined
-    : context.electronPlatformName === 'win32'
-      ? classifyPrunableFile
-      : context.electronPlatformName === 'darwin'
-        ? classifyMacPrunableFile
-        : undefined
+  const classifier = context.electronPlatformName === 'win32'
+    ? classifyPrunableFile
+    : context.electronPlatformName === 'darwin'
+      ? classifyMacPrunableFile
+      : undefined
   const report = classifier
     ? await prunePackagedRuntime(nodeModulesRoot, classifier)
     : { removedBytes: 0, removedFiles: 0, categories: {} }
@@ -196,7 +185,6 @@ async function afterPack(context) {
 module.exports = afterPack
 module.exports.classifyMacPrunableFile = classifyMacPrunableFile
 module.exports.classifyPrunableFile = classifyPrunableFile
-module.exports.isUniversalMacTemporaryPackage = isUniversalMacTemporaryPackage
 module.exports.prunePackagedRuntime = prunePackagedRuntime
 module.exports.resolvePackagedNodeModulesRoot = resolvePackagedNodeModulesRoot
 module.exports.restoreRequiredPackagedPeers = restoreRequiredPackagedPeers

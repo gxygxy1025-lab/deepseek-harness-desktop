@@ -4,8 +4,9 @@
 
 - [ ] `macos-15` arm64 安装依赖、测试、Runtime E2E、目录包校验和启动冒烟通过。
 - [ ] `macos-15-intel` x64 安装依赖、测试、Runtime E2E、目录包校验和启动冒烟通过。
-- [ ] Universal DMG、ZIP 和 `latest-mac.yml` 在同一次构建中生成。
-- [ ] Universal 主程序和运行时原生文件架构校验通过。
+- [ ] arm64 和 x64 DMG、ZIP 分别生成，文件名带有正确架构后缀。
+- [ ] 合并后的 `latest-mac.yml` 同时列出两种架构 ZIP，并能按芯片选择。
+- [ ] 两种架构主程序和运行时原生文件校验通过。
 - [ ] Developer ID 签名、Apple 公证和 stapling 通过。
 - [ ] Windows 1.0.10 回归与签名发布构建通过。
 

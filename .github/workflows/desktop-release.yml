@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   validate:
@@ -162,10 +163,21 @@ jobs:
           pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
           "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
 
-  mac-universal:
+  mac-packages:
     needs: [validate, mac-native-test]
-    runs-on: macos-15
-    timeout-minutes: 60
+    name: macOS ${{ matrix.arch }} signed release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            app-directory: mac-arm64
+          - runner: macos-15-intel
+            arch: x64
+            app-directory: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
@@ -184,40 +196,43 @@ jobs:
           printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$key_path"
           chmod 600 "$key_path"
           echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
-      - name: Build, sign, and notarize Universal DMG and ZIP
-        run: pnpm desktop:pack:mac
+      - name: Build, sign, and notarize architecture-specific DMG and ZIP
+        run: pnpm --filter @deepseek-ai/dsh-desktop run pack:mac:${{ matrix.arch }}
         env:
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      - run: pnpm --filter @deepseek-ai/dsh-desktop pack:verify:mac
+      - run: pnpm --filter @deepseek-ai/dsh-desktop run pack:verify:mac -- --arch=${{ matrix.arch }}
       - name: Verify Developer ID signature, Gatekeeper, and notarization ticket
         run: |
-          codesign --verify --deep --strict --verbose=2 "apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app"
-          spctl --assess --type execute --verbose=4 "apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app"
-          xcrun stapler validate "apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-universal.dmg"
-      - name: Smoke test signed Universal package
+          codesign --verify --deep --strict --verbose=2 "apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app"
+          spctl --assess --type execute --verbose=4 "apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app"
+          xcrun stapler validate "apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-${{ matrix.arch }}.dmg"
+      - name: Smoke test signed architecture-specific package
         run: >-
           pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
-          "${{ github.workspace }}/apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+      - name: Rename architecture-specific update metadata
+        working-directory: apps/dsh-desktop/dist
+        run: mv latest-mac.yml latest-mac-${{ matrix.arch }}.yml
       - name: Write macOS checksums
         working-directory: apps/dsh-desktop/dist
-        run: shasum -a 256 DeepSeek-Harness-Desktop-*.dmg DeepSeek-Harness-Desktop-*.zip > SHA256SUMS-macos.txt
+        run: shasum -a 256 DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.dmg DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.zip > SHA256SUMS-macos-${{ matrix.arch }}.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: desktop-macos-release
+          name: desktop-macos-${{ matrix.arch }}-release
           if-no-files-found: error
           retention-days: 7
           path: |
-            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.dmg
-            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.zip
-            apps/dsh-desktop/dist/latest-mac.yml
-            apps/dsh-desktop/dist/SHA256SUMS-macos.txt
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.dmg
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.zip
+            apps/dsh-desktop/dist/latest-mac-${{ matrix.arch }}.yml
+            apps/dsh-desktop/dist/SHA256SUMS-macos-${{ matrix.arch }}.txt
 
   publish:
-    needs: [validate, windows, mac-universal]
+    needs: [validate, windows, mac-packages]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -227,16 +242,30 @@ jobs:
           pattern: desktop-*-release
           path: release-assets
           merge-multiple: true
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Merge architecture-specific macOS update metadata
+        run: >-
+          node apps/dsh-desktop/scripts/merge-mac-update-metadata.mjs
+          --x64=release-assets/latest-mac-x64.yml
+          --arm64=release-assets/latest-mac-arm64.yml
+          --output=release-assets/latest-mac.yml
       - name: Verify and combine release checksums
         working-directory: release-assets
         run: |
           set -euo pipefail
           test -f "DeepSeek-Harness-Desktop-Setup-${{ needs.validate.outputs.version }}-x64.exe"
-          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-universal.dmg"
-          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-universal.zip"
+          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-x64.dmg"
+          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-x64.zip"
+          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-arm64.dmg"
+          test -f "DeepSeek-Harness-Desktop-${{ needs.validate.outputs.version }}-arm64.zip"
           test -f latest.yml
           test -f latest-mac.yml
-          cat SHA256SUMS-windows.txt SHA256SUMS-macos.txt | sort > SHA256SUMS.txt
+          cat SHA256SUMS-windows.txt SHA256SUMS-macos-x64.txt SHA256SUMS-macos-arm64.txt | sort > SHA256SUMS.txt
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           body_path: docs/launch/release-notes.md

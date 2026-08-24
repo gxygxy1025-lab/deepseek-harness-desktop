@@ -1,6 +1,6 @@
 # DeepSeek Harness Desktop macOS 发布计划
 
-本文定义将当前 Windows 版 DeepSeek Harness Desktop 扩展为可正式分发、可验证、可升级的 macOS 版本的执行方案。首个 Mac 正式版目标版本为 `1.0.10`，支持 macOS 13 及以上，优先发布一个同时支持 Apple Silicon 与 Intel Mac 的 Universal 应用。
+本文定义将当前 Windows 版 DeepSeek Harness Desktop 扩展为可正式分发、可验证、可升级的 macOS 版本的执行方案。首个 Mac 正式版目标版本为 `1.0.10`，支持 macOS 13 及以上，分别发布 Apple Silicon 与 Intel 安装包，减少单个下载包体积。
 
 > 重要限制：截至 2026-08-23，仓库仅完成 Windows 1.0.9 构建和验证。当前没有 Mac 安装包、Mac CI、Apple 签名、公证或真实 Mac 运行证据。Windows 电脑不能完成可信的 macOS 打包验收，最终发布必须由 GitHub macOS runner 和真实 Mac 设备共同验证。
 
@@ -11,7 +11,7 @@
 | 首个版本 | `1.0.10` |
 | 最低系统 | macOS 13 Ventura |
 | CPU | Apple Silicon `arm64`、Intel `x64` |
-| 首选包形态 | Universal `DMG` + Universal `ZIP` |
+| 包形态 | arm64 `DMG` + `ZIP`，x64 `DMG` + `ZIP` |
 | 下载方式 | GitHub Release |
 | 更新方式 | `electron-updater` + `latest-mac.yml` |
 | 签名 | Developer ID Application |
@@ -21,8 +21,10 @@
 发布物名称统一为：
 
 ```text
-DeepSeek-Harness-Desktop-1.0.10-universal.dmg
-DeepSeek-Harness-Desktop-1.0.10-universal.zip
+DeepSeek-Harness-Desktop-1.0.10-arm64.dmg
+DeepSeek-Harness-Desktop-1.0.10-arm64.zip
+DeepSeek-Harness-Desktop-1.0.10-x64.dmg
+DeepSeek-Harness-Desktop-1.0.10-x64.zip
 latest-mac.yml
 SHA256SUMS.txt
 ```
@@ -35,7 +37,7 @@ SHA256SUMS.txt
 
 | 文件 | 当前状态 | macOS 缺口 |
 | --- | --- | --- |
-| `apps/dsh-desktop/electron-builder.yml` | 仅配置 Windows NSIS x64 | 缺少 `mac`、`dmg`、签名、公证和 Universal 配置 |
+| `apps/dsh-desktop/electron-builder.yml` | 已配置 Windows 和 macOS | macOS 使用独立 arm64/x64 包、签名与公证 |
 | `apps/dsh-desktop/package.json` | 只有 `pack:win` | 缺少 `pack:mac` 和 Mac 包校验命令 |
 | 根 `package.json` | `desktop:pack` 固定调用 Windows | 需要拆分平台命令，避免名称误导 |
 | `.github/workflows/desktop-ci.yml` | 仅运行 `windows-latest` | 缺少 Apple Silicon 与 Intel Mac CI |
@@ -53,11 +55,11 @@ flowchart TD
     A[main 分支 1.0.10] --> B[Windows CI]
     A --> C[macOS Apple Silicon CI]
     A --> D[macOS Intel CI]
-    C --> E[Universal Mac 构建]
-    D --> E
-    E --> F[Developer ID 签名]
-    F --> G[Apple 公证与 stapling]
-    G --> H[Universal DMG 和 ZIP]
+    C --> E[arm64 Mac 构建]
+    D --> F[x64 Mac 构建]
+    E --> G[Developer ID 签名与公证]
+    F --> G
+    G --> H[分架构 DMG 和 ZIP]
     H --> I[Apple Silicon 验收]
     H --> J[Intel Mac 验收]
     B --> K[发布门禁]
@@ -99,11 +101,7 @@ mac:
   entitlementsInherit: build/entitlements.mac.inherit.plist
   target:
     - target: dmg
-      arch:
-        - universal
     - target: zip
-      arch:
-        - universal
   artifactName: DeepSeek-Harness-Desktop-${version}-${arch}.${ext}
 
 dmg:
@@ -134,7 +132,9 @@ dmg:
 ```json
 {
   "scripts": {
-    "pack:mac": "electron-builder --mac dmg zip --universal --publish never",
+    "pack:mac": "electron-builder --mac dmg zip --publish never",
+    "pack:mac:x64": "electron-builder --mac dmg zip --x64 --publish never",
+    "pack:mac:arm64": "electron-builder --mac dmg zip --arm64 --publish never",
     "pack:verify:mac": "node scripts/verify-package-mac.mjs"
   }
 }
@@ -165,25 +165,25 @@ sharp
 DeepSeek DSH Runtime 的原生模块
 ```
 
-Universal 构建完成后，对 `.app` 内所有 `.node`、Mach-O 可执行文件和 Electron Helper 执行架构检查：
+每个架构构建完成后，对 `.app` 内所有 `.node`、Mach-O 可执行文件和 Electron Helper 执行架构检查：
 
 ```bash
-find "dist/mac-universal/DeepSeek Harness Desktop.app" -type f -print0 \
+find "dist/mac-arm64/DeepSeek Harness Desktop.app" -type f -print0 \
   | xargs -0 file \
-  | grep -E 'Mach-O|universal binary'
+  | grep -E 'Mach-O|arm64'
 
-lipo -archs "dist/mac-universal/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+lipo -archs "dist/mac-arm64/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
 ```
 
-主程序必须同时报告 `x86_64 arm64`。每个运行时会实际加载的原生模块也必须包含匹配架构。
+arm64 包必须报告 `arm64`，x64 包必须报告 `x86_64`。每个运行时会实际加载的原生模块也必须包含匹配架构。
 
-如果 Universal 合并因原生模块失败，采用以下固定回退方案：
+如果需要减少单个下载包体积，采用以下分架构方案；Universal 仅作为后续可选的便利包：
 
 1. `macos-15` runner 原生构建 `arm64`。
 2. `macos-15-intel` runner 原生构建 `x64`。
 3. 分别生成带架构后缀的 DMG 和 ZIP。
-4. 在自动更新启用前，验证一个 `latest-mac.yml` 能同时列出并正确选择两种架构的 ZIP。
-5. 在架构选择验证通过前，Mac 版只提供手动下载，不启用自动更新。
+4. 合并两份架构元数据，验证一个 `latest-mac.yml` 能正确列出并选择两种架构的 ZIP。
+5. 只有元数据架构筛选验证通过后，才启用自动更新。
 
 不能在 Apple Silicon runner 上安装一次依赖后直接把同一 `node_modules` 当作 Intel 原生包发布，也不能只依赖 Rosetta 证明 Intel 包可用。
 
@@ -234,8 +234,8 @@ pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
 
 1. 校验 tag、版本号、仓库可见性和全部签名 secrets。
 2. Windows job 生成并验证 EXE、blockmap、`latest.yml`。
-3. Mac job 生成 Universal DMG、ZIP、`latest-mac.yml`。
-4. Mac job 验证签名、公证、stapling 和二进制架构。
+3. Mac jobs 分别生成 arm64、x64 DMG 和 ZIP，并合并 `latest-mac.yml`。
+4. Mac jobs 验证签名、公证、stapling 和对应二进制架构。
 5. Windows、Apple Silicon、Intel Mac 验收全部成功后，唯一的 publish job 创建 GitHub Release。
 6. publish job 计算并上传统一的 `SHA256SUMS.txt`。
 
@@ -245,14 +245,14 @@ pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
 
 新增 `apps/dsh-desktop/scripts/verify-package-mac.mjs`，至少验证：
 
-- `.app`、DMG、ZIP、`latest-mac.yml` 均存在。
+- `.app`、两种架构 DMG、ZIP、合并后的 `latest-mac.yml` 均存在。
 - 版本号与根 `package.json`、桌面 `package.json` 一致。
 - `@deepseek-ai/dsh` 精确为仓库声明版本。
 - 内置 pnpm 版本与 lockfile 一致。
 - 应用只包含官方 Runtime，不重新带回已删除的第三方扩展集合。
 - `Info.plist` 中 bundle identifier 为 `ai.deepseek.harness.desktop`。
 - `LSMinimumSystemVersion` 为 `13.0`。
-- 主程序包含 `x86_64` 和 `arm64`。
+- arm64 包主程序包含 `arm64`，x64 包主程序包含 `x86_64`。
 - ZIP 文件名和 SHA512 与 `latest-mac.yml` 一致。
 - Mac 包中不存在 Windows EXE、NSIS 安装脚本和 PowerShell 更新清理入口。
 
@@ -260,13 +260,13 @@ pnpm --filter @deepseek-ai/dsh-desktop test:runtime-provider:e2e
 
 ```bash
 codesign --verify --deep --strict --verbose=2 \
-  "dist/mac-universal/DeepSeek Harness Desktop.app"
+  "dist/mac-arm64/DeepSeek Harness Desktop.app"
 
 spctl --assess --type execute --verbose=4 \
-  "dist/mac-universal/DeepSeek Harness Desktop.app"
+  "dist/mac-arm64/DeepSeek Harness Desktop.app"
 
 xcrun stapler validate \
-  "dist/DeepSeek-Harness-Desktop-1.0.10-universal.dmg"
+  "dist/DeepSeek-Harness-Desktop-1.0.10-arm64.dmg"
 ```
 
 预期结果是 `codesign` 无错误、`spctl` 显示 accepted、`stapler` 显示验证成功。
@@ -321,9 +321,9 @@ xcrun stapler validate \
 只有同时满足以下条件，才能对外宣布 macOS 版本可用：
 
 - Apple Silicon 和 Intel CI 均通过。
-- Universal 主程序及所有实际加载的原生模块架构正确。
+- arm64、x64 主程序及所有实际加载的原生模块架构分别正确。
 - `codesign`、`spctl` 和 `stapler` 验证全部通过。
-- DMG、ZIP 和 `latest-mac.yml` 属于同一次构建。
+- 两种架构 DMG、ZIP 和合并后的 `latest-mac.yml` 属于同一次构建。
 - 两种 Mac 真机均完成安装、对话、工作区、插件、重启和退出验收。
 - 1.0.10 到 1.0.11 的真实自动更新测试通过。
 - Windows CI 继续通过。

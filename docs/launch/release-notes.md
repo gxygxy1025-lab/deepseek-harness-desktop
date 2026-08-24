@@ -1,10 +1,10 @@
 # DeepSeek Harness Desktop 1.0.10
 
-This release adds the macOS packaging and validation path for macOS 13 or later. GitHub Actions validates native Apple Silicon and Intel directory packages before building a Universal DMG and ZIP. A public release is created only after Windows signing, Developer ID signing, Apple notarization, stapling, architecture checks, and packaged smoke tests all pass.
+This release adds the macOS packaging and validation path for macOS 13 or later. GitHub Actions validates native Apple Silicon and Intel packages separately, so each download contains only one CPU architecture. A public release is created only after Windows signing, Developer ID signing, Apple notarization, stapling, architecture checks, and packaged smoke tests all pass.
 
 On macOS, closing the main window keeps the application active and clicking the Dock icon restores it. Choosing Quit still stops the Harness Runtime and background resources before the process exits. The macOS package excludes Windows installer markers and retains the official user-managed DSH plugin profile.
 
-The official macOS assets are `DeepSeek-Harness-Desktop-1.0.10-universal.dmg`, `DeepSeek-Harness-Desktop-1.0.10-universal.zip`, and `latest-mac.yml`. Unsigned candidate artifacts are for CI diagnosis only and are not a distributable release.
+The official macOS assets are `DeepSeek-Harness-Desktop-1.0.10-arm64.dmg`, `DeepSeek-Harness-Desktop-1.0.10-arm64.zip`, `DeepSeek-Harness-Desktop-1.0.10-x64.dmg`, `DeepSeek-Harness-Desktop-1.0.10-x64.zip`, and `latest-mac.yml`. The update metadata lists both ZIPs and selects the matching architecture. Unsigned candidate artifacts are for CI diagnosis only and are not a distributable release.
 
 # DeepSeek Harness Desktop 1.0.9
 

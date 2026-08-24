@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: desktop-macos-candidate-${{ github.ref }}
@@ -54,11 +55,21 @@ jobs:
           pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
           "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
 
-  universal-candidate:
-    name: Unsigned Universal candidate
+  mac-package-candidate:
+    name: Unsigned ${{ matrix.arch }} candidate
     needs: native-test
-    runs-on: macos-15
-    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            app-directory: mac-arm64
+          - runner: macos-15-intel
+            arch: x64
+            app-directory: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
@@ -67,25 +78,64 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build unsigned Universal DMG and ZIP
-        run: pnpm desktop:pack:mac
+      - name: Build unsigned architecture-specific DMG and ZIP
+        run: pnpm --filter @deepseek-ai/dsh-desktop run pack:mac:${{ matrix.arch }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - run: pnpm --filter @deepseek-ai/dsh-desktop pack:verify:mac
-      - name: Smoke test Universal package
+      - run: pnpm --filter @deepseek-ai/dsh-desktop run pack:verify:mac -- --arch=${{ matrix.arch }}
+      - name: Smoke test architecture-specific package
         run: >-
           pnpm --filter @deepseek-ai/dsh-desktop run pack:smoke --
-          "${{ github.workspace }}/apps/dsh-desktop/dist/mac-universal/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+          "${{ github.workspace }}/apps/dsh-desktop/dist/${{ matrix.app-directory }}/DeepSeek Harness Desktop.app/Contents/MacOS/DeepSeek Harness Desktop"
+      - name: Rename architecture-specific update metadata
+        working-directory: apps/dsh-desktop/dist
+        run: mv latest-mac.yml latest-mac-${{ matrix.arch }}.yml
       - name: Write candidate checksums
         working-directory: apps/dsh-desktop/dist
-        run: shasum -a 256 DeepSeek-Harness-Desktop-*.dmg DeepSeek-Harness-Desktop-*.zip > SHA256SUMS.txt
+        run: shasum -a 256 DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.dmg DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.zip > SHA256SUMS-${{ matrix.arch }}.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: DeepSeek-Harness-Desktop-${{ github.run_id }}-macOS-unsigned-candidate
+          name: DeepSeek-Harness-Desktop-${{ github.run_id }}-macOS-${{ matrix.arch }}-unsigned-candidate
           if-no-files-found: error
           retention-days: 14
           path: |
-            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.dmg
-            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*.zip
-            apps/dsh-desktop/dist/latest-mac.yml
-            apps/dsh-desktop/dist/SHA256SUMS.txt
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.dmg
+            apps/dsh-desktop/dist/DeepSeek-Harness-Desktop-*-${{ matrix.arch }}.zip
+            apps/dsh-desktop/dist/latest-mac-${{ matrix.arch }}.yml
+            apps/dsh-desktop/dist/SHA256SUMS-${{ matrix.arch }}.txt
+
+  mac-update-metadata-candidate:
+    name: Merge macOS update metadata
+    needs: mac-package-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: DeepSeek-Harness-Desktop-${{ github.run_id }}-macOS-*-unsigned-candidate
+          path: candidate-assets
+          merge-multiple: true
+      - name: Merge architecture-specific update metadata
+        run: >-
+          node apps/dsh-desktop/scripts/merge-mac-update-metadata.mjs
+          --x64=candidate-assets/latest-mac-x64.yml
+          --arm64=candidate-assets/latest-mac-arm64.yml
+          --output=candidate-assets/latest-mac.yml
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: DeepSeek-Harness-Desktop-${{ github.run_id }}-macOS-split-unsigned-candidate
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            candidate-assets/DeepSeek-Harness-Desktop-*.dmg
+            candidate-assets/DeepSeek-Harness-Desktop-*.zip
+            candidate-assets/latest-mac.yml
+            candidate-assets/latest-mac-*.yml
+            candidate-assets/SHA256SUMS-*.txt

@@ -11,6 +11,8 @@
     "desktop:pack": "pnpm --filter @deepseek-ai/dsh-desktop pack:win",
     "desktop:pack:win": "pnpm --filter @deepseek-ai/dsh-desktop pack:win",
     "desktop:pack:mac": "pnpm --filter @deepseek-ai/dsh-desktop pack:mac",
+    "desktop:pack:mac:x64": "pnpm --filter @deepseek-ai/dsh-desktop pack:mac:x64",
+    "desktop:pack:mac:arm64": "pnpm --filter @deepseek-ai/dsh-desktop pack:mac:arm64",
     "verify": "pnpm typecheck && pnpm test"
   },
   "engines": {
