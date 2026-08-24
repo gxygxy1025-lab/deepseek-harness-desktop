@@ -43,7 +43,9 @@ jobs:
             -name 'SHA256SUMS-*.txt' \
           \) -print | sort)
           test "${#assets[@]}" -eq 9
-          gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          release_id=$(gh api repos/$GITHUB_REPOSITORY/releases --paginate --jq \
+            ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id" | head -n 1)
+          test -n "$release_id"
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -f draft=false
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
