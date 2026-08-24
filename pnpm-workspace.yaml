@@ -28,3 +28,4 @@ patchedDependencies:
   '@deepseek-ai/dsh-subprocess-local@0.1.1-rc.2': patches/@deepseek-ai__dsh-subprocess-local@0.1.1-rc.2.patch
   '@deepseek-ai/dsh-web-app@0.1.1-rc.2': patches/@deepseek-ai__dsh-web-app@0.1.1-rc.2.patch
   '@deepseek-ai/dsh@0.1.1-rc.2': patches/@deepseek-ai__dsh@0.1.1-rc.2.patch
+  '@electron/universal@2.0.3': patches/@electron__universal@2.0.3.patch
