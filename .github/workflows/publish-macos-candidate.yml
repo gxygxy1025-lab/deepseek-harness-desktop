@@ -1,0 +1,49 @@
+name: Publish macOS Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful macOS candidate workflow run ID
+        required: true
+        default: '32689912998'
+      release_tag:
+        description: Existing draft release tag
+        required: true
+        default: desktop-v1.0.10-macos-unsigned
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Upload macOS candidate assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified candidate artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          name: DeepSeek-Harness-Desktop-${{ inputs.source_run_id }}-macOS-split-unsigned-candidate
+          path: candidate-assets
+
+      - name: Upload assets and publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find candidate-assets -maxdepth 1 -type f \( \
+            -name 'DeepSeek-Harness-Desktop-*.dmg' -o \
+            -name 'DeepSeek-Harness-Desktop-*.zip' -o \
+            -name 'latest-mac*.yml' -o \
+            -name 'SHA256SUMS-*.txt' \
+          \) -print | sort)
+          test "${#assets[@]}" -eq 9
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -f draft=false
