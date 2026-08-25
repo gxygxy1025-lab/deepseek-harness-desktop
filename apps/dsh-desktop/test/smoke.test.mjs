@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  configureDesktopGraphics,
   DESKTOP_METADATA,
   terminateDesktopAfterBootstrapFailure,
 } from '../src/main.mjs'
@@ -13,6 +14,22 @@ test('desktop metadata is stable and identifies the embedded DSH surface', () =>
     profile: 'desktop',
     protocol: 'dsh',
   })
+})
+
+test('desktop graphics use normal Electron rendering unless the fallback is explicitly enabled', () => {
+  const calls = []
+  const app = {
+    commandLine: { appendSwitch: (...values) => calls.push(['appendSwitch', ...values]) },
+    disableHardwareAcceleration: () => calls.push(['disableHardwareAcceleration']),
+  }
+
+  assert.equal(configureDesktopGraphics(app), false)
+  assert.deepEqual(calls, [])
+  assert.equal(configureDesktopGraphics(app, { disableHardwareAcceleration: true }), true)
+  assert.deepEqual(calls, [
+    ['appendSwitch', 'disable-gpu'],
+    ['disableHardwareAcceleration'],
+  ])
 })
 
 test('bootstrap failure shows one bounded diagnostic and exits Electron', async () => {
