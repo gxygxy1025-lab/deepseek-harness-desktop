@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -107,6 +107,31 @@ test('profile bootstrap preserves official plugin-managed dependencies and user 
     assert.equal(patch, '- id: user-setting\n  config: {}\n')
     assert.equal(desktopPatch, DESKTOP_PATCH_CONFIG)
     assert.match(workspace, /allowBuilds/u)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('profile bootstrap reuses an existing official package link and coalesces concurrent calls', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-profile-link-race-'))
+  try {
+    const sourceDir = join(root, 'sources', 'cordis-plugin-group')
+    const target = join(root, 'profiles', 'desktop', 'node_modules', '@deepseek-ai', 'cordis-plugin-group')
+    await mkdir(sourceDir, { recursive: true })
+    await mkdir(dirname(target), { recursive: true })
+    await symlink(sourceDir, target, process.platform === 'win32' ? 'junction' : 'dir')
+
+    const options = {
+      dshHome: root,
+      packageRoots: new Map([['@deepseek-ai/cordis-plugin-group', sourceDir]]),
+    }
+    const results = await Promise.all([
+      ensureDesktopProfile(options),
+      ensureDesktopProfile(options),
+    ])
+
+    assert.equal(await realpath(target), await realpath(sourceDir))
+    assert.equal(results[0].profileDir, results[1].profileDir)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

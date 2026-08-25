@@ -275,22 +275,45 @@ export function resolveRuntimePackages(packageNames = RUNTIME_PACKAGE_NAMES, ini
   return resolved
 }
 
+async function packageLinkMatchesSource(target, sourceDir) {
+  try {
+    return await realpath(target) === await realpath(sourceDir)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+async function removePackageLinkTarget(target) {
+  await rm(target, { recursive: true, force: true }).catch((error) => {
+    if (error?.code !== 'ENOENT') throw error
+  })
+}
+
 async function ensurePackageLink(profileDir, packageName, sourceDir) {
   const target = join(profileDir, 'node_modules', ...packagePathSegments(packageName))
   await mkdir(dirname(target), { recursive: true })
-  try {
-    if (await realpath(target) === await realpath(sourceDir)) return false
-    await rm(target, { recursive: true, force: true })
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error
+  if (await packageLinkMatchesSource(target, sourceDir)) return false
+  await removePackageLinkTarget(target)
+
+  let lastError
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await symlink(sourceDir, target, process.platform === 'win32' ? 'junction' : 'dir')
+      return true
+    } catch (error) {
+      lastError = error
+      if (error?.code !== 'EEXIST') {
+        if (!['EACCES', 'EPERM', 'UNKNOWN'].includes(error?.code)) throw error
+        await cp(sourceDir, target, { recursive: true, force: false })
+        return true
+      }
+      if (await packageLinkMatchesSource(target, sourceDir)) return false
+      await removePackageLinkTarget(target)
+    }
   }
-  try {
-    await symlink(sourceDir, target, process.platform === 'win32' ? 'junction' : 'dir')
-  } catch (error) {
-    if (!['EACCES', 'EPERM', 'UNKNOWN'].includes(error?.code)) throw error
-    await cp(sourceDir, target, { recursive: true, force: false })
-  }
-  return true
+  if (await packageLinkMatchesSource(target, sourceDir)) return false
+  throw lastError
 }
 
 async function removeStalePackageLinks(profileDir, packageRoots) {
@@ -339,7 +362,9 @@ async function removeStalePackageLinks(profileDir, packageRoots) {
   return changed
 }
 
-export async function ensureDesktopProfile({ dshHome, packageRoots = resolveRuntimePackages(), profileName = 'desktop' } = {}) {
+const PROFILE_BOOTSTRAP_LOCKS = new Map()
+
+async function ensureDesktopProfileInternal({ dshHome, packageRoots = resolveRuntimePackages(), profileName = 'desktop' } = {}) {
   if (typeof dshHome !== 'string' || dshHome.length === 0) throw new TypeError('dshHome must be a non-empty path')
   const profileDir = join(dshHome, 'profiles', profileName)
   await mkdir(profileDir, { recursive: true })
@@ -379,6 +404,24 @@ export async function ensureDesktopProfile({ dshHome, packageRoots = resolveRunt
   changed = await removeStalePackageLinks(profileDir, allowedPackageNames) || changed
   for (const [packageName, sourceDir] of resolvedPackageRoots) changed = await ensurePackageLink(profileDir, packageName, sourceDir) || changed
   return { changed, manifest, profileDir, desktopPatchPath }
+}
+
+export async function ensureDesktopProfile(options = {}) {
+  const { dshHome, profileName = 'desktop' } = options
+  if (typeof dshHome !== 'string' || dshHome.length === 0) {
+    return ensureDesktopProfileInternal(options)
+  }
+  const profileDir = join(dshHome, 'profiles', profileName)
+  const pending = PROFILE_BOOTSTRAP_LOCKS.get(profileDir)
+  if (pending) return pending
+
+  const bootstrap = ensureDesktopProfileInternal(options)
+  PROFILE_BOOTSTRAP_LOCKS.set(profileDir, bootstrap)
+  try {
+    return await bootstrap
+  } finally {
+    if (PROFILE_BOOTSTRAP_LOCKS.get(profileDir) === bootstrap) PROFILE_BOOTSTRAP_LOCKS.delete(profileDir)
+  }
 }
 
 export function resolveDshCliPath(initialAnchor = import.meta.url) {
