@@ -28,6 +28,7 @@ test('desktop graphics use normal Electron rendering unless the fallback is expl
   assert.equal(configureDesktopGraphics(app, { disableHardwareAcceleration: true }), true)
   assert.deepEqual(calls, [
     ['appendSwitch', 'disable-gpu'],
+    ['appendSwitch', 'in-process-gpu'],
     ['disableHardwareAcceleration'],
   ])
 })

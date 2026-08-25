@@ -45,12 +45,15 @@ export async function terminateDesktopAfterBootstrapFailure(error, {
 export function configureDesktopGraphics(app, { disableHardwareAcceleration = false } = {}) {
   if (!disableHardwareAcceleration) return false
   app.commandLine.appendSwitch('disable-gpu')
+  app.commandLine.appendSwitch('in-process-gpu')
   app.disableHardwareAcceleration()
   return true
 }
 
 if (process.versions.electron) {
   const { app } = await import('electron')
-  configureDesktopGraphics(app, { disableHardwareAcceleration: process.env.DSH_DESKTOP_DISABLE_GPU === '1' })
+  configureDesktopGraphics(app, {
+    disableHardwareAcceleration: process.platform === 'win32' || process.env.DSH_DESKTOP_DISABLE_GPU === '1',
+  })
   bootstrapDesktopApp().catch((error) => void terminateDesktopAfterBootstrapFailure(error))
 }
