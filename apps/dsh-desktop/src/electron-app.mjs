@@ -97,6 +97,10 @@ export function beginDesktopStartup({ loadShell, startRuntime, holdRuntime = fal
   return Object.freeze({ shellPromise, runtimePromise })
 }
 
+export function shouldRevealDesktopWindow({ rendererReady = false, updateShutdownRequested = false } = {}) {
+  return rendererReady && !updateShutdownRequested
+}
+
 /** Coordinate reversible update preparation separately from final app disposal. */
 export function createDesktopShutdownLifecycle({
   prepareStop = async () => {},
@@ -210,7 +214,16 @@ export async function startElectronApp(metadata) {
   let updateShutdownRequested = initialUpdateShutdownRequest !== undefined
   let requestUpdateShutdown
   let mainWindow
+  let rendererReady = false
   let dispatchDeepLink
+  const revealMainWindow = ({ focus = false } = {}) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return false
+    if (!shouldRevealDesktopWindow({ rendererReady, updateShutdownRequested })) return false
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    if (focus) mainWindow.focus()
+    return true
+  }
   const deepLinkRouter = new DeepLinkRouter({
     protocol: metadata.protocol,
     dispatch: (link) => dispatchDeepLink(link),
@@ -236,10 +249,7 @@ export async function startElectronApp(metadata) {
       return
     }
     enqueueCommandLineIngress(commandLine)
-    if (!mainWindow) return
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.show()
-    mainWindow.focus()
+    revealMainWindow({ focus: true })
   })
   app.on('open-url', (event, url) => {
     event.preventDefault()
@@ -543,9 +553,7 @@ export async function startElectronApp(metadata) {
   dispatchDeepLink = async (link) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     mainWindow.webContents.send('desktop:deep-link', link)
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.show()
-    mainWindow.focus()
+    revealMainWindow({ focus: true })
   }
   let runtimeStartedAt
   let runtimeFailurePromptPromise
@@ -614,7 +622,9 @@ export async function startElectronApp(metadata) {
     activeOrigin = new URL(status.url).origin
     try {
       await mainWindow.loadURL(status.url)
+      rendererReady = true
       deepLinkRouter.setReady(true)
+      revealMainWindow({ focus: true })
       const rendererLoadedAt = performance.now()
       void logStore.append(`[startup] renderer-loaded=${Math.round(rendererLoadedAt - runtimeReadyAt)}ms`)
       void logStore.append(`[startup] total-to-renderer=${Math.round(rendererLoadedAt - applicationStartedAt)}ms`)
@@ -642,9 +652,6 @@ export async function startElectronApp(metadata) {
     }
   })
 
-  mainWindow.once('ready-to-show', () => {
-    if (!updateShutdownRequested) mainWindow.show()
-  })
   mainWindow.on('closed', () => { mainWindow = undefined })
   const holdRuntime = process.env.DSH_DESKTOP_HOLD_STARTUP === '1'
   const startup = beginDesktopStartup({

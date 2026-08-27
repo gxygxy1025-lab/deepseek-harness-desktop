@@ -1,8 +1,19 @@
 diff --git a/lib/index.js b/lib/index.js
-index 285727092554d6fe2c70e56dd3f0eefabf8e2ed8..858c06283d3e8f87df2220849aa6cac570ded6bc 100644
+index 285727092554d6fe2c70e56dd3f0eefabf8e2ed8..c9e2ca846abe128bbca1844018e3bded72fb27fc 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -123,6 +123,7 @@ function spawnBrowserLauncher(url) {
+@@ -95,7 +95,9 @@ function resolveLanTrust(bindHost, extra) {
+ }
+ /** Model-visible orientation and acceptance boundary for sessions created through `dsh web`. */
+ function webSurfacePrompt(webUrl) {
+-	return `You are interacting with the user through the DeepSeek Harness Web GUI at ${webUrl}. When the user refers to "this page", "this GUI", or "this app" without naming another target, they mean this GUI. The browser provides no implicit DOM, route, or screenshot context. The client-plugin HMR receiver is active, but client-plugin changes reload without a refresh only while \`pnpm run dev:web\` is also running from this same checkout to rebuild their bundles; verify that watcher before promising automatic updates. Every other change — the apps/web shell and plain packages — requires rebuilding the affected Web artifacts and verifying this existing URL after a page refresh. Starting another server does not update this GUI. The apps/web Vite entry builds the shell but is not a standalone application because only dsh web injects window.__DSH_BOOT__. Do not start a replacement server unless the user asks; if one is needed, use a managed background job and verify its exact URL.`;
++	const profile = process.env.DSH_PROFILE?.trim();
++	const profileContext = profile === void 0 || profile === "" ? "" : ` This GUI is backed by the DSH profile \`${profile}\`. When installing, removing, updating, or repairing plugins for this GUI, use \`dsh plugin --profile ${profile} ...\`; do not substitute \`web\` or another profile unless the user explicitly asks to manage that separate profile.`;
++	return `You are interacting with the user through the DeepSeek Harness Web GUI at ${webUrl}.${profileContext} When the user refers to "this page", "this GUI", or "this app" without naming another target, they mean this GUI. The browser provides no implicit DOM, route, or screenshot context. The client-plugin HMR receiver is active, but client-plugin changes reload without a refresh only while \`pnpm run dev:web\` is also running from this same checkout to rebuild their bundles; verify that watcher before promising automatic updates. Every other change — the apps/web shell and plain packages — requires rebuilding the affected Web artifacts and verifying this existing URL after a page refresh. Starting another server does not update this GUI. The apps/web Vite entry builds the shell but is not a standalone application because only dsh web injects window.__DSH_BOOT__. Do not start a replacement server unless the user asks; if one is needed, use a managed background job and verify its exact URL.`;
+ }
+ /** Resolve the canonical loopback URL from the active Web server. */
+ function localWebUrl(ctx) {
+@@ -123,6 +125,7 @@ function spawnBrowserLauncher(url) {
  		url
  	], {
  		env: scrubbedParentEnv(),

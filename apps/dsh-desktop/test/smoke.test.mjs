@@ -6,6 +6,7 @@ import {
   DESKTOP_METADATA,
   terminateDesktopAfterBootstrapFailure,
 } from '../src/main.mjs'
+import { shouldRevealDesktopWindow } from '../src/electron-app.mjs'
 
 test('desktop metadata is stable and identifies the embedded DSH surface', () => {
   assert.deepEqual(DESKTOP_METADATA, {
@@ -31,6 +32,16 @@ test('desktop graphics use normal Electron rendering unless the fallback is expl
     ['appendSwitch', 'in-process-gpu'],
     ['disableHardwareAcceleration'],
   ])
+})
+
+test('desktop window stays hidden until the runtime renderer has loaded', () => {
+  assert.equal(shouldRevealDesktopWindow(), false)
+  assert.equal(shouldRevealDesktopWindow({ rendererReady: false }), false)
+  assert.equal(shouldRevealDesktopWindow({ rendererReady: true }), true)
+  assert.equal(shouldRevealDesktopWindow({
+    rendererReady: true,
+    updateShutdownRequested: true,
+  }), false)
 })
 
 test('bootstrap failure shows one bounded diagnostic and exits Electron', async () => {

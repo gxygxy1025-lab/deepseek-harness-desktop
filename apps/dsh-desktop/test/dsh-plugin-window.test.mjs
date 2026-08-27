@@ -26,6 +26,9 @@ test('patched DSH web app browser launcher hides the Windows launcher window', a
 
   assert.match(source, /function spawnBrowserLauncher\(url\)/u)
   assert.match(source, /env: scrubbedParentEnv\(\),\s*windowsHide: process\.platform === "win32",/u)
+  assert.match(source, /process\.env\.DSH_PROFILE\?\.trim\(\)/u)
+  assert.match(source, /dsh plugin --profile \$\{profile\}/u)
+  assert.match(source, /do not substitute \\`web\\` or another profile/u)
 })
 
 test('patched DSH subprocess runtime hides every Windows command window', async () => {
