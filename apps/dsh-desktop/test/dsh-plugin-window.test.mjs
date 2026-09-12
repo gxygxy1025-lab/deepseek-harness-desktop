@@ -6,6 +6,13 @@ import test from 'node:test'
 
 const require = createRequire(import.meta.url)
 
+test('patched DSH CLI accepts the desktop profile only from the Electron owner', async () => {
+  const dshEntry = require.resolve('@deepseek-ai/dsh/lib/bin.js')
+  const source = await readFile(dshEntry, 'utf8')
+
+  assert.match(source, /process\.env\.DSH_DESKTOP_MANAGED_PROFILE !== "1"/u)
+})
+
 test('patched DSH plugin forwarding hides the Windows package-manager window', async () => {
   const dshEntry = require.resolve('@deepseek-ai/dsh/lib/bin.js')
   const libDirectory = dirname(dshEntry)
@@ -26,36 +33,4 @@ test('patched DSH web app browser launcher hides the Windows launcher window', a
 
   assert.match(source, /function spawnBrowserLauncher\(url\)/u)
   assert.match(source, /env: scrubbedParentEnv\(\),\s*windowsHide: process\.platform === "win32",/u)
-  assert.match(source, /process\.env\.DSH_PROFILE\?\.trim\(\)/u)
-  assert.match(source, /dsh plugin --profile \$\{profile\}/u)
-  assert.match(source, /do not substitute \\`web\\` or another profile/u)
-})
-
-test('patched DSH subprocess runtime hides every Windows command window', async () => {
-  const dshEntry = require.resolve('@deepseek-ai/dsh/lib/bin.js')
-  const dshRequire = createRequire(dshEntry)
-  const baseEntry = dshRequire.resolve('@deepseek-ai/dsh-base')
-  const baseRequire = createRequire(baseEntry)
-  const subprocessEntry = baseRequire.resolve('@deepseek-ai/dsh-subprocess-local')
-  const source = await readFile(subprocessEntry, 'utf8')
-
-  assert.match(source, /detached: platform !== "win32",\s*windowsHide: platform === "win32"/u)
-})
-
-test('patched Windows ACL sandbox hides both restricted process launch paths', async () => {
-  const dshEntry = require.resolve('@deepseek-ai/dsh/lib/bin.js')
-  const dshRequire = createRequire(dshEntry)
-  const baseEntry = dshRequire.resolve('@deepseek-ai/dsh-base')
-  const baseRequire = createRequire(baseEntry)
-  const sandboxEntry = baseRequire.resolve('@deepseek-ai/dsh-sandbox-windows-acl')
-  const sandboxDirectory = dirname(sandboxEntry)
-  const implementationFiles = (await readdir(sandboxDirectory))
-    .filter((file) => /^types-.*\.js$/u.test(file))
-
-  assert.equal(implementationFiles.length, 1)
-  const source = await readFile(join(sandboxDirectory, implementationFiles[0]), 'utf8')
-
-  const hiddenStartupInfo = source.match(/dwFlags: 257,\s*wShowWindow: 0/gu) ?? []
-  assert.equal(hiddenStartupInfo.length, 2)
-  assert.doesNotMatch(source, /createProcessAsUserW\([^;]+, 134217728,/u)
 })

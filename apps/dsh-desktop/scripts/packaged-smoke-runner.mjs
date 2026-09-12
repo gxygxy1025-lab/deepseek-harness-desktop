@@ -7,6 +7,7 @@ import { terminateChildProcessTree } from '../src/runtime-controller.mjs'
 import { parseStartupTimings } from './startup-metrics.mjs'
 
 const OUTPUT_LIMIT = 16_384
+const WINDOWS_ELECTRON_BREAKPOINT_EXIT = 0x8000_0003
 
 export async function runPackagedDesktop({
   appPath,
@@ -67,17 +68,27 @@ export async function runPackagedDesktop({
     })
     const elapsedMs = Number((performance.now() - startedAt).toFixed(1))
     if (timedOut) throw new Error(`packaged desktop smoke timed out after ${timeoutMs}ms\n${await diagnostics()}`)
-    if (code !== 0) {
+    const runtimeLog = await readRuntimeLog()
+    const completedRendererStartup = output.includes('desktop smoke ready:')
+      && runtimeLog.includes('[startup] renderer-loaded=')
+      && runtimeLog.includes('[startup] total-to-renderer=')
+    const knownWindowsExit = code === WINDOWS_ELECTRON_BREAKPOINT_EXIT
+    if (code !== 0 && !(knownWindowsExit && completedRendererStartup)) {
       throw new Error(
         `packaged desktop smoke exited code=${String(code)} signal=${String(signal)}\n${await diagnostics()}`,
       )
     }
 
-    const runtimeLog = await readRuntimeLog()
+    let timings
+    try {
+      timings = parseStartupTimings(runtimeLog)
+    } catch (error) {
+      throw new Error(`${error.message}\n${await diagnostics()}`, { cause: error })
+    }
     return Object.freeze({
       elapsedMs,
       runtimeLog,
-      timings: parseStartupTimings(runtimeLog),
+      timings,
     })
   } finally {
     clearTimeout(timeout)

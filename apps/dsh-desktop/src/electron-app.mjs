@@ -46,6 +46,7 @@ import { installSettingsWindow } from './settings-window.mjs'
 import { exportStartupDiagnostics } from './startup-diagnostics.mjs'
 import { SettingsWindowStateStore } from './settings-window-state.mjs'
 import { DEFAULT_STARTUP_TIMEOUT_MS, DshRuntimeController } from './runtime-controller.mjs'
+import { resolveRuntimeExecutable } from './runtime-executable.mjs'
 import { DshRuntimeProvider, RUNTIME_PROVIDER_ID } from './runtime-provider.mjs'
 import { assertRuntimeIntegrity, resolveRuntimeCriticalFiles } from './runtime-integrity.mjs'
 import { DesktopUpdateController, loadElectronAutoUpdater } from './updater.mjs'
@@ -351,7 +352,7 @@ export async function startElectronApp(metadata) {
     patchPath: profile.desktopPatchPath,
     cwd: projectRoot,
     dshHome,
-    executable: process.execPath,
+    executable: resolveRuntimeExecutable(),
     logStore,
     autoRestart: false,
     startupTimeoutMs: DEFAULT_STARTUP_TIMEOUT_MS,
@@ -620,17 +621,20 @@ export async function startElectronApp(metadata) {
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (runtimeProvider.status.state !== 'ready' || runtimeProvider.status.url !== status.url) return
     activeOrigin = new URL(status.url).origin
+    const launchUrl = rawRuntimeController.getLaunchUrl() ?? status.url
     try {
-      await mainWindow.loadURL(status.url)
+      await mainWindow.loadURL(launchUrl)
       rendererReady = true
       deepLinkRouter.setReady(true)
       revealMainWindow({ focus: true })
       const rendererLoadedAt = performance.now()
-      void logStore.append(`[startup] renderer-loaded=${Math.round(rendererLoadedAt - runtimeReadyAt)}ms`)
-      void logStore.append(`[startup] total-to-renderer=${Math.round(rendererLoadedAt - applicationStartedAt)}ms`)
+      const rendererLoadedLog = logStore.append(`[startup] renderer-loaded=${Math.round(rendererLoadedAt - runtimeReadyAt)}ms`)
+      const totalToRendererLog = logStore.append(`[startup] total-to-renderer=${Math.round(rendererLoadedAt - applicationStartedAt)}ms`)
       if (process.env.DSH_DESKTOP_SMOKE_EXIT === '1') {
+        await Promise.all([rendererLoadedLog, totalToRendererLog])
         console.log(`desktop smoke ready: ${activeOrigin}`)
-        app.quit()
+        await shutdownLifecycle.shutdown()
+        process.exit(0)
       }
     } catch (error) {
       void logStore.append(`[renderer] ${error.message}`)

@@ -2,7 +2,6 @@ import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { delimiter, join, win32 } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import {
   DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV,
@@ -15,7 +14,6 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
 export const DEFAULT_STARTUP_TIMEOUT_MS = 120_000
 export const DESKTOP_PROFILE_NAME = 'desktop'
 const STABLE_RUNTIME_RESET_MS = 60_000
-const WINDOWS_CONSOLE_PRELOAD_PATH = fileURLToPath(new URL('./windows-console-preload.cjs', import.meta.url))
 
 function createWorkspaceFileOpenCapabilityToken() {
   // base64url encodes 32 CSPRNG bytes as the exact opaque token shape shared
@@ -24,10 +22,9 @@ function createWorkspaceFileOpenCapabilityToken() {
   return randomBytes(32).toString('base64url')
 }
 
-function runtimeArguments(cliPath, preferredPort, consolePreloadPath, patchPath) {
+function runtimeArguments(cliPath, preferredPort, patchPath) {
   return [
     '--expose-internals',
-    ...(consolePreloadPath ? ['--require', consolePreloadPath] : []),
     cliPath,
     '--profile',
     DESKTOP_PROFILE_NAME,
@@ -62,19 +59,15 @@ export function createRuntimeInvocation({
   if (!Number.isInteger(preferredPort) || preferredPort < 0 || preferredPort > 65_535) {
     throw new TypeError('preferred runtime port must be an integer from 0 to 65535')
   }
-  const args = runtimeArguments(cliPath, preferredPort, platform === 'win32' ? WINDOWS_CONSOLE_PRELOAD_PATH : undefined, patchPath)
-  if (platform !== 'win32') return { executable, args }
+  const args = runtimeArguments(cliPath, preferredPort, patchPath)
+  if (platform !== 'win32' || win32.basename(executable).toLowerCase() === 'node.exe') {
+    return { executable, args }
+  }
 
-  // Electron is a GUI-subsystem executable and therefore gives its Node-mode
-  // DSH child no console to inherit. A hidden PowerShell host supplies one;
-  // the required preload explicitly attaches the GUI-subsystem DSH process
-  // to it so restricted-token pwsh children can share it without flashing a
-  // new console window. Window suppression belongs to spawn's windowsHide
-  // option: PowerShell 5.1 can terminate a GUI-subsystem Node-mode child with
-  // 0xFFFFFFFF when -WindowStyle Hidden is also supplied.
+  const argumentList = args.map(quotePowerShellLiteral).join(', ')
   const command = [
-    `& ${[executable, ...args].map(quotePowerShellLiteral).join(' ')} | ForEach-Object { [Console]::Out.WriteLine($_) }`,
-    'exit $LASTEXITCODE',
+    `$child = Start-Process -FilePath ${quotePowerShellLiteral(executable)} -ArgumentList @(${argumentList}) -NoNewWindow -Wait -PassThru`,
+    'exit ($child.ExitCode)',
   ].join('\n')
   return {
     executable: systemRoot
@@ -105,10 +98,31 @@ export function validateLoopbackUrl(value) {
   return `${url.origin}/`
 }
 
-export function parseDshReadyUrl(line) {
+function parseDshReadyEndpoint(line) {
   const match = READY_LINE.exec(String(line).trim())
   if (match === null) return undefined
-  return validateLoopbackUrl(match[1])
+  const publicUrl = validateLoopbackUrl(match[1])
+  const launch = new URL(match[1])
+  if (launch.hash) throw new TypeError('runtime URL must not contain a fragment')
+  if (launch.href.length > 2_048) throw new TypeError('runtime URL is too long')
+  return Object.freeze({ publicUrl, launchUrl: launch.href })
+}
+
+export function parseDshReadyUrl(line) {
+  return parseDshReadyEndpoint(line)?.publicUrl
+}
+
+function redactReadyUrlSecrets(line) {
+  const match = READY_LINE.exec(String(line).trim())
+  if (match === null) return String(line)
+  try {
+    const url = new URL(match[1])
+    if (!url.search) return String(line)
+    url.search = '?[redacted]'
+    return String(line).replace(match[1], url.href)
+  } catch {
+    return String(line)
+  }
 }
 
 export function computeRestartDelay(attempt, maxAttempts = 3) {
@@ -162,8 +176,11 @@ export async function probeHttpReady(
   let lastError
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetchImpl(url, { signal: AbortSignal.timeout(1_000) })
-      if (response.ok) return
+      const response = await fetchImpl(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(1_000),
+      })
+      if (response.ok || response.status === 303) return
       lastError = new Error(`runtime health probe returned HTTP ${response.status}`)
     } catch (error) {
       lastError = error
@@ -264,6 +281,7 @@ export class DshRuntimeController extends EventEmitter {
     this.readySince = undefined
     this.manualStop = false
     this.workspaceFileOpenToken = undefined
+    this.launchUrl = undefined
     this.stopResolver = undefined
     this.status = Object.freeze({ state: 'stopped', url: undefined, error: undefined })
   }
@@ -316,6 +334,11 @@ export class DshRuntimeController extends EventEmitter {
     return this.status.state === 'ready' ? this.workspaceFileOpenToken : undefined
   }
 
+  /** Return the private one-time Web bootstrap URL only to Electron main. */
+  getLaunchUrl() {
+    return this.status.state === 'ready' ? this.launchUrl : undefined
+  }
+
   start({ preserveRestartAttempt = false } = {}) {
     if (this.stopPromise) {
       const stopping = this.stopPromise
@@ -345,6 +368,7 @@ export class DshRuntimeController extends EventEmitter {
     this.manualStop = false
     // A restart must never reuse an authority accepted by a previous Host.
     this.workspaceFileOpenToken = undefined
+    this.launchUrl = undefined
     this.#setStatus('starting')
 
     const readyPromise = new Promise((resolve, reject) => {
@@ -380,6 +404,7 @@ export class DshRuntimeController extends EventEmitter {
     const environment = {
       ...process.env,
       ...additionalEnvironment,
+      DSH_DESKTOP_MANAGED_PROFILE: '1',
       DSH_HOME: this.dshHome,
       DSH_PROFILE: DESKTOP_PROFILE_NAME,
       // Override an ambient parent value. The token is new for every Host
@@ -387,6 +412,9 @@ export class DshRuntimeController extends EventEmitter {
       [DESKTOP_WORKSPACE_FILE_OPEN_TOKEN_ENV]: workspaceFileOpenToken,
       ELECTRON_RUN_AS_NODE: '1',
       PATH: [...this.pathEntries, process.env.PATH].filter(Boolean).join(delimiter),
+    }
+    if (this.platform === 'win32' && win32.basename(this.executable).toLowerCase() === 'node.exe') {
+      delete environment.ELECTRON_RUN_AS_NODE
     }
     try {
       const invocation = createRuntimeInvocation({
@@ -404,7 +432,9 @@ export class DshRuntimeController extends EventEmitter {
           cwd: this.cwd,
           env: environment,
           shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          // Alpha runtimes bind Web lifetime to stdin EOF. Keep the writable
+          // end open and let the existing process-tree shutdown own exit.
+          stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true,
         },
       )
@@ -435,7 +465,7 @@ export class DshRuntimeController extends EventEmitter {
   }
 
   async #handleLine(stream, line, redactionToken = this.workspaceFileOpenToken) {
-    const sanitizedLine = this.#redactWorkspaceFileOpenToken(line, redactionToken)
+    const sanitizedLine = this.#redactWorkspaceFileOpenToken(redactReadyUrlSecrets(line), redactionToken)
     this.#appendDiagnostic(`[${stream}] ${sanitizedLine}`, redactionToken)
     emitBestEffort(this, 'line', [{ stream, line: sanitizedLine }], (error) => {
       this.#appendDiagnostic(
@@ -444,18 +474,22 @@ export class DshRuntimeController extends EventEmitter {
       )
     })
     if (stream !== 'stdout' || this.status.state !== 'starting') return
-    let url
+    let endpoint
     try {
-      url = parseDshReadyUrl(line)
+      endpoint = parseDshReadyEndpoint(line)
     } catch (error) {
       this.#failBeforeReady(error, redactionToken)
       return
     }
-    if (url === undefined) return
+    if (endpoint === undefined) return
     try {
-      await this.probeReady(url)
+      await this.probeReady(endpoint.launchUrl)
     } catch (error) {
       if (this.status.state === 'starting') {
+        this.#appendDiagnostic(
+          `[startup] readiness probe failed: ${this.#errorMessage(error, redactionToken)}`,
+          redactionToken,
+        )
         this.#failBeforeReady(error, redactionToken)
       }
       return
@@ -463,7 +497,7 @@ export class DshRuntimeController extends EventEmitter {
     if (this.status.state !== 'starting') return
     this.cancelSchedule(this.startupTimer)
     this.startupTimer = undefined
-    const readyPort = Number.parseInt(new URL(url).port, 10)
+    const readyPort = Number.parseInt(new URL(endpoint.publicUrl).port, 10)
     this.preferredPort = readyPort
     try {
       void Promise.resolve(this.onReadyPort(readyPort)).catch((error) => {
@@ -478,9 +512,10 @@ export class DshRuntimeController extends EventEmitter {
         redactionToken,
       )
     }
-    this.#setStatus('ready', { url }, redactionToken)
+    this.launchUrl = endpoint.launchUrl
+    this.#setStatus('ready', { url: endpoint.publicUrl }, redactionToken)
     this.readySince = this.now()
-    this.resolveReady?.(url)
+    this.resolveReady?.(endpoint.publicUrl)
     this.resolveReady = undefined
     this.rejectReady = undefined
     this.readyPromise = undefined
@@ -495,6 +530,7 @@ export class DshRuntimeController extends EventEmitter {
     this.rejectReady = undefined
     this.readyPromise = undefined
     this.workspaceFileOpenToken = undefined
+    this.launchUrl = undefined
     this.#terminateFailedStartupChild(redactionToken)
   }
 
@@ -563,6 +599,7 @@ export class DshRuntimeController extends EventEmitter {
     this.readySince = undefined
     this.child = undefined
     this.workspaceFileOpenToken = undefined
+    this.launchUrl = undefined
     this.#appendDiagnostic(`[process] exited code=${String(code)} signal=${String(signal)}`, redactionToken)
 
     if (previousState === 'starting' && this.rejectReady) {
@@ -631,6 +668,7 @@ export class DshRuntimeController extends EventEmitter {
     // event handlers captured it separately for redaction of late output.
     const redactionToken = this.workspaceFileOpenToken
     this.workspaceFileOpenToken = undefined
+    this.launchUrl = undefined
     if (this.restartTimer !== undefined) {
       this.cancelSchedule(this.restartTimer)
       this.restartTimer = undefined

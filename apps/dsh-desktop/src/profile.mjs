@@ -47,19 +47,27 @@ export const DESKTOP_PATCH_CONFIG = `${DESKTOP_PATCH_START}\n${DESKTOP_PATCH_BOD
 
 const RUNTIME_PACKAGE_NAMES = Object.freeze([
   '@deepseek-ai/cordis-plugin-group', '@deepseek-ai/dsh', '@deepseek-ai/dsh-agent',
-  '@deepseek-ai/dsh-agent-default-model', '@deepseek-ai/dsh-anonymous-user-id',
+  '@deepseek-ai/dsh-agent-default-model', '@deepseek-ai/dsh-agent-presets',
+  '@deepseek-ai/dsh-anonymous-user-id',
   '@deepseek-ai/dsh-attachment', '@deepseek-ai/dsh-atomic-write', '@deepseek-ai/dsh-bash-local',
   '@deepseek-ai/dsh-brand', '@deepseek-ai/dsh-client-ui-directory-picker-browse',
   '@deepseek-ai/dsh-code-runtime', '@deepseek-ai/dsh-compaction', '@deepseek-ai/dsh-fs',
   '@deepseek-ai/dsh-host-directory-picker', '@deepseek-ai/dsh-host-directory-picker-browse',
-  '@deepseek-ai/dsh-host-webserver', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-output-retention',
+  '@deepseek-ai/dsh-host-webserver', '@deepseek-ai/dsh-jobs', '@deepseek-ai/dsh-llm',
+  '@deepseek-ai/dsh-output-retention', '@deepseek-ai/dsh-pwsh-local',
   '@deepseek-ai/dsh-sandbox', '@deepseek-ai/dsh-sandbox-policy', '@deepseek-ai/dsh-scope',
+  '@deepseek-ai/dsh-sandbox-windows-acl',
   '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-session-persistence',
+  '@deepseek-ai/dsh-session-query', '@deepseek-ai/dsh-session-format',
+  '@deepseek-ai/dsh-session-format-v0-to-v1', '@deepseek-ai/dsh-session-format-v1-to-v2',
+  '@deepseek-ai/dsh-session-format-v2-to-v3',
   '@deepseek-ai/dsh-session-telemetry', '@deepseek-ai/dsh-session-telemetry-otel',
   '@deepseek-ai/dsh-session-title-llm', '@deepseek-ai/dsh-shell', '@deepseek-ai/dsh-spill',
   '@deepseek-ai/dsh-settings', '@deepseek-ai/dsh-subagent-in-process-driver',
   '@deepseek-ai/dsh-subprocess', '@deepseek-ai/dsh-timeout', '@deepseek-ai/dsh-typert-protocol',
-  '@deepseek-ai/dsh-web', '@deepseek-ai/dsh-workflow', '@deepseek-ai/dsh-workspace',
+  '@deepseek-ai/dsh-user-approval', '@deepseek-ai/dsh-util-time', '@deepseek-ai/dsh-web',
+  '@deepseek-ai/dsh-win32-process', '@deepseek-ai/dsh-workflow',
+  '@deepseek-ai/dsh-workspace',
 ].toSorted())
 
 export const CORE_RUNTIME_PACKAGES = RUNTIME_PACKAGE_NAMES
@@ -255,7 +263,7 @@ function resolvePackageRoot(packageName, anchors) {
     let cursor
     try { cursor = dirname(String(anchor).startsWith('file:') ? fileURLToPath(anchor) : String(anchor)) } catch {}
     while (cursor) {
-      const candidate = join(cursor, 'node_modules', ...packagePathSegments(packageName))
+      const candidate = materializeFilesystemPath(join(cursor, 'node_modules', ...packagePathSegments(packageName)))
       if (readJson(join(candidate, 'package.json'))?.name === packageName) return materializeFilesystemPath(candidate)
       const parent = dirname(cursor)
       if (parent === cursor) break

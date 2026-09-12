@@ -137,7 +137,6 @@ for (const forbidden of [
   'reasoning-slider',
   'dsh-codex-connect',
   'ssh2',
-  '@xterm',
 ]) {
   if (await exists(join(unpackedModules, forbidden))) {
     throw new Error(`removed extension package is still present: ${forbidden}`)

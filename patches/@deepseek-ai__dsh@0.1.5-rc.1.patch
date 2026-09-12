@@ -1,0 +1,31 @@
+diff --git a/lib/bin.js b/lib/bin.js
+--- a/lib/bin.js
++++ b/lib/bin.js
+@@ -28,5 +28,7 @@ function rejectElectronProfile(program, profile) {
+ function rejectElectronProfile(program, profile) {
+-	if (profile.toLowerCase() === "desktop") program.error("error: profile \"desktop\" is managed exclusively by the Electron application");
++	if (
++		profile.toLowerCase() === "desktop" && process.env.DSH_DESKTOP_MANAGED_PROFILE !== "1"
++	) program.error("error: profile \"desktop\" is managed exclusively by the Electron application");
+ }
+ /** The launcher's own help text; each app prints its own. */
+ const HELP_EXAMPLES = `
+diff --git a/lib/plugin-Ddi42qoW.js b/lib/plugin-Ddi42qoW.js
+--- a/lib/plugin-Ddi42qoW.js
++++ b/lib/plugin-Ddi42qoW.js
+@@ -106,8 +106,13 @@ function runPlugin(profile, args) {
+ 		process.stderr.write(`${NAME}: initialized profile ${profile} at ${dir}\n`);
+ 	}
+ 	const before = readProfileManifest(NAME, dir);
+-	const result = spawnSync("pnpm", args.map((argument) => anchorPathSpec(argument, process.cwd())), {
++	const pnpmCliPath = process.env.DSH_PNPM_CLI_PATH;
++	const pnpmExecutable = pnpmCliPath === void 0 ? "pnpm" : process.execPath;
++	const pnpmArguments = args.map((argument) => anchorPathSpec(argument, process.cwd()));
++	const forwardedArguments = pnpmCliPath === void 0 ? pnpmArguments : [pnpmCliPath, ...pnpmArguments];
++	const result = spawnSync(pnpmExecutable, forwardedArguments, {
+ 		cwd: dir,
+ 		stdio: "inherit",
+-		shell: process.platform === "win32"
++		shell: false,
++		windowsHide: process.platform === "win32"
+ 	});

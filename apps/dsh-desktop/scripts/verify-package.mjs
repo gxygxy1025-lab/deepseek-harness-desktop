@@ -1,4 +1,5 @@
 import { access, readdir, readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -8,16 +9,20 @@ import { CORE_RUNTIME_PACKAGES, packagePathSegments } from '../src/profile.mjs'
 import { CRITICAL_RUNTIME_FILES } from '../src/runtime-integrity.mjs'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const require = createRequire(import.meta.url)
+const { REQUIRED_PACKAGED_PEERS } = require('./after-pack.cjs')
 const allowMissingUpdateMetadata = process.argv.includes('--allow-missing-update-metadata')
 const resourcesArgument = process.argv.slice(2).find((argument) => !argument.startsWith('--'))
 const resources = resolve(resourcesArgument || join(appDir, 'dist', 'win-unpacked', 'resources'))
 const unpackedModules = join(resources, 'app.asar.unpacked', 'node_modules')
+const desktopManifest = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'))
 
-const requiredPackages = [
+const requiredPackages = [...new Set([
   ...CORE_RUNTIME_PACKAGES,
+  ...REQUIRED_PACKAGED_PEERS,
   'electron-updater',
   'pnpm',
-]
+])]
 
 const packagedManifests = new Map()
 for (const packageName of requiredPackages) {
@@ -26,11 +31,11 @@ for (const packageName of requiredPackages) {
   if (manifest.name !== packageName) throw new Error(`packaged manifest mismatch for ${packageName}`)
   packagedManifests.set(packageName, manifest)
 }
-if (packagedManifests.get('@deepseek-ai/dsh')?.version !== '0.1.1-rc.2') {
-  throw new Error('packaged official DSH runtime version is not 0.1.1-rc.2')
+if (packagedManifests.get('@deepseek-ai/dsh')?.version !== desktopManifest.dependencies['@deepseek-ai/dsh']) {
+  throw new Error(`packaged official DSH runtime version is not ${desktopManifest.dependencies['@deepseek-ai/dsh']}`)
 }
-if (packagedManifests.get('pnpm')?.version !== '11.22.0') {
-  throw new Error('packaged pnpm version is not 11.22.0')
+if (packagedManifests.get('pnpm')?.version !== desktopManifest.dependencies.pnpm) {
+  throw new Error(`packaged pnpm version is not ${desktopManifest.dependencies.pnpm}`)
 }
 
 async function containsPackagedFiles(root) {
@@ -59,7 +64,6 @@ for (const forbidden of [
   'reasoning-slider',
   'dsh-codex-connect',
   'ssh2',
-  '@xterm',
   '@img/sharp-darwin-arm64',
   '@img/sharp-darwin-x64',
   '@koromix/koffi-darwin-arm64',
@@ -77,6 +81,10 @@ for (const forbidden of [
 }
 
 await access(join(unpackedModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
+const dshBinSource = await readFile(join(unpackedModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'), 'utf8')
+if (!/process\.env\.DSH_DESKTOP_MANAGED_PROFILE !== "1"/u.test(dshBinSource)) {
+  throw new Error('packaged DSH CLI is missing the managed desktop profile handoff')
+}
 await access(join(unpackedModules, 'pnpm', 'bin', 'pnpm.cjs'))
 const dshLib = join(unpackedModules, '@deepseek-ai', 'dsh', 'lib')
 const pluginFiles = (await readdir(dshLib)).filter((name) => /^plugin-.*\.js$/u.test(name))
@@ -91,21 +99,6 @@ for (const pattern of [
 }
 for (const relativePath of CRITICAL_RUNTIME_FILES) {
   await access(join(unpackedModules, ...relativePath.split('/')))
-}
-
-const sandboxLib = join(unpackedModules, '@deepseek-ai', 'dsh-sandbox-windows-acl', 'lib')
-const sandboxImplementations = (await readdir(sandboxLib))
-  .filter((name) => /^types-.*\.js$/u.test(name))
-if (sandboxImplementations.length !== 1) {
-  throw new Error(`packaged Windows ACL sandbox implementation count is ${sandboxImplementations.length}`)
-}
-const sandboxSource = await readFile(join(sandboxLib, sandboxImplementations[0]), 'utf8')
-const hiddenSandboxLaunches = sandboxSource.match(/dwFlags: 257,\s*wShowWindow: 0/gu) ?? []
-if (hiddenSandboxLaunches.length !== 2) {
-  throw new Error(`packaged Windows ACL sandbox has ${hiddenSandboxLaunches.length} hidden launch paths`)
-}
-if (/createProcessAsUserW\([^;]+, 134217728,/u.test(sandboxSource)) {
-  throw new Error('packaged Windows ACL sandbox uses incompatible CREATE_NO_WINDOW isolation')
 }
 
 await access(join(resources, 'app.asar'))

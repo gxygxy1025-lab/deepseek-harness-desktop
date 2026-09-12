@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
@@ -24,8 +23,6 @@ import {
   validateLoopbackUrl,
 } from '../src/runtime-controller.mjs'
 
-const desktopRequire = createRequire(new URL('../package.json', import.meta.url))
-
 class FakeChild extends EventEmitter {
   constructor() {
     super()
@@ -45,6 +42,10 @@ class FakeChild extends EventEmitter {
 
 test('ready parser accepts only the official loopback URL line', () => {
   assert.equal(parseDshReadyUrl('dsh web: http://127.0.0.1:43125'), 'http://127.0.0.1:43125/')
+  assert.equal(
+    parseDshReadyUrl('dsh web: http://127.0.0.1:43125/?token=runtime-secret'),
+    'http://127.0.0.1:43125/',
+  )
   assert.equal(parseDshReadyUrl('prefix dsh web: http://127.0.0.1:43125'), undefined)
   assert.throws(() => validateLoopbackUrl('https://127.0.0.1:43125'), /loopback HTTP/)
   assert.throws(() => validateLoopbackUrl('http://example.com:43125'), /loopback HTTP/)
@@ -90,7 +91,7 @@ test('default startup budget tolerates first-run Windows scanning', () => {
   assert.equal(controller.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS)
 })
 
-test('Windows runtime wrapper avoids the PowerShell WindowStyle crash and preserves its console host', () => {
+test('Windows runtime launch uses a minimal hidden console host without a preload', () => {
   const invocation = createRuntimeInvocation({
     platform: 'win32',
     systemRoot: 'C:\\Windows',
@@ -98,10 +99,7 @@ test('Windows runtime wrapper avoids the PowerShell WindowStyle crash and preser
     cliPath: 'C:\\Program Files\\DeepSeek Harness\\resources\\app.asar.unpacked\\dsh\\bin.js',
   })
 
-  assert.equal(
-    invocation.executable,
-    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-  )
+  assert.equal(invocation.executable, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')
   assert.deepEqual(invocation.args.slice(0, 4), [
     '-NoLogo',
     '-NoProfile',
@@ -109,15 +107,15 @@ test('Windows runtime wrapper avoids the PowerShell WindowStyle crash and preser
     '-EncodedCommand',
   ])
   assert.equal(invocation.args.includes('-WindowStyle'), false)
-  assert.equal(invocation.args.includes('Hidden'), false)
   const script = Buffer.from(invocation.args[4], 'base64').toString('utf16le')
   assert.match(script, /DeepSeek''s Harness/u)
-  assert.match(script, /'--expose-internals'/u)
-  assert.match(script, /'--require' '[^']*windows-console-preload\.cjs'/u)
-  assert.match(script, /'--profile' 'desktop'/u)
-  assert.match(script, /'--port' '0'/u)
-  assert.match(script, /ForEach-Object \{ \[Console\]::Out\.WriteLine\(\$_\) \}/u)
-  assert.match(script, /exit \$LASTEXITCODE/u)
+  assert.match(script, /--expose-internals/u)
+  assert.match(script, /Start-Process/u)
+  assert.match(script, /-NoNewWindow -Wait -PassThru/u)
+  assert.match(script, /'--profile', 'desktop'/u)
+  assert.match(script, /'--port', '0'/u)
+  assert.match(script, /exit \(\$child\.ExitCode\)/u)
+  assert.doesNotMatch(script, /windows-console-preload|ProcessStartInfo/u)
 })
 
 test('non-Windows runtime launch remains a direct argv spawn', () => {
@@ -155,7 +153,7 @@ test('runtime launch applies the desktop patch after the user profile layer', ()
   })
 })
 
-test('hidden Windows runtime wrapper preserves runtime output and exit status', {
+test('hidden Windows runtime launch preserves runtime output and exit status', {
   skip: process.platform !== 'win32',
 }, () => {
   const invocation = createRuntimeInvocation({
@@ -164,42 +162,67 @@ test('hidden Windows runtime wrapper preserves runtime output and exit status', 
   })
   const result = spawnSync(invocation.executable, invocation.args, {
     encoding: 'utf8',
-    env: { ...process.env, DSH_TEST_RUNTIME_EXIT_CODE: '23' },
+    env: {
+      ...process.env,
+      DSH_TEST_REQUIRE_OPEN_STDIN: '1',
+      DSH_TEST_RUNTIME_EXIT_CODE: '23',
+      DSH_TEST_RUNTIME_STDERR: 'runtime stderr forwarded',
+    },
     timeout: 10_000,
     windowsHide: true,
   })
 
   assert.equal(result.status, 23, result.stderr)
   assert.match(result.stdout, /dsh web: http:\/\/127\.0\.0\.1:43125/u)
+  assert.match(result.stderr, /runtime stderr forwarded/u)
 })
 
-test('Windows preload attaches the GUI-subsystem runtime to its hidden parent console', {
-  skip: process.platform !== 'win32',
-}, () => {
-  const electronExecutable = desktopRequire('electron')
-  const preloadPath = fileURLToPath(new URL('../src/windows-console-preload.cjs', import.meta.url))
-  const probe = [
-    'const koffi = require("koffi")',
-    'const kernel32 = koffi.load("kernel32.dll")',
-    'const getConsoleProcessList = kernel32.func("__stdcall", "GetConsoleProcessList", "uint32", ["uint32*", "uint32"])',
-    'process.stdout.write(String(getConsoleProcessList(Buffer.alloc(16), 4)))',
-  ].join(';')
-  const environment = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
-  const detached = spawnSync(electronExecutable, ['-e', probe], {
-    encoding: 'utf8',
-    env: environment,
-    windowsHide: true,
-  })
-  const attached = spawnSync(electronExecutable, ['--require', preloadPath, '-e', probe], {
-    encoding: 'utf8',
-    env: environment,
-    windowsHide: true,
+test('runtime uses the private bootstrap URL for probing without exposing it in status or logs', async () => {
+  const child = new FakeChild()
+  const diagnostics = []
+  const probes = []
+  const controller = new DshRuntimeController({
+    cliPath: 'dsh-bin.js',
+    cwd: 'C:\\workspace',
+    dshHome: 'C:\\isolated-home',
+    platform: 'win32',
+    executable: 'C:\\runtime\\node.exe',
+    spawnProcess: () => child,
+    logStore: { append: async (line) => diagnostics.push(line) },
+    probeReady: async (url) => probes.push(url),
+    startupTimeoutMs: 2_000,
   })
 
-  assert.equal(detached.status, 0, detached.stderr)
-  assert.equal(detached.stdout, '0')
-  assert.equal(attached.status, 0, attached.stderr)
-  assert.ok(Number.parseInt(attached.stdout, 10) > 0, attached.stdout)
+  const ready = controller.start()
+  child.stdout.write('dsh web: http://127.0.0.1:43125/?token=runtime-secret\n')
+
+  assert.equal(await ready, 'http://127.0.0.1:43125/')
+  assert.deepEqual(probes, ['http://127.0.0.1:43125/?token=runtime-secret'])
+  assert.equal(controller.status.url, 'http://127.0.0.1:43125/')
+  assert.equal(controller.getLaunchUrl(), 'http://127.0.0.1:43125/?token=runtime-secret')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(diagnostics.some((line) => line.includes('runtime-secret')), false)
+  assert.ok(diagnostics.some((line) => line.includes('[redacted]')))
+})
+
+test('bundled Windows Node runtime launch remains a direct argv spawn', () => {
+  assert.deepEqual(createRuntimeInvocation({
+    platform: 'win32',
+    executable: 'C:\\app\\node_modules\\node-win-x64\\bin\\node.exe',
+    cliPath: 'C:\\app\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js',
+    preferredPort: 43_125,
+  }), {
+    executable: 'C:\\app\\node_modules\\node-win-x64\\bin\\node.exe',
+    args: [
+      '--expose-internals',
+      'C:\\app\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js',
+      '--profile',
+      'desktop',
+      '--port',
+      '43125',
+      '--no-open',
+    ],
+  })
 })
 
 test('HTTP readiness probe waits through a short bind race', async () => {
@@ -217,12 +240,24 @@ test('HTTP readiness probe waits through a short bind race', async () => {
   assert.equal(calls, 3)
 })
 
+test('HTTP readiness probe accepts the authenticated bootstrap redirect', async () => {
+  let options
+  await probeHttpReady('http://127.0.0.1:43125/?token=runtime-secret', {
+    fetchImpl: async (_url, requestOptions) => {
+      options = requestOptions
+      return { ok: false, status: 303 }
+    },
+  })
+  assert.equal(options.redirect, 'manual')
+})
+
 test('controller reaches ready state from streamed output and stops cleanly', async () => {
   const child = new FakeChild()
   const logLines = []
   const states = []
   let childArguments
   let childEnvironment
+  let childStdio
   const readyPorts = []
   const controller = new DshRuntimeController({
     cliPath: 'dsh-bin.js',
@@ -231,6 +266,7 @@ test('controller reaches ready state from streamed output and stops cleanly', as
     spawnProcess: (_executable, arguments_, options) => {
       childArguments = arguments_
       childEnvironment = options.env
+      childStdio = options.stdio
       return child
     },
     logStore: { append: async (line) => logLines.push(line) },
@@ -251,6 +287,9 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   assert.deepEqual(states.slice(0, 2), ['starting', 'ready'])
   assert.ok(logLines.some((line) => line.includes('booting')))
   assert.equal(childEnvironment.DSH_PROFILE, DESKTOP_PROFILE_NAME)
+  assert.equal(childEnvironment.DSH_DESKTOP_MANAGED_PROFILE, '1')
+  assert.equal(childEnvironment.ELECTRON_RUN_AS_NODE, '1')
+  assert.deepEqual(childStdio, ['pipe', 'pipe', 'pipe'])
   assert.equal(childArguments[childArguments.indexOf('--profile') + 1], DESKTOP_PROFILE_NAME)
   assert.equal(childArguments[childArguments.indexOf('--port') + 1], '43124')
   assert.deepEqual(readyPorts, [43_125])
@@ -263,6 +302,30 @@ test('controller reaches ready state from streamed output and stops cleanly', as
   assert.equal(controller.status.state, 'stopped')
   assert.equal(controller.getWorkspaceFileOpenToken(), undefined)
   assert.equal(child.killed, true)
+})
+
+test('bundled Windows Node runtime clears the Electron compatibility switch', async () => {
+  const child = new FakeChild()
+  let childEnvironment
+  const controller = new DshRuntimeController({
+    cliPath: 'C:\\app\\dsh\\bin.js',
+    cwd: process.cwd(),
+    dshHome: 'C:\\isolated-home',
+    executable: 'C:\\app\\node-win-x64\\bin\\node.exe',
+    platform: 'win32',
+    spawnProcess: (_executable, _arguments, options) => {
+      childEnvironment = options.env
+      return child
+    },
+    probeReady: async () => {},
+    environmentProvider: () => ({ ELECTRON_RUN_AS_NODE: 'ambient' }),
+  })
+
+  const ready = controller.start()
+  child.stdout.write('dsh web: http://127.0.0.1:43125\n')
+  await ready
+  assert.equal(Object.hasOwn(childEnvironment, 'ELECTRON_RUN_AS_NODE'), false)
+  await controller.stop()
 })
 
 test('runtime capability is redacted from child logs, errors, status, and line observers', async () => {

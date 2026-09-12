@@ -208,6 +208,27 @@ test('official runtime packages resolve from the installed DSH tree', () => {
   assert.match(resolvePnpmCliPath(), /[\\/]pnpm[\\/]bin[\\/]pnpm\.cjs$/u)
 })
 
+test('runtime package fallback resolves physical modules beside a packaged app.asar', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-packaged-resolution-'))
+  try {
+    const packageRoot = join(
+      root,
+      'resources',
+      'app.asar.unpacked',
+      'node_modules',
+      '@example',
+      'runtime',
+    )
+    await mkdir(packageRoot, { recursive: true })
+    await writeFile(join(packageRoot, 'package.json'), '{"name":"@example/runtime"}\n')
+    const anchor = join(root, 'resources', 'app.asar', 'src', 'profile.mjs')
+
+    assert.equal(resolveRuntimePackages(['@example/runtime'], anchor).get('@example/runtime'), packageRoot)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('profile bootstrap removes stale extension links but preserves real directories', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-core-profile-'))
   try {

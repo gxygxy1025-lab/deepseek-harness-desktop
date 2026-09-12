@@ -1,3 +1,11 @@
+# DeepSeek Harness Desktop 1.0.12-alpha.2
+
+This prerelease updates the embedded official DeepSeek Harness runtime to the 0.1.5 release-candidate line and adapts Desktop startup, profile bootstrap, and package resolution to the new runtime layout.
+
+Windows startup now uses the bundled Node runtime, keeps the authenticated Web bootstrap URL private, waits for the first renderer before showing the main window, and continues suppressing package-manager console windows. Packaged profile resolution now supports `app.asar.unpacked`, while existing user-installed plugins and bundle entries remain preserved across Desktop upgrades.
+
+This is an unsigned Windows evaluation build. Windows may show a SmartScreen warning. The Plugin Hub is user-installed and is not bundled with Desktop; users of an older Hub should update `dsh-plugin` from inside their existing profile.
+
 # DeepSeek Harness Desktop 1.0.10
 
 This release adds the macOS packaging and validation path for macOS 13 or later. GitHub Actions validates native Apple Silicon and Intel packages separately, so each download contains only one CPU architecture. A public release is created only after Windows signing, Developer ID signing, Apple notarization, stapling, architecture checks, and packaged smoke tests all pass.

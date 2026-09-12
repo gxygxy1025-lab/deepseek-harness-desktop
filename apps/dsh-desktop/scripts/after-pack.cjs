@@ -1,4 +1,4 @@
-const { cp, mkdir, readdir, rm, stat, writeFile } = require('node:fs/promises')
+const { cp, mkdir, readFile, readdir, rm, stat, writeFile } = require('node:fs/promises')
 const { dirname, join, relative } = require('node:path')
 
 // electron-builder cannot always disambiguate pnpm packages that have several
@@ -7,14 +7,30 @@ const { dirname, join, relative } = require('node:path')
 const REQUIRED_PACKAGED_PEERS = Object.freeze([
   '@deepseek-ai/dsh-atomic-write',
   '@deepseek-ai/dsh-attachment',
+  '@deepseek-ai/dsh-agent-presets',
   '@deepseek-ai/dsh-brand',
+  '@deepseek-ai/dsh-code-runtime',
   '@deepseek-ai/dsh-host-directory-picker',
   '@deepseek-ai/dsh-host-webserver',
+  '@deepseek-ai/dsh-jobs',
+  '@deepseek-ai/dsh-pwsh-local',
   '@deepseek-ai/dsh-sandbox-policy',
+  '@deepseek-ai/dsh-sandbox-windows-acl',
+  '@deepseek-ai/dsh-session-format',
+  '@deepseek-ai/dsh-session-format-v0-to-v1',
+  '@deepseek-ai/dsh-session-format-v1-to-v2',
+  '@deepseek-ai/dsh-session-format-v2-to-v3',
   '@deepseek-ai/dsh-settings',
   '@deepseek-ai/dsh-timeout',
   '@deepseek-ai/dsh-typert-protocol',
+  '@deepseek-ai/dsh-user-approval',
+  '@deepseek-ai/dsh-win32-process',
+  '@deepseek-ai/dsh-workflow',
   '@deepseek-ai/dsh-workspace',
+  '@deepseek-ai/node-addon-system',
+  '@vscode/ripgrep',
+  'chokidar',
+  'turndown',
 ])
 
 const SOURCE_ROOTS = new Map([
@@ -128,6 +144,27 @@ async function prunePackagedRuntime(nodeModulesRoot, classifier = classifyPrunab
   return report
 }
 
+async function resolvePackageRoot(packageName) {
+  try {
+    return dirname(require.resolve(`${packageName}/package.json`))
+  } catch (error) {
+    if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error
+  }
+
+  let path = dirname(require.resolve(packageName))
+  while (true) {
+    try {
+      const manifest = JSON.parse(await readFile(join(path, 'package.json'), 'utf8'))
+      if (manifest.name === packageName) return path
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+    const parent = dirname(path)
+    if (parent === path) throw new Error(`package root is unavailable: ${packageName}`)
+    path = parent
+  }
+}
+
 async function restoreRequiredPackagedPeers(nodeModulesRoot) {
   const restored = []
   for (const packageName of REQUIRED_PACKAGED_PEERS) {
@@ -138,7 +175,7 @@ async function restoreRequiredPackagedPeers(nodeModulesRoot) {
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error
     }
-    const source = dirname(require.resolve(`${packageName}/package.json`))
+    const source = await resolvePackageRoot(packageName)
     await mkdir(dirname(target), { recursive: true })
     await cp(source, target, { recursive: true, force: false, errorOnExist: true })
     restored.push(packageName)
@@ -183,8 +220,10 @@ async function afterPack(context) {
 }
 
 module.exports = afterPack
+module.exports.REQUIRED_PACKAGED_PEERS = REQUIRED_PACKAGED_PEERS
 module.exports.classifyMacPrunableFile = classifyMacPrunableFile
 module.exports.classifyPrunableFile = classifyPrunableFile
 module.exports.prunePackagedRuntime = prunePackagedRuntime
+module.exports.resolvePackageRoot = resolvePackageRoot
 module.exports.resolvePackagedNodeModulesRoot = resolvePackagedNodeModulesRoot
 module.exports.restoreRequiredPackagedPeers = restoreRequiredPackagedPeers

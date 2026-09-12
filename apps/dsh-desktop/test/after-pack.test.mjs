@@ -5,10 +5,30 @@ import test from 'node:test'
 
 const require = createRequire(import.meta.url)
 const {
+  REQUIRED_PACKAGED_PEERS,
   classifyMacPrunableFile,
   classifyPrunableFile,
+  resolvePackageRoot,
   resolvePackagedNodeModulesRoot,
 } = require('../scripts/after-pack.cjs')
+
+test('after-pack restores runtime packages omitted by electron-builder peer resolution', () => {
+  for (const packageName of [
+    '@deepseek-ai/dsh-code-runtime',
+    '@deepseek-ai/dsh-jobs',
+    '@deepseek-ai/dsh-pwsh-local',
+    '@deepseek-ai/dsh-sandbox-policy',
+    '@deepseek-ai/dsh-user-approval',
+    '@deepseek-ai/dsh-workflow',
+  ]) {
+    assert.equal(REQUIRED_PACKAGED_PEERS.includes(packageName), true, packageName)
+  }
+})
+
+test('after-pack resolves package roots when package.json is not exported', async () => {
+  const root = await resolvePackageRoot('@vscode/ripgrep')
+  assert.equal(require(join(root, 'package.json')).name, '@vscode/ripgrep')
+})
 
 test('after-pack resolves the Windows unpacked node_modules path', () => {
   assert.equal(

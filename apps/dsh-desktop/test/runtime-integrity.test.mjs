@@ -32,12 +32,18 @@ test('runtime integrity includes the OpenTelemetry machine identifier reported m
 
 test('desktop directly declares the telemetry package required during bootstrap', async () => {
   const manifest = JSON.parse(await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
-  assert.equal(manifest.dependencies['@deepseek-ai/dsh-session-telemetry-otel'], '0.1.1-rc.2')
+  assert.equal(
+    manifest.dependencies['@deepseek-ai/dsh-session-telemetry-otel'],
+    manifest.dependencies['@deepseek-ai/dsh'],
+  )
 })
 
 test('desktop directly declares the directory-picker host imported by the browse implementation', async () => {
   const manifest = JSON.parse(await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
-  assert.equal(manifest.dependencies['@deepseek-ai/dsh-host-directory-picker'], '0.1.1-rc.2')
+  assert.equal(
+    manifest.dependencies['@deepseek-ai/dsh-host-directory-picker'],
+    manifest.dependencies['@deepseek-ai/dsh'],
+  )
 })
 
 test('runtime integrity reports an incomplete installation and recommends reinstalling', async () => {
