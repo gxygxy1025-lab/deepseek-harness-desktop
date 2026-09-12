@@ -14,6 +14,7 @@ const {
 
 test('after-pack restores runtime packages omitted by electron-builder peer resolution', () => {
   for (const packageName of [
+    '@mixmark-io/domino',
     '@deepseek-ai/dsh-code-runtime',
     '@deepseek-ai/dsh-jobs',
     '@deepseek-ai/dsh-pwsh-local',

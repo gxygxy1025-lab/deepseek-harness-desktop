@@ -1,3 +1,7 @@
+# DeepSeek Harness Desktop 1.0.12-alpha.3
+
+This Windows prerelease fixes the missing `@mixmark-io/domino` runtime dependency required by `turndown`. The package verifier now executes a real HTML-to-Markdown conversion from the packaged dependency tree, preventing the same incomplete-package failure from reaching another release.
+
 # DeepSeek Harness Desktop 1.0.12-alpha.2
 
 This prerelease updates the embedded official DeepSeek Harness runtime to the 0.1.5 release-candidate line and adapts Desktop startup, profile bootstrap, and package resolution to the new runtime layout.

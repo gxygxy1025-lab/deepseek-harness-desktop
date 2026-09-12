@@ -165,6 +165,9 @@ importers:
       '@deepseek-ai/node-addon-system':
         specifier: 0.1.2
         version: 0.1.2
+      '@mixmark-io/domino':
+        specifier: 2.2.0
+        version: 2.2.0
       '@vscode/ripgrep':
         specifier: 1.18.0
         version: 1.18.0

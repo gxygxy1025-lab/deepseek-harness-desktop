@@ -5,6 +5,7 @@ const { dirname, join, relative } = require('node:path')
 // peer-dependency snapshots. These are required by the DSH boot graph, so copy
 // the app's explicitly pinned instance only when the collector omitted it.
 const REQUIRED_PACKAGED_PEERS = Object.freeze([
+  '@mixmark-io/domino',
   '@deepseek-ai/dsh-atomic-write',
   '@deepseek-ai/dsh-attachment',
   '@deepseek-ai/dsh-agent-presets',

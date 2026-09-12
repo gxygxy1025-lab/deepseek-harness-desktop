@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
-  "version": "1.0.12-alpha.2",
+  "version": "1.0.12-alpha.3",
   "private": true,
   "description": "Desktop shell for the official DeepSeek Harness runtime",
   "author": "DeepSeek Harness Desktop contributors",
@@ -29,6 +29,7 @@
     "pack:verify:mac": "node scripts/verify-package-mac.mjs"
   },
   "dependencies": {
+    "@mixmark-io/domino": "2.2.0",
     "@deepseek-ai/cordis-plugin-group": "1.0.1",
     "@deepseek-ai/dsh": "0.1.5-rc.1",
     "@deepseek-ai/dsh-agent": "0.1.5-rc.1",

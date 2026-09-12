@@ -37,6 +37,11 @@ if (packagedManifests.get('@deepseek-ai/dsh')?.version !== desktopManifest.depen
 if (packagedManifests.get('pnpm')?.version !== desktopManifest.dependencies.pnpm) {
   throw new Error(`packaged pnpm version is not ${desktopManifest.dependencies.pnpm}`)
 }
+const packagedRequire = createRequire(join(unpackedModules, 'turndown', 'package.json'))
+const TurndownService = packagedRequire('turndown')
+if (new TurndownService().turndown('<p>desktop runtime</p>') !== 'desktop runtime') {
+  throw new Error('packaged turndown runtime is unavailable')
+}
 
 async function containsPackagedFiles(root) {
   const pending = [root]
